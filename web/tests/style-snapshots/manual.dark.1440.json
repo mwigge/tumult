@@ -1,0 +1,1229 @@
+{
+  "page": "manual",
+  "path": "/manual",
+  "theme": "dark",
+  "width": 1440,
+  "height": 900,
+  "elements": {
+    "html": {
+      "color": "rgb(216, 222, 228)",
+      "font-family": "-apple-system, \"Segoe UI\", Inter, Roboto, sans-serif",
+      "font-size": "14px",
+      "font-weight": "400",
+      "line-height": "1.5",
+      "visibility": "visible",
+      "display": "block",
+      "background-color": "rgb(11, 14, 17)"
+    },
+    "body": {
+      "display": "block",
+      "background-color": "rgb(11, 14, 17)"
+    },
+    "div.shell": {
+      "display": "grid",
+      "grid-template-columns": "208px 1fr"
+    },
+    "div.shell > aside[complementary].side": {
+      "display": "flex",
+      "background-color": "rgb(17, 22, 27)",
+      "border-right": "1px solid rgb(36, 45, 54)",
+      "padding": "16px 0px"
+    },
+    "div.shell > aside[complementary].side > div.brand": {
+      "display": "block",
+      "border-bottom": "1px solid rgb(36, 45, 54)",
+      "padding": "0px 18px 14px",
+      "margin": "0px 0px 10px"
+    },
+    "div.shell > aside[complementary].side > div.brand > div.name": {
+      "font-size": "17px",
+      "font-weight": "700",
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > div.brand > div.tag": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11px",
+      "display": "block",
+      "margin": "2px 0px 0px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav": {
+      "display": "block",
+      "padding": "0px 0px 1px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◧ Overview\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◧ Overview\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◎ Resilience\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◎ Resilience\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◭ Performance\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◭ Performance\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"▦ Scores\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"▦ Scores\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⚖ DORA\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⚖ DORA\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⟲ Disaster recovery\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⟲ Disaster recovery\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⚗ Experiments\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⚗ Experiments\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"▶ Runs\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"▶ Runs\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✚ Author\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✚ Author\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"☷ GameDays\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"☷ GameDays\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✓ Approvals\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✓ Approvals\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link].active \"✎ Manual\"": {
+      "font-size": "13.5px",
+      "display": "flex",
+      "background-color": "rgb(28, 36, 44)",
+      "border-left": "2px solid rgb(94, 177, 239)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link].active \"✎ Manual\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"≣ Logs\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"≣ Logs\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⌁ Traces\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⌁ Traces\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"∿ Metrics\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"∿ Metrics\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✳ Star Map\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✳ Star Map\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✦ Ask\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✦ Ask\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"▤ Reports\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"▤ Reports\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◔ Events\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◔ Events\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⚿ Users\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⚿ Users\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"➤ Webhooks\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"➤ Webhooks\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"↻ Schedules\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"↻ Schedules\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > button[button].theme \"◐ dark\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11.5px",
+      "display": "block",
+      "border-top": "1px solid rgb(36, 45, 54)",
+      "border-right": "1px solid rgb(36, 45, 54)",
+      "border-bottom": "1px solid rgb(36, 45, 54)",
+      "border-left": "1px solid rgb(36, 45, 54)",
+      "border-radius": "4px",
+      "padding": "2px 8px",
+      "margin": "8px 18px 0px"
+    },
+    "div.shell > main[main].main": {
+      "display": "block",
+      "padding": "22px 26px 60px"
+    },
+    "div.shell > main[main].main > div.manual": {
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.manual > div.page-head": {
+      "display": "flex",
+      "margin": "0px 0px 18px",
+      "gap": "14px"
+    },
+    "div.shell > main[main].main > div.manual > div.page-head > h1[heading] \"Manual evidence\"": {
+      "font-size": "19px",
+      "font-weight": "600",
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.manual > div.page-head > span.sub": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "12.5px",
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.manual > div.page-head > div.controls": {
+      "display": "flex",
+      "margin": "0px 0px 0px auto",
+      "gap": "12px"
+    },
+    "div.shell > main[main].main > div.manual > div.page-head > div.controls > label[LabelText].actor": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "12px",
+      "display": "flex",
+      "gap": "6px"
+    },
+    "div.shell > main[main].main > div.manual > div.page-head > div.controls > label[LabelText].actor > input[textbox] \"Acting as\"": {
+      "color": "rgb(216, 222, 228)",
+      "font-family": "Arial",
+      "font-size": "13px",
+      "line-height": "normal",
+      "display": "block",
+      "background-color": "rgb(17, 22, 27)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "5px",
+      "padding": "6px 9px"
+    },
+    "div.shell > main[main].main > div.manual > div.page-head > div.controls > div[group].seg \"manual sections\"": {
+      "display": "flex",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "5px"
+    },
+    "div.shell > main[main].main > div.manual > div.page-head > div.controls > div[group].seg \"manual sections\" > button[button].active \"New entry\"": {
+      "color": "rgb(255, 255, 255)",
+      "font-family": "Arial",
+      "font-size": "12.5px",
+      "line-height": "normal",
+      "display": "block",
+      "background-color": "rgb(45, 93, 132)",
+      "padding": "5px 12px"
+    },
+    "div.shell > main[main].main > div.manual > div.page-head > div.controls > div[group].seg \"manual sections\" > button[button] \"Plans\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-family": "Arial",
+      "font-size": "12.5px",
+      "line-height": "normal",
+      "display": "block",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "padding": "5px 12px"
+    },
+    "div.shell > main[main].main > div.manual > div.page-head > div.controls > div[group].seg \"manual sections\" > button[button] \"Verification queue\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-family": "Arial",
+      "font-size": "12.5px",
+      "line-height": "normal",
+      "display": "block",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "padding": "5px 12px"
+    },
+    "div.shell > main[main].main > div.manual > div.page-head > div.controls > div[group].seg \"manual sections\" > button[button] \"All records\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-family": "Arial",
+      "font-size": "12.5px",
+      "line-height": "normal",
+      "display": "block",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "padding": "5px 12px"
+    },
+    "div.shell > main[main].main > div.manual > div.page-head > div.controls > div[group].seg \"manual sections\" > button[button] \"Import\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-family": "Arial",
+      "font-size": "12.5px",
+      "line-height": "normal",
+      "display": "block",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "padding": "5px 12px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry": {
+      "display": "flex",
+      "gap": "14px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2": {
+      "display": "grid",
+      "grid-template-columns": "1fr 1fr",
+      "gap": "14px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.panel": {
+      "display": "block",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(36, 45, 54)",
+      "border-right": "1px solid rgb(36, 45, 54)",
+      "border-bottom": "1px solid rgb(36, 45, 54)",
+      "border-left": "1px solid rgb(36, 45, 54)",
+      "border-radius": "6px",
+      "padding": "14px 16px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.panel > h2[heading] \"EXERCISE\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "12px",
+      "font-weight": "600",
+      "display": "block",
+      "margin": "0px 0px 10px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.panel > div.form": {
+      "display": "flex",
+      "gap": "10px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.panel > div.form > label[LabelText]": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "12px",
+      "display": "flex",
+      "gap": "4px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.panel > div.form > label[LabelText] > input[textbox] \"Experiment name\"": {
+      "color": "rgb(216, 222, 228)",
+      "font-family": "Arial",
+      "font-size": "13px",
+      "line-height": "normal",
+      "display": "block",
+      "background-color": "rgb(17, 22, 27)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "5px",
+      "padding": "6px 9px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.panel > div.form > div.row2": {
+      "display": "grid",
+      "grid-template-columns": "1fr 1fr",
+      "gap": "10px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.panel > div.form > div.row2 > label[LabelText]": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "12px",
+      "display": "flex",
+      "gap": "4px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.panel > div.form > div.row2 > label[LabelText] > select[combobox] \"Exercise type\"": {
+      "color": "rgb(216, 222, 228)",
+      "font-family": "Arial",
+      "font-size": "13px",
+      "line-height": "normal",
+      "display": "block",
+      "background-color": "rgb(17, 22, 27)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "5px",
+      "padding": "6px 9px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.panel > div.form > div.row2 > label[LabelText] #2": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "12px",
+      "display": "flex",
+      "gap": "4px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.panel > div.form > div.row2 > label[LabelText] #2 > input[DateTime] \"Executed at\"": {
+      "color": "rgb(216, 222, 228)",
+      "font-size": "13px",
+      "line-height": "normal",
+      "display": "block",
+      "background-color": "rgb(17, 22, 27)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "5px",
+      "padding": "5px 8px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.panel > div.form > div.row2 #2": {
+      "display": "grid",
+      "grid-template-columns": "1fr 1fr",
+      "gap": "10px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.panel > div.form > div.row2 #2 > label[LabelText]": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "12px",
+      "display": "flex",
+      "gap": "4px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.panel > div.form > div.row2 #2 > label[LabelText] > input[textbox] \"Target system\"": {
+      "color": "rgb(216, 222, 228)",
+      "font-family": "Arial",
+      "font-size": "13px",
+      "line-height": "normal",
+      "display": "block",
+      "background-color": "rgb(17, 22, 27)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "5px",
+      "padding": "6px 9px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.panel > div.form > div.row2 #2 > label[LabelText] #2": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "12px",
+      "display": "flex",
+      "gap": "4px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.panel > div.form > div.row2 #2 > label[LabelText] #2 > input[textbox] \"Target environment\"": {
+      "color": "rgb(216, 222, 228)",
+      "font-family": "Arial",
+      "font-size": "13px",
+      "line-height": "normal",
+      "display": "block",
+      "background-color": "rgb(17, 22, 27)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "5px",
+      "padding": "6px 9px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.panel > div.form > label[LabelText] #2": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "12px",
+      "display": "flex",
+      "gap": "4px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.panel > div.form > label[LabelText] #2 > select[combobox] \"Plan it fulfils\"": {
+      "color": "rgb(216, 222, 228)",
+      "font-family": "Arial",
+      "font-size": "13px",
+      "line-height": "normal",
+      "display": "block",
+      "background-color": "rgb(17, 22, 27)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "5px",
+      "padding": "6px 9px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.panel > div.form > label[LabelText] #3": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "12px",
+      "display": "flex",
+      "gap": "4px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.panel > div.form > label[LabelText] #3 > textarea[textbox] \"Hypothesis\"": {
+      "color": "rgb(216, 222, 228)",
+      "font-family": "monospace",
+      "font-size": "13px",
+      "line-height": "normal",
+      "display": "block",
+      "background-color": "rgb(17, 22, 27)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "5px",
+      "padding": "6px 9px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.panel > div.form > label[LabelText] #4": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "12px",
+      "display": "flex",
+      "gap": "4px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.panel > div.form > label[LabelText] #4 > textarea[textbox] \"Method\"": {
+      "color": "rgb(216, 222, 228)",
+      "font-family": "monospace",
+      "font-size": "13px",
+      "line-height": "normal",
+      "display": "block",
+      "background-color": "rgb(17, 22, 27)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "5px",
+      "padding": "6px 9px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.panel > div.form > div.row2 #3": {
+      "display": "grid",
+      "grid-template-columns": "1fr 1fr",
+      "gap": "10px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.panel > div.form > div.row2 #3 > label[LabelText]": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "12px",
+      "display": "flex",
+      "gap": "4px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.panel > div.form > div.row2 #3 > label[LabelText] > select[combobox] \"Outcome\"": {
+      "color": "rgb(216, 222, 228)",
+      "font-family": "Arial",
+      "font-size": "13px",
+      "line-height": "normal",
+      "display": "block",
+      "background-color": "rgb(17, 22, 27)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "5px",
+      "padding": "6px 9px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.panel > div.form > div.row2 #3 > label[LabelText] #2": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "12px",
+      "display": "flex",
+      "gap": "4px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.panel > div.form > div.row2 #3 > label[LabelText] #2 > select[combobox] \"Hypothesis held\"": {
+      "color": "rgb(216, 222, 228)",
+      "font-family": "Arial",
+      "font-size": "13px",
+      "line-height": "normal",
+      "display": "block",
+      "background-color": "rgb(17, 22, 27)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "5px",
+      "padding": "6px 9px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.panel > div.form > label[LabelText] #5": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "12px",
+      "display": "flex",
+      "gap": "4px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.panel > div.form > label[LabelText] #5 > textarea[textbox] \"Findings\"": {
+      "color": "rgb(216, 222, 228)",
+      "font-family": "monospace",
+      "font-size": "13px",
+      "line-height": "normal",
+      "display": "block",
+      "background-color": "rgb(17, 22, 27)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "5px",
+      "padding": "6px 9px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.panel > div.form > label[LabelText] #6": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "12px",
+      "display": "flex",
+      "gap": "4px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.panel > div.form > label[LabelText] #6 > select[combobox] \"Findings severity\"": {
+      "color": "rgb(216, 222, 228)",
+      "font-family": "Arial",
+      "font-size": "13px",
+      "line-height": "normal",
+      "display": "block",
+      "background-color": "rgb(17, 22, 27)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "5px",
+      "padding": "6px 9px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.panel > div.form > div.row2 #4": {
+      "display": "grid",
+      "grid-template-columns": "1fr 1fr",
+      "gap": "10px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.panel > div.form > div.row2 #4 > label[LabelText]": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "12px",
+      "display": "flex",
+      "gap": "4px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.panel > div.form > div.row2 #4 > label[LabelText] > input[textbox] \"Blast radius\"": {
+      "color": "rgb(216, 222, 228)",
+      "font-family": "Arial",
+      "font-size": "13px",
+      "line-height": "normal",
+      "display": "block",
+      "background-color": "rgb(17, 22, 27)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "5px",
+      "padding": "6px 9px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.panel > div.form > div.row2 #4 > label[LabelText] #2": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "12px",
+      "display": "flex",
+      "gap": "4px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.panel > div.form > div.row2 #4 > label[LabelText] #2 > input[spinbutton] \"Duration (s)\"": {
+      "color": "rgb(216, 222, 228)",
+      "font-family": "Arial",
+      "font-size": "13px",
+      "line-height": "normal",
+      "display": "block",
+      "background-color": "rgb(17, 22, 27)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "5px",
+      "padding": "6px 9px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.panel > div.form > label[LabelText] #7": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "12px",
+      "display": "flex",
+      "gap": "4px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.panel > div.form > label[LabelText] #7 > input[textbox] \"Framework refs (comma-sep)\"": {
+      "color": "rgb(216, 222, 228)",
+      "font-family": "Arial",
+      "font-size": "13px",
+      "line-height": "normal",
+      "display": "block",
+      "background-color": "rgb(17, 22, 27)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "5px",
+      "padding": "6px 9px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.panel > div.form > label[LabelText] #8": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "12px",
+      "display": "flex",
+      "gap": "4px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.panel > div.form > label[LabelText] #8 > input[textbox] \"Plan scenarios (comma-sep)\"": {
+      "color": "rgb(216, 222, 228)",
+      "font-family": "Arial",
+      "font-size": "13px",
+      "line-height": "normal",
+      "display": "block",
+      "background-color": "rgb(17, 22, 27)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "5px",
+      "padding": "6px 9px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.stack": {
+      "display": "flex",
+      "gap": "14px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.stack > div.panel": {
+      "display": "block",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(36, 45, 54)",
+      "border-right": "1px solid rgb(36, 45, 54)",
+      "border-bottom": "1px solid rgb(36, 45, 54)",
+      "border-left": "1px solid rgb(36, 45, 54)",
+      "border-radius": "6px",
+      "padding": "14px 16px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.stack > div.panel > h2[heading] \"RECOVERY\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "12px",
+      "font-weight": "600",
+      "display": "block",
+      "margin": "0px 0px 10px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.stack > div.panel > div.form": {
+      "display": "flex",
+      "gap": "10px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.stack > div.panel > div.form > div.row2": {
+      "display": "grid",
+      "grid-template-columns": "1fr 1fr",
+      "gap": "10px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.stack > div.panel > div.form > div.row2 > label[LabelText]": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "12px",
+      "display": "flex",
+      "gap": "4px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.stack > div.panel > div.form > div.row2 > label[LabelText] > input[spinbutton] \"Planned RTO (s)\"": {
+      "color": "rgb(216, 222, 228)",
+      "font-family": "Arial",
+      "font-size": "13px",
+      "line-height": "normal",
+      "display": "block",
+      "background-color": "rgb(17, 22, 27)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "5px",
+      "padding": "6px 9px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.stack > div.panel > div.form > div.row2 > label[LabelText] #2": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "12px",
+      "display": "flex",
+      "gap": "4px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.stack > div.panel > div.form > div.row2 > label[LabelText] #2 > input[spinbutton] \"Actual recovery time (s)\"": {
+      "color": "rgb(216, 222, 228)",
+      "font-family": "Arial",
+      "font-size": "13px",
+      "line-height": "normal",
+      "display": "block",
+      "background-color": "rgb(17, 22, 27)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "5px",
+      "padding": "6px 9px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.stack > div.panel > div.form > div.row2 #2": {
+      "display": "grid",
+      "grid-template-columns": "1fr 1fr",
+      "gap": "10px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.stack > div.panel > div.form > div.row2 #2 > label[LabelText]": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "12px",
+      "display": "flex",
+      "gap": "4px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.stack > div.panel > div.form > div.row2 #2 > label[LabelText] > input[spinbutton] \"Planned RPO (s)\"": {
+      "color": "rgb(216, 222, 228)",
+      "font-family": "Arial",
+      "font-size": "13px",
+      "line-height": "normal",
+      "display": "block",
+      "background-color": "rgb(17, 22, 27)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "5px",
+      "padding": "6px 9px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.stack > div.panel > div.form > div.row2 #2 > label[LabelText] #2": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "12px",
+      "display": "flex",
+      "gap": "4px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.stack > div.panel > div.form > div.row2 #2 > label[LabelText] #2 > input[spinbutton] \"Actual RPO (s)\"": {
+      "color": "rgb(216, 222, 228)",
+      "font-family": "Arial",
+      "font-size": "13px",
+      "line-height": "normal",
+      "display": "block",
+      "background-color": "rgb(17, 22, 27)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "5px",
+      "padding": "6px 9px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.stack > div.panel > div.form > label[LabelText]": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "12px",
+      "display": "flex",
+      "gap": "4px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.stack > div.panel > div.form > label[LabelText] > select[combobox] \"Data verified\"": {
+      "color": "rgb(216, 222, 228)",
+      "font-family": "Arial",
+      "font-size": "13px",
+      "line-height": "normal",
+      "display": "block",
+      "background-color": "rgb(17, 22, 27)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "5px",
+      "padding": "6px 9px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.stack > div.panel > div.form > p[paragraph].note": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "12px",
+      "display": "block",
+      "margin": "12px 0px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.stack > div.panel #2": {
+      "display": "block",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(36, 45, 54)",
+      "border-right": "1px solid rgb(36, 45, 54)",
+      "border-bottom": "1px solid rgb(36, 45, 54)",
+      "border-left": "1px solid rgb(36, 45, 54)",
+      "border-radius": "6px",
+      "padding": "14px 16px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.stack > div.panel #2 > h2[heading] \"PARTICIPANTS\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "12px",
+      "font-weight": "600",
+      "display": "block",
+      "margin": "0px 0px 10px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.stack > div.panel #2 > div.dim": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "12px",
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.stack > div.panel #2 > button[button].btn.add \"Add participant\"": {
+      "font-family": "Arial",
+      "font-size": "13px",
+      "line-height": "normal",
+      "display": "inline-block",
+      "background-color": "rgb(28, 36, 44)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "6px",
+      "padding": "6px 14px",
+      "margin": "4px 0px 0px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.stack > div.panel #3": {
+      "display": "block",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(36, 45, 54)",
+      "border-right": "1px solid rgb(36, 45, 54)",
+      "border-bottom": "1px solid rgb(36, 45, 54)",
+      "border-left": "1px solid rgb(36, 45, 54)",
+      "border-radius": "6px",
+      "padding": "14px 16px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.stack > div.panel #3 > h2[heading] \"TESTER\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "12px",
+      "font-weight": "600",
+      "display": "block",
+      "margin": "0px 0px 10px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.stack > div.panel #3 > div.form": {
+      "display": "flex",
+      "gap": "10px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.stack > div.panel #3 > div.form > div.row2": {
+      "display": "grid",
+      "grid-template-columns": "1fr 1fr",
+      "gap": "10px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.stack > div.panel #3 > div.form > div.row2 > label[LabelText]": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "12px",
+      "display": "flex",
+      "gap": "4px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.stack > div.panel #3 > div.form > div.row2 > label[LabelText] > input[textbox] \"Tester\"": {
+      "color": "rgb(216, 222, 228)",
+      "font-family": "Arial",
+      "font-size": "13px",
+      "line-height": "normal",
+      "display": "block",
+      "background-color": "rgb(17, 22, 27)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "5px",
+      "padding": "6px 9px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.stack > div.panel #3 > div.form > div.row2 > label[LabelText] #2": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "12px",
+      "display": "flex",
+      "gap": "4px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.stack > div.panel #3 > div.form > div.row2 > label[LabelText] #2 > select[combobox] \"Tester kind\"": {
+      "color": "rgb(216, 222, 228)",
+      "font-family": "Arial",
+      "font-size": "13px",
+      "line-height": "normal",
+      "display": "block",
+      "background-color": "rgb(17, 22, 27)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "5px",
+      "padding": "6px 9px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.stack > div.panel #3 > div.form > p[paragraph].note": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "12px",
+      "display": "block",
+      "margin": "12px 0px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.panel": {
+      "display": "block",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(36, 45, 54)",
+      "border-right": "1px solid rgb(36, 45, 54)",
+      "border-bottom": "1px solid rgb(36, 45, 54)",
+      "border-left": "1px solid rgb(36, 45, 54)",
+      "border-radius": "6px",
+      "padding": "14px 16px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.panel > h2[heading] \"STEPS\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "12px",
+      "font-weight": "600",
+      "display": "block",
+      "margin": "0px 0px 10px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.panel > div.dim": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "12px",
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.panel > button[button].btn.add \"Add step\"": {
+      "font-family": "Arial",
+      "font-size": "13px",
+      "line-height": "normal",
+      "display": "inline-block",
+      "background-color": "rgb(28, 36, 44)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "6px",
+      "padding": "6px 14px",
+      "margin": "4px 0px 0px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.panel #2": {
+      "display": "block",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(36, 45, 54)",
+      "border-right": "1px solid rgb(36, 45, 54)",
+      "border-bottom": "1px solid rgb(36, 45, 54)",
+      "border-left": "1px solid rgb(36, 45, 54)",
+      "border-radius": "6px",
+      "padding": "14px 16px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.panel #2 > h2[heading] \"ACTIONS\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "12px",
+      "font-weight": "600",
+      "display": "block",
+      "margin": "0px 0px 10px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.panel #2 > div.dim": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "12px",
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.panel #2 > button[button].btn.add \"Add action\"": {
+      "font-family": "Arial",
+      "font-size": "13px",
+      "line-height": "normal",
+      "display": "inline-block",
+      "background-color": "rgb(28, 36, 44)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "6px",
+      "padding": "6px 14px",
+      "margin": "4px 0px 0px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 #2": {
+      "display": "grid",
+      "grid-template-columns": "1fr 1fr",
+      "gap": "14px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 #2 > div.panel": {
+      "display": "block",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(36, 45, 54)",
+      "border-right": "1px solid rgb(36, 45, 54)",
+      "border-bottom": "1px solid rgb(36, 45, 54)",
+      "border-left": "1px solid rgb(36, 45, 54)",
+      "border-radius": "6px",
+      "padding": "14px 16px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 #2 > div.panel > h2[heading] \"ATTESTATION\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "12px",
+      "font-weight": "600",
+      "display": "block",
+      "margin": "0px 0px 10px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 #2 > div.panel > div.form": {
+      "display": "flex",
+      "gap": "10px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 #2 > div.panel > div.form > label[LabelText]": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "12px",
+      "display": "flex",
+      "gap": "4px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 #2 > div.panel > div.form > label[LabelText] > input[Date] \"Renewal due (optional)\"": {
+      "color": "rgb(216, 222, 228)",
+      "font-size": "13px",
+      "line-height": "normal",
+      "display": "block",
+      "background-color": "rgb(17, 22, 27)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "5px",
+      "padding": "5px 8px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 #2 > div.panel > div.form > label[LabelText] #2": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "12px",
+      "display": "flex",
+      "gap": "4px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 #2 > div.panel > div.form > label[LabelText] #2 > textarea[textbox] \"Attestation text\"": {
+      "color": "rgb(216, 222, 228)",
+      "font-family": "monospace",
+      "font-size": "13px",
+      "line-height": "normal",
+      "display": "block",
+      "background-color": "rgb(17, 22, 27)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "5px",
+      "padding": "6px 9px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 #2 > div.panel > div.form > p[paragraph].note": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "12px",
+      "display": "block",
+      "margin": "12px 0px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 #2 > div.panel > div.form > p[paragraph].note > b": {
+      "font-weight": "700",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 #2 > div.panel > div.form > div.actions": {
+      "display": "flex",
+      "gap": "8px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 #2 > div.panel > div.form > div.actions > button[button].btn \"Save draft\"": {
+      "font-family": "Arial",
+      "font-size": "13px",
+      "line-height": "normal",
+      "display": "block",
+      "background-color": "rgb(28, 36, 44)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "6px",
+      "padding": "6px 14px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 #2 > div.panel > div.form > div.actions > button[button].btn.primary \"Save & submit\"": {
+      "font-family": "Arial",
+      "font-size": "13px",
+      "line-height": "normal",
+      "display": "block",
+      "background-color": "rgb(45, 93, 132)",
+      "border-top": "1px solid rgb(45, 93, 132)",
+      "border-right": "1px solid rgb(45, 93, 132)",
+      "border-bottom": "1px solid rgb(45, 93, 132)",
+      "border-left": "1px solid rgb(45, 93, 132)",
+      "border-radius": "6px",
+      "padding": "6px 14px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 #2 > div.panel #2": {
+      "display": "block",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(36, 45, 54)",
+      "border-right": "1px solid rgb(36, 45, 54)",
+      "border-bottom": "1px solid rgb(36, 45, 54)",
+      "border-left": "1px solid rgb(36, 45, 54)",
+      "border-radius": "6px",
+      "padding": "14px 16px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 #2 > div.panel #2 > h2[heading] \"EVIDENCE\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "12px",
+      "font-weight": "600",
+      "display": "block",
+      "margin": "0px 0px 10px"
+    },
+    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 #2 > div.panel #2 > p[paragraph].note": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "12px",
+      "display": "block",
+      "margin": "12px 0px"
+    },
+    "div": {
+      "display": "block"
+    }
+  }
+}

@@ -1,0 +1,653 @@
+{
+  "page": "trace",
+  "path": "/traces/t-1",
+  "theme": "dark",
+  "width": 390,
+  "height": 844,
+  "elements": {
+    "html": {
+      "color": "rgb(216, 222, 228)",
+      "font-family": "-apple-system, \"Segoe UI\", Inter, Roboto, sans-serif",
+      "font-size": "14px",
+      "font-weight": "400",
+      "line-height": "1.5",
+      "visibility": "visible",
+      "display": "block",
+      "background-color": "rgb(11, 14, 17)"
+    },
+    "body": {
+      "display": "block",
+      "background-color": "rgb(11, 14, 17)"
+    },
+    "div.shell": {
+      "display": "grid",
+      "grid-template-columns": "208px 1fr"
+    },
+    "div.shell > aside[complementary].side": {
+      "display": "flex",
+      "background-color": "rgb(17, 22, 27)",
+      "border-right": "1px solid rgb(36, 45, 54)",
+      "padding": "16px 0px"
+    },
+    "div.shell > aside[complementary].side > div.brand": {
+      "display": "block",
+      "border-bottom": "1px solid rgb(36, 45, 54)",
+      "padding": "0px 18px 14px",
+      "margin": "0px 0px 10px"
+    },
+    "div.shell > aside[complementary].side > div.brand > div.name": {
+      "font-size": "17px",
+      "font-weight": "700",
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > div.brand > div.tag": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11px",
+      "display": "block",
+      "margin": "2px 0px 0px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav": {
+      "display": "block",
+      "padding": "0px 0px 1px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◧ Overview\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◧ Overview\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◎ Resilience\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◎ Resilience\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◭ Performance\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◭ Performance\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"▦ Scores\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"▦ Scores\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⚖ DORA\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⚖ DORA\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⟲ Disaster recovery\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⟲ Disaster recovery\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⚗ Experiments\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⚗ Experiments\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"▶ Runs\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"▶ Runs\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✚ Author\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✚ Author\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"☷ GameDays\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"☷ GameDays\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✓ Approvals\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✓ Approvals\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✎ Manual\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✎ Manual\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"≣ Logs\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"≣ Logs\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link].active \"⌁ Traces\"": {
+      "font-size": "13.5px",
+      "display": "flex",
+      "background-color": "rgb(28, 36, 44)",
+      "border-left": "2px solid rgb(94, 177, 239)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link].active \"⌁ Traces\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"∿ Metrics\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"∿ Metrics\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✳ Star Map\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✳ Star Map\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✦ Ask\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✦ Ask\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"▤ Reports\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"▤ Reports\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◔ Events\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◔ Events\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⚿ Users\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⚿ Users\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"➤ Webhooks\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"➤ Webhooks\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"↻ Schedules\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"↻ Schedules\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > button[button].theme \"◐ dark\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11.5px",
+      "display": "block",
+      "border-top": "1px solid rgb(36, 45, 54)",
+      "border-right": "1px solid rgb(36, 45, 54)",
+      "border-bottom": "1px solid rgb(36, 45, 54)",
+      "border-left": "1px solid rgb(36, 45, 54)",
+      "border-radius": "4px",
+      "padding": "2px 8px",
+      "margin": "8px 18px 0px"
+    },
+    "div.shell > main[main].main": {
+      "display": "block",
+      "padding": "22px 26px 60px"
+    },
+    "div.shell > main[main].main > div.page-head": {
+      "display": "flex",
+      "margin": "0px 0px 18px",
+      "gap": "14px"
+    },
+    "div.shell > main[main].main > div.page-head > a[link] \"← traces\"": {
+      "color": "rgb(139, 152, 165)",
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.page-head > h1[heading].mono \"t-1\"": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "19px",
+      "font-weight": "600",
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.grid": {
+      "display": "grid",
+      "grid-template-columns": "repeat(4, 1fr)",
+      "margin": "0px 0px 14px",
+      "gap": "14px"
+    },
+    "div.shell > main[main].main > div.grid > div.panel.meta": {
+      "display": "block",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(36, 45, 54)",
+      "border-right": "1px solid rgb(36, 45, 54)",
+      "border-bottom": "1px solid rgb(36, 45, 54)",
+      "border-left": "1px solid rgb(36, 45, 54)",
+      "border-radius": "6px",
+      "padding": "14px 16px"
+    },
+    "div.shell > main[main].main > div.grid > div.panel.meta > span": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "block",
+      "margin": "0px 0px 4px"
+    },
+    "div.shell > main[main].main > div.grid > div.panel.meta > b": {
+      "font-size": "13.5px",
+      "font-weight": "600",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > div.grid > div.panel.meta #2": {
+      "display": "block",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(36, 45, 54)",
+      "border-right": "1px solid rgb(36, 45, 54)",
+      "border-bottom": "1px solid rgb(36, 45, 54)",
+      "border-left": "1px solid rgb(36, 45, 54)",
+      "border-radius": "6px",
+      "padding": "14px 16px"
+    },
+    "div.shell > main[main].main > div.grid > div.panel.meta #2 > span": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "block",
+      "margin": "0px 0px 4px"
+    },
+    "div.shell > main[main].main > div.grid > div.panel.meta #2 > b.mono": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "13.5px",
+      "font-weight": "600",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > div.grid > div.panel.meta #3": {
+      "display": "block",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(36, 45, 54)",
+      "border-right": "1px solid rgb(36, 45, 54)",
+      "border-bottom": "1px solid rgb(36, 45, 54)",
+      "border-left": "1px solid rgb(36, 45, 54)",
+      "border-radius": "6px",
+      "padding": "14px 16px"
+    },
+    "div.shell > main[main].main > div.grid > div.panel.meta #3 > span": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "block",
+      "margin": "0px 0px 4px"
+    },
+    "div.shell > main[main].main > div.grid > div.panel.meta #3 > b.mono": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "13.5px",
+      "font-weight": "600",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > div.grid > div.panel.meta #4": {
+      "display": "block",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(36, 45, 54)",
+      "border-right": "1px solid rgb(36, 45, 54)",
+      "border-bottom": "1px solid rgb(36, 45, 54)",
+      "border-left": "1px solid rgb(36, 45, 54)",
+      "border-radius": "6px",
+      "padding": "14px 16px"
+    },
+    "div.shell > main[main].main > div.grid > div.panel.meta #4 > span": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "block",
+      "margin": "0px 0px 4px"
+    },
+    "div.shell > main[main].main > div.grid > div.panel.meta #4 > b.mono": {
+      "color": "rgb(239, 68, 68)",
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "13.5px",
+      "font-weight": "600",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > div.panel": {
+      "display": "block",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(36, 45, 54)",
+      "border-right": "1px solid rgb(36, 45, 54)",
+      "border-bottom": "1px solid rgb(36, 45, 54)",
+      "border-left": "1px solid rgb(36, 45, 54)",
+      "border-radius": "6px",
+      "padding": "14px 16px",
+      "margin": "0px 0px 14px"
+    },
+    "div.shell > main[main].main > div.panel > h2[heading] \"WATERFALL — 4 SPANS\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "12px",
+      "font-weight": "600",
+      "display": "block",
+      "margin": "0px 0px 10px"
+    },
+    "div.shell > main[main].main > div.panel > div.wf": {
+      "font-size": "12.5px",
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.panel > div.wf > div.grid": {
+      "display": "grid",
+      "gap": "14px"
+    },
+    "div.shell > main[main].main > div.panel > div.wf > div.grid > i": {
+      "display": "block",
+      "opacity": "0.5",
+      "background-color": "rgb(36, 45, 54)"
+    },
+    "div.shell > main[main].main > div.panel > div.wf > div.grid > i #2": {
+      "display": "block",
+      "opacity": "0.5",
+      "background-color": "rgb(36, 45, 54)"
+    },
+    "div.shell > main[main].main > div.panel > div.wf > div.grid > i #3": {
+      "display": "block",
+      "opacity": "0.5",
+      "background-color": "rgb(36, 45, 54)"
+    },
+    "div.shell > main[main].main > div.panel > div.wf > div.grid > i #4": {
+      "display": "block",
+      "opacity": "0.5",
+      "background-color": "rgb(36, 45, 54)"
+    },
+    "div.shell > main[main].main > div.panel > div.wf > div.grid > i #5": {
+      "display": "block",
+      "opacity": "0.5",
+      "background-color": "rgb(36, 45, 54)"
+    },
+    "div.shell > main[main].main > div.panel > div.wf > div.grid > i #6": {
+      "display": "block",
+      "opacity": "0.5",
+      "background-color": "rgb(36, 45, 54)"
+    },
+    "div.shell > main[main].main > div.panel > div.wf > div.ruler": {
+      "display": "block",
+      "background-color": "rgb(21, 27, 33)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "padding": "3px 0px"
+    },
+    "div.shell > main[main].main > div.panel > div.wf > div.ruler > div.labels": {
+      "color": "rgb(91, 103, 114)",
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "10.5px",
+      "display": "block",
+      "margin": "0px 76px 0px 250px"
+    },
+    "div.shell > main[main].main > div.panel > div.wf > div.ruler > div.labels > span": {
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.panel > div.wf > div.ruler > div.labels > span #2": {
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.panel > div.wf > div.ruler > div.labels > span #3": {
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.panel > div.wf > div.ruler > div.labels > span #4": {
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.panel > div.wf > div.ruler > div.labels > span #5": {
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.panel > div.wf > div.ruler > div.labels > span #6": {
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.panel > div.wf > button[button].row \"experiment 5.3s\"": {
+      "display": "grid",
+      "grid-template-columns": "240px 1fr 66px",
+      "border-bottom": "1px solid color(srgb 0.141176 0.176471 0.211765 / 0.55)",
+      "padding": "3px 0px",
+      "gap": "10px"
+    },
+    "div.shell > main[main].main > div.panel > div.wf > button[button].row \"experiment 5.3s\" > span.name": {
+      "color": "rgb(139, 152, 165)",
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.panel > div.wf > button[button].row \"experiment 5.3s\" > span.name > em[emphasis]": {
+      "color": "rgb(94, 177, 239)",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > div.panel > div.wf > button[button].row \"experiment 5.3s\" > span.lane": {
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.panel > div.wf > button[button].row \"experiment 5.3s\" > span.lane > span.bar": {
+      "display": "block",
+      "background-color": "rgb(51, 64, 76)",
+      "border-radius": "2px"
+    },
+    "div.shell > main[main].main > div.panel > div.wf > button[button].row \"experiment 5.3s\" > span.dur.mono": {
+      "color": "rgb(139, 152, 165)",
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.5px",
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.panel > div.wf > button[button].row \"hypothesis.before 1ms\"": {
+      "display": "grid",
+      "grid-template-columns": "240px 1fr 66px",
+      "border-bottom": "1px solid color(srgb 0.141176 0.176471 0.211765 / 0.55)",
+      "padding": "3px 0px",
+      "gap": "10px"
+    },
+    "div.shell > main[main].main > div.panel > div.wf > button[button].row \"hypothesis.before 1ms\" > span.name": {
+      "color": "rgb(139, 152, 165)",
+      "display": "block",
+      "padding": "0px 0px 0px 16px"
+    },
+    "div.shell > main[main].main > div.panel > div.wf > button[button].row \"hypothesis.before 1ms\" > span.name > em[emphasis]": {
+      "color": "rgb(94, 177, 239)",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > div.panel > div.wf > button[button].row \"hypothesis.before 1ms\" > span.lane": {
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.panel > div.wf > button[button].row \"hypothesis.before 1ms\" > span.lane > span.bar": {
+      "display": "block",
+      "background-color": "rgb(51, 64, 76)",
+      "border-radius": "2px"
+    },
+    "div.shell > main[main].main > div.panel > div.wf > button[button].row \"hypothesis.before 1ms\" > span.dur.mono": {
+      "color": "rgb(139, 152, 165)",
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.5px",
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.panel > div.wf > button[button].row \"action 3.0s\"": {
+      "display": "grid",
+      "grid-template-columns": "240px 1fr 66px",
+      "border-bottom": "1px solid color(srgb 0.141176 0.176471 0.211765 / 0.55)",
+      "padding": "3px 0px",
+      "gap": "10px"
+    },
+    "div.shell > main[main].main > div.panel > div.wf > button[button].row \"action 3.0s\" > span.name": {
+      "color": "rgb(139, 152, 165)",
+      "display": "block",
+      "padding": "0px 0px 0px 16px"
+    },
+    "div.shell > main[main].main > div.panel > div.wf > button[button].row \"action 3.0s\" > span.name > em[emphasis]": {
+      "color": "rgb(94, 177, 239)",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > div.panel > div.wf > button[button].row \"action 3.0s\" > span.lane": {
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.panel > div.wf > button[button].row \"action 3.0s\" > span.lane > span.bar": {
+      "display": "block",
+      "background-color": "rgb(239, 68, 68)",
+      "border-radius": "2px"
+    },
+    "div.shell > main[main].main > div.panel > div.wf > button[button].row \"action 3.0s\" > span.dur.mono": {
+      "color": "rgb(139, 152, 165)",
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.5px",
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.panel > div.wf > button[button].row \"hypothesis.after 1ms\"": {
+      "display": "grid",
+      "grid-template-columns": "240px 1fr 66px",
+      "border-bottom": "1px solid color(srgb 0.141176 0.176471 0.211765 / 0.55)",
+      "padding": "3px 0px",
+      "gap": "10px"
+    },
+    "div.shell > main[main].main > div.panel > div.wf > button[button].row \"hypothesis.after 1ms\" > span.name": {
+      "color": "rgb(139, 152, 165)",
+      "display": "block",
+      "padding": "0px 0px 0px 16px"
+    },
+    "div.shell > main[main].main > div.panel > div.wf > button[button].row \"hypothesis.after 1ms\" > span.name > em[emphasis]": {
+      "color": "rgb(94, 177, 239)",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > div.panel > div.wf > button[button].row \"hypothesis.after 1ms\" > span.lane": {
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.panel > div.wf > button[button].row \"hypothesis.after 1ms\" > span.lane > span.bar": {
+      "display": "block",
+      "background-color": "rgb(51, 64, 76)",
+      "border-radius": "2px"
+    },
+    "div.shell > main[main].main > div.panel > div.wf > button[button].row \"hypothesis.after 1ms\" > span.dur.mono": {
+      "color": "rgb(139, 152, 165)",
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.5px",
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.panel #2": {
+      "display": "block",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(36, 45, 54)",
+      "border-right": "1px solid rgb(36, 45, 54)",
+      "border-bottom": "1px solid rgb(36, 45, 54)",
+      "border-left": "1px solid rgb(36, 45, 54)",
+      "border-radius": "6px",
+      "padding": "14px 16px"
+    },
+    "div.shell > main[main].main > div.panel #2 > h2[heading] \"LOGS (0)\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "12px",
+      "font-weight": "600",
+      "display": "block",
+      "margin": "0px 0px 10px"
+    },
+    "div.shell > main[main].main > div.panel #2 > div.state": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13px",
+      "display": "block",
+      "padding": "28px"
+    },
+    "div": {
+      "display": "block"
+    }
+  }
+}

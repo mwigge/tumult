@@ -26,6 +26,23 @@ node stage first.
 | `npm test`         | The unit tests (Vitest)                                                 |
 | `npm run test:e2e` | The Playwright tests                                                    |
 
+## Style snapshot
+
+`tests/style-snapshot.spec.ts` opens every page with a mocked API, in the
+light and the dark theme, 1440 and 390 px wide. It reads the computed
+styles of each visible element and compares them with the baseline in
+`tests/style-snapshots/`, one file per page, theme and width. It reads no
+size or position, so the fonts of a host do not change the result. A
+failing test names the element, the property and the value before and
+after.
+
+A change that should look different writes the baselines again, in the
+same commit:
+
+```sh
+STYLE_SNAPSHOT_UPDATE=1 npx playwright test tests/style-snapshot.spec.ts
+```
+
 ## Stack
 
 | Choice                                           | Why                                                                                                                               |

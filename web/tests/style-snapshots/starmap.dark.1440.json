@@ -1,0 +1,2094 @@
+{
+  "page": "starmap",
+  "path": "/starmap",
+  "theme": "dark",
+  "width": 1440,
+  "height": 900,
+  "elements": {
+    "html": {
+      "color": "rgb(216, 222, 228)",
+      "font-family": "-apple-system, \"Segoe UI\", Inter, Roboto, sans-serif",
+      "font-size": "14px",
+      "font-weight": "400",
+      "line-height": "1.5",
+      "visibility": "visible",
+      "display": "block",
+      "background-color": "rgb(11, 14, 17)"
+    },
+    "body": {
+      "display": "block",
+      "background-color": "rgb(11, 14, 17)"
+    },
+    "div.shell": {
+      "display": "grid",
+      "grid-template-columns": "208px 1fr"
+    },
+    "div.shell > aside[complementary].side": {
+      "display": "flex",
+      "background-color": "rgb(17, 22, 27)",
+      "border-right": "1px solid rgb(36, 45, 54)",
+      "padding": "16px 0px"
+    },
+    "div.shell > aside[complementary].side > div.brand": {
+      "display": "block",
+      "border-bottom": "1px solid rgb(36, 45, 54)",
+      "padding": "0px 18px 14px",
+      "margin": "0px 0px 10px"
+    },
+    "div.shell > aside[complementary].side > div.brand > div.name": {
+      "font-size": "17px",
+      "font-weight": "700",
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > div.brand > div.tag": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11px",
+      "display": "block",
+      "margin": "2px 0px 0px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav": {
+      "display": "block",
+      "padding": "0px 0px 1px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◧ Overview\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◧ Overview\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◎ Resilience\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◎ Resilience\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◭ Performance\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◭ Performance\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"▦ Scores\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"▦ Scores\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⚖ DORA\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⚖ DORA\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⟲ Disaster recovery\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⟲ Disaster recovery\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⚗ Experiments\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⚗ Experiments\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"▶ Runs\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"▶ Runs\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✚ Author\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✚ Author\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"☷ GameDays\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"☷ GameDays\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✓ Approvals\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✓ Approvals\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✎ Manual\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✎ Manual\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"≣ Logs\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"≣ Logs\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⌁ Traces\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⌁ Traces\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"∿ Metrics\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"∿ Metrics\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link].active \"✳ Star Map\"": {
+      "font-size": "13.5px",
+      "display": "flex",
+      "background-color": "rgb(28, 36, 44)",
+      "border-left": "2px solid rgb(94, 177, 239)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link].active \"✳ Star Map\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✦ Ask\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✦ Ask\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"▤ Reports\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"▤ Reports\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◔ Events\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◔ Events\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⚿ Users\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⚿ Users\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"➤ Webhooks\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"➤ Webhooks\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"↻ Schedules\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"↻ Schedules\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > button[button].theme \"◐ dark\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11.5px",
+      "display": "block",
+      "border-top": "1px solid rgb(36, 45, 54)",
+      "border-right": "1px solid rgb(36, 45, 54)",
+      "border-bottom": "1px solid rgb(36, 45, 54)",
+      "border-left": "1px solid rgb(36, 45, 54)",
+      "border-radius": "4px",
+      "padding": "2px 8px",
+      "margin": "8px 18px 0px"
+    },
+    "div.shell > main[main].main": {
+      "display": "block",
+      "padding": "22px 26px 60px"
+    },
+    "div.shell > main[main].main > div.page-head": {
+      "display": "flex",
+      "margin": "0px 0px 18px",
+      "gap": "14px"
+    },
+    "div.shell > main[main].main > div.page-head > h1[heading] \"Star Map\"": {
+      "font-size": "19px",
+      "font-weight": "600",
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.page-head > span.sub": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "12.5px",
+      "display": "block",
+      "margin": "8px 0px 0px"
+    },
+    "div.shell > main[main].main > div.page-head > div.controls": {
+      "display": "flex",
+      "margin": "0px 0px 0px auto",
+      "gap": "8px"
+    },
+    "div.shell > main[main].main > div.page-head > div.controls > div[group].seg \"lens\"": {
+      "display": "flex",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "5px"
+    },
+    "div.shell > main[main].main > div.page-head > div.controls > div[group].seg \"lens\" > button[button].active \"evidence\"": {
+      "color": "rgb(255, 255, 255)",
+      "font-family": "Arial",
+      "font-size": "12.5px",
+      "line-height": "normal",
+      "display": "block",
+      "background-color": "rgb(45, 93, 132)",
+      "padding": "5px 12px"
+    },
+    "div.shell > main[main].main > div.page-head > div.controls > div[group].seg \"lens\" > button[button] \"risk\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-family": "Arial",
+      "font-size": "12.5px",
+      "line-height": "normal",
+      "display": "block",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "padding": "5px 12px"
+    },
+    "div.shell > main[main].main > div.page-head > div.controls > div[group].seg \"lens\" > button[button] \"conformance\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-family": "Arial",
+      "font-size": "12.5px",
+      "line-height": "normal",
+      "display": "block",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "padding": "5px 12px"
+    },
+    "div.shell > main[main].main > div.page-head > div.controls > select[combobox] \"environment\"": {
+      "font-family": "Arial",
+      "font-size": "12.5px",
+      "line-height": "normal",
+      "display": "block",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "4px",
+      "padding": "4px 8px"
+    },
+    "div.shell > main[main].main > div.page-head > div.controls > div[group].seg \"time range\"": {
+      "display": "flex",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "5px"
+    },
+    "div.shell > main[main].main > div.page-head > div.controls > div[group].seg \"time range\" > button[button] \"24h\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-family": "Arial",
+      "font-size": "12.5px",
+      "line-height": "normal",
+      "display": "block",
+      "padding": "5px 12px"
+    },
+    "div.shell > main[main].main > div.page-head > div.controls > div[group].seg \"time range\" > button[button].active \"7d\"": {
+      "color": "rgb(255, 255, 255)",
+      "font-family": "Arial",
+      "font-size": "12.5px",
+      "line-height": "normal",
+      "display": "block",
+      "background-color": "rgb(45, 93, 132)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "padding": "5px 12px"
+    },
+    "div.shell > main[main].main > div.page-head > div.controls > div[group].seg \"time range\" > button[button] \"14d\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-family": "Arial",
+      "font-size": "12.5px",
+      "line-height": "normal",
+      "display": "block",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "padding": "5px 12px"
+    },
+    "div.shell > main[main].main > div.page-head > div.controls > div[group].seg \"time range\" > button[button] \"30d\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-family": "Arial",
+      "font-size": "12.5px",
+      "line-height": "normal",
+      "display": "block",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "padding": "5px 12px"
+    },
+    "div.shell > main[main].main > div.layout": {
+      "display": "flex",
+      "gap": "14px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map": {
+      "display": "block",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(36, 45, 54)",
+      "border-right": "1px solid rgb(36, 45, 54)",
+      "border-bottom": "1px solid rgb(36, 45, 54)",
+      "border-left": "1px solid rgb(36, 45, 54)",
+      "border-radius": "6px",
+      "padding": "14px 16px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > div": {
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > div[image] \"Star map of 51 nodes and 38 edges: 0 ope…\"": {
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > div[image] \"Star map of 51 nodes and 38 edges: 0 ope…\" > div": {
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > div[image] \"Star map of 51 nodes and 38 edges: 0 ope…\" > canvas[Canvas]": {
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > div[image] \"Star map of 51 nodes and 38 edges: 0 ope…\" > div #2": {
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > p[paragraph].sub": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "12.5px",
+      "display": "block",
+      "margin": "8px 0px 0px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > p[paragraph].sub.legend": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "12.5px",
+      "display": "block",
+      "margin": "8px 0px 0px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > div[group].kinds \"node kinds\"": {
+      "display": "flex",
+      "margin": "8px 0px 0px",
+      "gap": "6px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > div[group].kinds \"node kinds\" > button[button].chip \"org unit 9\"": {
+      "font-family": "Arial",
+      "font-size": "12px",
+      "line-height": "normal",
+      "display": "flex",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "999px",
+      "padding": "2px 10px 2px 6px",
+      "gap": "6px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > div[group].kinds \"node kinds\" > button[button].chip \"org unit 9\" > span.dot": {
+      "display": "block",
+      "background-color": "rgb(76, 142, 218)",
+      "border-radius": "50%"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > div[group].kinds \"node kinds\" > button[button].chip \"org unit 9\" > span.count": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > div[group].kinds \"node kinds\" > button[button].chip \"ICT entity 6\"": {
+      "font-family": "Arial",
+      "font-size": "12px",
+      "line-height": "normal",
+      "display": "flex",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "999px",
+      "padding": "2px 10px 2px 6px",
+      "gap": "6px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > div[group].kinds \"node kinds\" > button[button].chip \"ICT entity 6\" > span.dot": {
+      "display": "block",
+      "background-color": "rgb(201, 144, 192)",
+      "border-radius": "50%"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > div[group].kinds \"node kinds\" > button[button].chip \"ICT entity 6\" > span.count": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > div[group].kinds \"node kinds\" > button[button].chip \"system 11\"": {
+      "font-family": "Arial",
+      "font-size": "12px",
+      "line-height": "normal",
+      "display": "flex",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "999px",
+      "padding": "2px 10px 2px 6px",
+      "gap": "6px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > div[group].kinds \"node kinds\" > button[button].chip \"system 11\" > span.dot": {
+      "display": "block",
+      "background-color": "rgb(123, 108, 217)",
+      "border-radius": "50%"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > div[group].kinds \"node kinds\" > button[button].chip \"system 11\" > span.count": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > div[group].kinds \"node kinds\" > button[button].chip \"component 6\"": {
+      "font-family": "Arial",
+      "font-size": "12px",
+      "line-height": "normal",
+      "display": "flex",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "999px",
+      "padding": "2px 10px 2px 6px",
+      "gap": "6px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > div[group].kinds \"node kinds\" > button[button].chip \"component 6\" > span.dot": {
+      "display": "block",
+      "background-color": "rgb(87, 199, 227)",
+      "border-radius": "50%"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > div[group].kinds \"node kinds\" > button[button].chip \"component 6\" > span.count": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > div[group].kinds \"node kinds\" > button[button].chip \"workload 7\"": {
+      "font-family": "Arial",
+      "font-size": "12px",
+      "line-height": "normal",
+      "display": "flex",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "999px",
+      "padding": "2px 10px 2px 6px",
+      "gap": "6px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > div[group].kinds \"node kinds\" > button[button].chip \"workload 7\" > span.dot": {
+      "display": "block",
+      "background-color": "rgb(176, 141, 87)",
+      "border-radius": "50%"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > div[group].kinds \"node kinds\" > button[button].chip \"workload 7\" > span.count": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > div[group].kinds \"node kinds\" > button[button].chip \"experiment 12\"": {
+      "font-family": "Arial",
+      "font-size": "12px",
+      "line-height": "normal",
+      "display": "flex",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "999px",
+      "padding": "2px 10px 2px 6px",
+      "gap": "6px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > div[group].kinds \"node kinds\" > button[button].chip \"experiment 12\" > span.dot": {
+      "display": "block",
+      "background-color": "rgb(184, 160, 56)",
+      "border-radius": "50%"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > div[group].kinds \"node kinds\" > button[button].chip \"experiment 12\" > span.count": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > div[group].kinds \"relations\"": {
+      "display": "flex",
+      "margin": "8px 0px 0px",
+      "gap": "6px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > div[group].kinds \"relations\" > button[button].chip \"OWNS 8\"": {
+      "font-family": "Arial",
+      "font-size": "12px",
+      "line-height": "normal",
+      "display": "flex",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "999px",
+      "padding": "2px 10px 2px 6px",
+      "gap": "6px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > div[group].kinds \"relations\" > button[button].chip \"OWNS 8\" > svg.rel": {
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > div[group].kinds \"relations\" > button[button].chip \"OWNS 8\" > svg.rel > line": {
+      "display": "inline"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > div[group].kinds \"relations\" > button[button].chip \"OWNS 8\" > svg.rel > path": {
+      "display": "inline"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > div[group].kinds \"relations\" > button[button].chip \"OWNS 8\" > span.mono": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11px",
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > div[group].kinds \"relations\" > button[button].chip \"OWNS 8\" > span.count": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > div[group].kinds \"relations\" > button[button].chip \"IMPLEMENTS 8\"": {
+      "font-family": "Arial",
+      "font-size": "12px",
+      "line-height": "normal",
+      "display": "flex",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "999px",
+      "padding": "2px 10px 2px 6px",
+      "gap": "6px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > div[group].kinds \"relations\" > button[button].chip \"IMPLEMENTS 8\" > svg.rel": {
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > div[group].kinds \"relations\" > button[button].chip \"IMPLEMENTS 8\" > svg.rel > line": {
+      "display": "inline"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > div[group].kinds \"relations\" > button[button].chip \"IMPLEMENTS 8\" > svg.rel > path": {
+      "display": "inline"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > div[group].kinds \"relations\" > button[button].chip \"IMPLEMENTS 8\" > span.mono": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11px",
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > div[group].kinds \"relations\" > button[button].chip \"IMPLEMENTS 8\" > span.count": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > div[group].kinds \"relations\" > button[button].chip \"RUNS_ON 7\"": {
+      "font-family": "Arial",
+      "font-size": "12px",
+      "line-height": "normal",
+      "display": "flex",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "999px",
+      "padding": "2px 10px 2px 6px",
+      "gap": "6px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > div[group].kinds \"relations\" > button[button].chip \"RUNS_ON 7\" > svg.rel": {
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > div[group].kinds \"relations\" > button[button].chip \"RUNS_ON 7\" > svg.rel > line": {
+      "display": "inline"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > div[group].kinds \"relations\" > button[button].chip \"RUNS_ON 7\" > svg.rel > path": {
+      "display": "inline"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > div[group].kinds \"relations\" > button[button].chip \"RUNS_ON 7\" > span.mono": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11px",
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > div[group].kinds \"relations\" > button[button].chip \"RUNS_ON 7\" > span.count": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > div[group].kinds \"relations\" > button[button].chip \"DEPENDS_ON 1\"": {
+      "font-family": "Arial",
+      "font-size": "12px",
+      "line-height": "normal",
+      "display": "flex",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "999px",
+      "padding": "2px 10px 2px 6px",
+      "gap": "6px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > div[group].kinds \"relations\" > button[button].chip \"DEPENDS_ON 1\" > svg.rel": {
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > div[group].kinds \"relations\" > button[button].chip \"DEPENDS_ON 1\" > svg.rel > line": {
+      "display": "inline"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > div[group].kinds \"relations\" > button[button].chip \"DEPENDS_ON 1\" > svg.rel > path": {
+      "display": "inline"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > div[group].kinds \"relations\" > button[button].chip \"DEPENDS_ON 1\" > span.mono": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11px",
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > div[group].kinds \"relations\" > button[button].chip \"DEPENDS_ON 1\" > span.count": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > div[group].kinds \"relations\" > button[button].chip \"TESTED_BY 12\"": {
+      "font-family": "Arial",
+      "font-size": "12px",
+      "line-height": "normal",
+      "display": "flex",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "999px",
+      "padding": "2px 10px 2px 6px",
+      "gap": "6px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > div[group].kinds \"relations\" > button[button].chip \"TESTED_BY 12\" > svg.rel": {
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > div[group].kinds \"relations\" > button[button].chip \"TESTED_BY 12\" > svg.rel > line": {
+      "display": "inline"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > div[group].kinds \"relations\" > button[button].chip \"TESTED_BY 12\" > svg.rel > path": {
+      "display": "inline"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > div[group].kinds \"relations\" > button[button].chip \"TESTED_BY 12\" > span.mono": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11px",
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > div[group].kinds \"relations\" > button[button].chip \"TESTED_BY 12\" > span.count": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > div[group].kinds \"relations\" > button[button].chip \"BROKE 2\"": {
+      "font-family": "Arial",
+      "font-size": "12px",
+      "line-height": "normal",
+      "display": "flex",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "999px",
+      "padding": "2px 10px 2px 6px",
+      "gap": "6px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > div[group].kinds \"relations\" > button[button].chip \"BROKE 2\" > svg.rel": {
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > div[group].kinds \"relations\" > button[button].chip \"BROKE 2\" > svg.rel > line": {
+      "display": "inline"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > div[group].kinds \"relations\" > button[button].chip \"BROKE 2\" > svg.rel > path": {
+      "display": "inline"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > div[group].kinds \"relations\" > button[button].chip \"BROKE 2\" > span.mono": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11px",
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > div[group].kinds \"relations\" > button[button].chip \"BROKE 2\" > span.count": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > div[group].kinds \"relations\" > button[button].chip \"PART_OF 15\"": {
+      "font-family": "Arial",
+      "font-size": "12px",
+      "line-height": "normal",
+      "display": "flex",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "999px",
+      "padding": "2px 10px 2px 6px",
+      "gap": "6px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > div[group].kinds \"relations\" > button[button].chip \"PART_OF 15\" > svg.rel": {
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > div[group].kinds \"relations\" > button[button].chip \"PART_OF 15\" > svg.rel > line": {
+      "display": "inline"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > div[group].kinds \"relations\" > button[button].chip \"PART_OF 15\" > svg.rel > path": {
+      "display": "inline"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > div[group].kinds \"relations\" > button[button].chip \"PART_OF 15\" > span.mono": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11px",
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > div[group].kinds \"relations\" > button[button].chip \"PART_OF 15\" > span.count": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > ul[list].key \"how to read the map\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "12px",
+      "display": "flex",
+      "margin": "8px 0px 0px",
+      "gap": "4px 16px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > ul[list].key \"how to read the map\" > li[listitem]": {
+      "display": "flex",
+      "gap": "6px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > ul[list].key \"how to read the map\" > li[listitem] > span.ring.ok": {
+      "display": "block",
+      "background-color": "rgb(51, 64, 76)",
+      "border-top": "2px solid rgb(52, 211, 153)",
+      "border-right": "2px solid rgb(52, 211, 153)",
+      "border-bottom": "2px solid rgb(52, 211, 153)",
+      "border-left": "2px solid rgb(52, 211, 153)",
+      "border-radius": "50%"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > ul[list].key \"how to read the map\" > li[listitem] #2": {
+      "display": "flex",
+      "gap": "6px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > ul[list].key \"how to read the map\" > li[listitem] #2 > span.ring.fail": {
+      "display": "block",
+      "background-color": "rgb(51, 64, 76)",
+      "border-top": "4px solid rgb(239, 68, 68)",
+      "border-right": "4px solid rgb(239, 68, 68)",
+      "border-bottom": "4px solid rgb(239, 68, 68)",
+      "border-left": "4px solid rgb(239, 68, 68)",
+      "border-radius": "50%"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > ul[list].key \"how to read the map\" > li[listitem] #3": {
+      "display": "flex",
+      "gap": "6px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > ul[list].key \"how to read the map\" > li[listitem] #3 > span.ring.missing": {
+      "display": "block",
+      "border-top": "2px dashed rgb(139, 152, 165)",
+      "border-right": "2px dashed rgb(139, 152, 165)",
+      "border-bottom": "2px dashed rgb(139, 152, 165)",
+      "border-left": "2px dashed rgb(139, 152, 165)",
+      "border-radius": "50%"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > ul[list].key \"how to read the map\" > li[listitem] #4": {
+      "display": "flex",
+      "gap": "6px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > ul[list].key \"how to read the map\" > li[listitem] #4 > span.ring.stale": {
+      "display": "block",
+      "background-color": "rgb(51, 64, 76)",
+      "border-top": "2px dashed rgb(245, 158, 11)",
+      "border-right": "2px dashed rgb(245, 158, 11)",
+      "border-bottom": "2px dashed rgb(245, 158, 11)",
+      "border-left": "2px dashed rgb(245, 158, 11)",
+      "border-radius": "50%"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > ul[list].key \"how to read the map\" > li[listitem] #5": {
+      "display": "flex",
+      "gap": "6px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > ul[list].key \"how to read the map\" > li[listitem] #5 > span.ring.suppressed": {
+      "display": "block",
+      "opacity": "0.45",
+      "background-color": "rgb(51, 64, 76)",
+      "border-top": "2px dotted rgb(139, 152, 165)",
+      "border-right": "2px dotted rgb(139, 152, 165)",
+      "border-bottom": "2px dotted rgb(139, 152, 165)",
+      "border-left": "2px dotted rgb(139, 152, 165)",
+      "border-radius": "50%"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > p[paragraph].sub #2": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "12.5px",
+      "display": "block",
+      "margin": "8px 0px 0px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\"": {
+      "display": "block",
+      "border-top": "1px solid rgb(36, 45, 54)",
+      "padding": "10px 0px 0px",
+      "margin": "14px 0px 0px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > div.nodes-head": {
+      "display": "flex",
+      "gap": "10px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > div.nodes-head > h2[heading] \"NODES\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "12.5px",
+      "font-weight": "600",
+      "display": "block",
+      "margin": "0px 0px 10px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > div.nodes-head > input[searchbox] \"Filter nodes\"": {
+      "font-family": "Arial",
+      "font-size": "13px",
+      "line-height": "normal",
+      "display": "block",
+      "background-color": "rgb(17, 22, 27)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "5px",
+      "padding": "6px 9px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > div.nodes-head > span.sub": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "12.5px",
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list]": {
+      "display": "flex",
+      "margin": "8px 0px 0px",
+      "gap": "6px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem]": {
+      "display": "list-item"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] > button[button] \"company (company)\"": {
+      "font-family": "Arial",
+      "font-size": "12px",
+      "line-height": "normal",
+      "display": "inline-block",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "4px",
+      "padding": "3px 8px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] > button[button] \"company (company)\" > span.kind": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "inline",
+      "margin": "0px 4px 0px 0px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #2": {
+      "display": "list-item"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #2 > button[button] \"unassigned (unassigned)\"": {
+      "font-family": "Arial",
+      "font-size": "12px",
+      "line-height": "normal",
+      "display": "inline-block",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "4px",
+      "padding": "3px 8px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #2 > button[button] \"unassigned (unassigned)\" > span.kind": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "inline",
+      "margin": "0px 4px 0px 0px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #3": {
+      "display": "list-item"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #3 > button[button] \"unit compute\"": {
+      "font-family": "Arial",
+      "font-size": "12px",
+      "line-height": "normal",
+      "display": "inline-block",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "4px",
+      "padding": "3px 8px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #3 > button[button] \"unit compute\" > span.kind": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "inline",
+      "margin": "0px 4px 0px 0px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #4": {
+      "display": "list-item"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #4 > button[button] \"unit data\"": {
+      "font-family": "Arial",
+      "font-size": "12px",
+      "line-height": "normal",
+      "display": "inline-block",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "4px",
+      "padding": "3px 8px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #4 > button[button] \"unit data\" > span.kind": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "inline",
+      "margin": "0px 4px 0px 0px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #5": {
+      "display": "list-item"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #5 > button[button] \"team data-team\"": {
+      "font-family": "Arial",
+      "font-size": "12px",
+      "line-height": "normal",
+      "display": "inline-block",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "4px",
+      "padding": "3px 8px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #5 > button[button] \"team data-team\" > span.kind": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "inline",
+      "margin": "0px 4px 0px 0px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #6": {
+      "display": "list-item"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #6 > button[button] \"unit edge\"": {
+      "font-family": "Arial",
+      "font-size": "12px",
+      "line-height": "normal",
+      "display": "inline-block",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "4px",
+      "padding": "3px 8px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #6 > button[button] \"unit edge\" > span.kind": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "inline",
+      "margin": "0px 4px 0px 0px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #7": {
+      "display": "list-item"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #7 > button[button] \"team edge-team\"": {
+      "font-family": "Arial",
+      "font-size": "12px",
+      "line-height": "normal",
+      "display": "inline-block",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "4px",
+      "padding": "3px 8px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #7 > button[button] \"team edge-team\" > span.kind": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "inline",
+      "margin": "0px 4px 0px 0px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #8": {
+      "display": "list-item"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #8 > button[button] \"domain platform\"": {
+      "font-family": "Arial",
+      "font-size": "12px",
+      "line-height": "normal",
+      "display": "inline-block",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "4px",
+      "padding": "3px 8px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #8 > button[button] \"domain platform\" > span.kind": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "inline",
+      "margin": "0px 4px 0px 0px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #9": {
+      "display": "list-item"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #9 > button[button] \"team runtime-team\"": {
+      "font-family": "Arial",
+      "font-size": "12px",
+      "line-height": "normal",
+      "display": "inline-block",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "4px",
+      "padding": "3px 8px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #9 > button[button] \"team runtime-team\" > span.kind": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "inline",
+      "margin": "0px 4px 0px 0px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #10": {
+      "display": "list-item"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #10 > button[button] \"entity cif-0001\"": {
+      "font-family": "Arial",
+      "font-size": "12px",
+      "line-height": "normal",
+      "display": "inline-block",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "4px",
+      "padding": "3px 8px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #10 > button[button] \"entity cif-0001\" > span.kind": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "inline",
+      "margin": "0px 4px 0px 0px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #11": {
+      "display": "list-item"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #11 > button[button] \"entity cif-0002\"": {
+      "font-family": "Arial",
+      "font-size": "12px",
+      "line-height": "normal",
+      "display": "inline-block",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "4px",
+      "padding": "3px 8px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #11 > button[button] \"entity cif-0002\" > span.kind": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "inline",
+      "margin": "0px 4px 0px 0px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #12": {
+      "display": "list-item"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #12 > button[button] \"entity cif-0003\"": {
+      "font-family": "Arial",
+      "font-size": "12px",
+      "line-height": "normal",
+      "display": "inline-block",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "4px",
+      "padding": "3px 8px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #12 > button[button] \"entity cif-0003\" > span.kind": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "inline",
+      "margin": "0px 4px 0px 0px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #13": {
+      "display": "list-item"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #13 > button[button] \"entity cif-0004\"": {
+      "font-family": "Arial",
+      "font-size": "12px",
+      "line-height": "normal",
+      "display": "inline-block",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "4px",
+      "padding": "3px 8px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #13 > button[button] \"entity cif-0004\" > span.kind": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "inline",
+      "margin": "0px 4px 0px 0px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #14": {
+      "display": "list-item"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #14 > button[button] \"entity cif-0005\"": {
+      "font-family": "Arial",
+      "font-size": "12px",
+      "line-height": "normal",
+      "display": "inline-block",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "4px",
+      "padding": "3px 8px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #14 > button[button] \"entity cif-0005\" > span.kind": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "inline",
+      "margin": "0px 4px 0px 0px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #15": {
+      "display": "list-item"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #15 > button[button] \"entity cif-0006\"": {
+      "font-family": "Arial",
+      "font-size": "12px",
+      "line-height": "normal",
+      "display": "inline-block",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "4px",
+      "padding": "3px 8px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #15 > button[button] \"entity cif-0006\" > span.kind": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "inline",
+      "margin": "0px 4px 0px 0px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #16": {
+      "display": "list-item"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #16 > button[button] \"system api-worker\"": {
+      "font-family": "Arial",
+      "font-size": "12px",
+      "line-height": "normal",
+      "display": "inline-block",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "4px",
+      "padding": "3px 8px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #16 > button[button] \"system api-worker\" > span.kind": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "inline",
+      "margin": "0px 4px 0px 0px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #17": {
+      "display": "list-item"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #17 > button[button] \"system batch-worker\"": {
+      "font-family": "Arial",
+      "font-size": "12px",
+      "line-height": "normal",
+      "display": "inline-block",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "4px",
+      "padding": "3px 8px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #17 > button[button] \"system batch-worker\" > span.kind": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "inline",
+      "margin": "0px 4px 0px 0px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #18": {
+      "display": "list-item"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #18 > button[button] \"system cdn\"": {
+      "font-family": "Arial",
+      "font-size": "12px",
+      "line-height": "normal",
+      "display": "inline-block",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "4px",
+      "padding": "3px 8px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #18 > button[button] \"system cdn\" > span.kind": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "inline",
+      "margin": "0px 4px 0px 0px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #19": {
+      "display": "list-item"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #19 > button[button] \"system checkout\"": {
+      "font-family": "Arial",
+      "font-size": "12px",
+      "line-height": "normal",
+      "display": "inline-block",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "4px",
+      "padding": "3px 8px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #19 > button[button] \"system checkout\" > span.kind": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "inline",
+      "margin": "0px 4px 0px 0px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #20": {
+      "display": "list-item"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #20 > button[button] \"system config-service\"": {
+      "font-family": "Arial",
+      "font-size": "12px",
+      "line-height": "normal",
+      "display": "inline-block",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "4px",
+      "padding": "3px 8px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #20 > button[button] \"system config-service\" > span.kind": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "inline",
+      "margin": "0px 4px 0px 0px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #21": {
+      "display": "list-item"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #21 > button[button] \"system host\"": {
+      "font-family": "Arial",
+      "font-size": "12px",
+      "line-height": "normal",
+      "display": "inline-block",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "4px",
+      "padding": "3px 8px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #21 > button[button] \"system host\" > span.kind": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "inline",
+      "margin": "0px 4px 0px 0px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #22": {
+      "display": "list-item"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #22 > button[button] \"system message-queue\"": {
+      "font-family": "Arial",
+      "font-size": "12px",
+      "line-height": "normal",
+      "display": "inline-block",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "4px",
+      "padding": "3px 8px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #22 > button[button] \"system message-queue\" > span.kind": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "inline",
+      "margin": "0px 4px 0px 0px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #23": {
+      "display": "list-item"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #23 > button[button] \"system service\"": {
+      "font-family": "Arial",
+      "font-size": "12px",
+      "line-height": "normal",
+      "display": "inline-block",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "4px",
+      "padding": "3px 8px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #23 > button[button] \"system service\" > span.kind": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "inline",
+      "margin": "0px 4px 0px 0px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #24": {
+      "display": "list-item"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #24 > button[button] \"system session-cache\"": {
+      "font-family": "Arial",
+      "font-size": "12px",
+      "line-height": "normal",
+      "display": "inline-block",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "4px",
+      "padding": "3px 8px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #24 > button[button] \"system session-cache\" > span.kind": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "inline",
+      "margin": "0px 4px 0px 0px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #25": {
+      "display": "list-item"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #25 > button[button] \"system storage\"": {
+      "font-family": "Arial",
+      "font-size": "12px",
+      "line-height": "normal",
+      "display": "inline-block",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "4px",
+      "padding": "3px 8px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #25 > button[button] \"system storage\" > span.kind": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "inline",
+      "margin": "0px 4px 0px 0px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #26": {
+      "display": "list-item"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #26 > button[button] \"system worker\"": {
+      "font-family": "Arial",
+      "font-size": "12px",
+      "line-height": "normal",
+      "display": "inline-block",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "4px",
+      "padding": "3px 8px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #26 > button[button] \"system worker\" > span.kind": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "inline",
+      "margin": "0px 4px 0px 0px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #27": {
+      "display": "list-item"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #27 > button[button] \"component broker\"": {
+      "font-family": "Arial",
+      "font-size": "12px",
+      "line-height": "normal",
+      "display": "inline-block",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "4px",
+      "padding": "3px 8px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #27 > button[button] \"component broker\" > span.kind": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "inline",
+      "margin": "0px 4px 0px 0px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #28": {
+      "display": "list-item"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #28 > button[button] \"component edge-cache\"": {
+      "font-family": "Arial",
+      "font-size": "12px",
+      "line-height": "normal",
+      "display": "inline-block",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "4px",
+      "padding": "3px 8px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #28 > button[button] \"component edge-cache\" > span.kind": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "inline",
+      "margin": "0px 4px 0px 0px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #29": {
+      "display": "list-item"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #29 > button[button] \"component http\"": {
+      "font-family": "Arial",
+      "font-size": "12px",
+      "line-height": "normal",
+      "display": "inline-block",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "4px",
+      "padding": "3px 8px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #29 > button[button] \"component http\" > span.kind": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "inline",
+      "margin": "0px 4px 0px 0px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #30": {
+      "display": "list-item"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #30 > button[button] \"component redis\"": {
+      "font-family": "Arial",
+      "font-size": "12px",
+      "line-height": "normal",
+      "display": "inline-block",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "4px",
+      "padding": "3px 8px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #30 > button[button] \"component redis\" > span.kind": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "inline",
+      "margin": "0px 4px 0px 0px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #31": {
+      "display": "list-item"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #31 > button[button] \"component scheduler\"": {
+      "font-family": "Arial",
+      "font-size": "12px",
+      "line-height": "normal",
+      "display": "inline-block",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "4px",
+      "padding": "3px 8px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #31 > button[button] \"component scheduler\" > span.kind": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "inline",
+      "margin": "0px 4px 0px 0px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #32": {
+      "display": "list-item"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #32 > button[button] \"component store\"": {
+      "font-family": "Arial",
+      "font-size": "12px",
+      "line-height": "normal",
+      "display": "inline-block",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "4px",
+      "padding": "3px 8px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #32 > button[button] \"component store\" > span.kind": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "inline",
+      "margin": "0px 4px 0px 0px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #33": {
+      "display": "list-item"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #33 > button[button] \"workload api-worker\"": {
+      "font-family": "Arial",
+      "font-size": "12px",
+      "line-height": "normal",
+      "display": "inline-block",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "4px",
+      "padding": "3px 8px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #33 > button[button] \"workload api-worker\" > span.kind": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "inline",
+      "margin": "0px 4px 0px 0px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #34": {
+      "display": "list-item"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #34 > button[button] \"workload batch-worker\"": {
+      "font-family": "Arial",
+      "font-size": "12px",
+      "line-height": "normal",
+      "display": "inline-block",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "4px",
+      "padding": "3px 8px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #34 > button[button] \"workload batch-worker\" > span.kind": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "inline",
+      "margin": "0px 4px 0px 0px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #35": {
+      "display": "list-item"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #35 > button[button] \"workload cdn\"": {
+      "font-family": "Arial",
+      "font-size": "12px",
+      "line-height": "normal",
+      "display": "inline-block",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "4px",
+      "padding": "3px 8px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #35 > button[button] \"workload cdn\" > span.kind": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "inline",
+      "margin": "0px 4px 0px 0px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #36": {
+      "display": "list-item"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #36 > button[button] \"workload checkout\"": {
+      "font-family": "Arial",
+      "font-size": "12px",
+      "line-height": "normal",
+      "display": "inline-block",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "4px",
+      "padding": "3px 8px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #36 > button[button] \"workload checkout\" > span.kind": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "inline",
+      "margin": "0px 4px 0px 0px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #37": {
+      "display": "list-item"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #37 > button[button] \"workload config-service\"": {
+      "font-family": "Arial",
+      "font-size": "12px",
+      "line-height": "normal",
+      "display": "inline-block",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "4px",
+      "padding": "3px 8px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #37 > button[button] \"workload config-service\" > span.kind": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "inline",
+      "margin": "0px 4px 0px 0px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #38": {
+      "display": "list-item"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #38 > button[button] \"workload message-queue\"": {
+      "font-family": "Arial",
+      "font-size": "12px",
+      "line-height": "normal",
+      "display": "inline-block",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "4px",
+      "padding": "3px 8px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #38 > button[button] \"workload message-queue\" > span.kind": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "inline",
+      "margin": "0px 4px 0px 0px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #39": {
+      "display": "list-item"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #39 > button[button] \"workload session-cache\"": {
+      "font-family": "Arial",
+      "font-size": "12px",
+      "line-height": "normal",
+      "display": "inline-block",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "4px",
+      "padding": "3px 8px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #39 > button[button] \"workload session-cache\" > span.kind": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "inline",
+      "margin": "0px 4px 0px 0px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #40": {
+      "display": "list-item"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #40 > button[button] \"def api-worker cpu stress\"": {
+      "font-family": "Arial",
+      "font-size": "12px",
+      "line-height": "normal",
+      "display": "inline-block",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "4px",
+      "padding": "3px 8px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #40 > button[button] \"def api-worker cpu stress\" > span.kind": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "inline",
+      "margin": "0px 4px 0px 0px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #41": {
+      "display": "list-item"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #41 > button[button] \"def batch-worker node drain\"": {
+      "font-family": "Arial",
+      "font-size": "12px",
+      "line-height": "normal",
+      "display": "inline-block",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "4px",
+      "padding": "3px 8px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #41 > button[button] \"def batch-worker node drain\" > span.kind": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "inline",
+      "margin": "0px 4px 0px 0px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #42": {
+      "display": "list-item"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #42 > button[button] \"def cdn origin latency\"": {
+      "font-family": "Arial",
+      "font-size": "12px",
+      "line-height": "normal",
+      "display": "inline-block",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "4px",
+      "padding": "3px 8px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #42 > button[button] \"def cdn origin latency\" > span.kind": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "inline",
+      "margin": "0px 4px 0px 0px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #43": {
+      "display": "list-item"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #43 > button[button] \"def checkout load ramp\"": {
+      "font-family": "Arial",
+      "font-size": "12px",
+      "line-height": "normal",
+      "display": "inline-block",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "4px",
+      "padding": "3px 8px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #43 > button[button] \"def checkout load ramp\" > span.kind": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "inline",
+      "margin": "0px 4px 0px 0px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #44": {
+      "display": "list-item"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #44 > button[button] \"def checkout zone failover\"": {
+      "font-family": "Arial",
+      "font-size": "12px",
+      "line-height": "normal",
+      "display": "inline-block",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "4px",
+      "padding": "3px 8px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #44 > button[button] \"def checkout zone failover\" > span.kind": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "inline",
+      "margin": "0px 4px 0px 0px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #45": {
+      "display": "list-item"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #45 > button[button] \"def config-service pod kill\"": {
+      "font-family": "Arial",
+      "font-size": "12px",
+      "line-height": "normal",
+      "display": "inline-block",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "4px",
+      "padding": "3px 8px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #45 > button[button] \"def config-service pod kill\" > span.kind": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "inline",
+      "margin": "0px 4px 0px 0px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #46": {
+      "display": "list-item"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #46 > button[button] \"def host reboot\"": {
+      "font-family": "Arial",
+      "font-size": "12px",
+      "line-height": "normal",
+      "display": "inline-block",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "4px",
+      "padding": "3px 8px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #46 > button[button] \"def host reboot\" > span.kind": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "inline",
+      "margin": "0px 4px 0px 0px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #47": {
+      "display": "list-item"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #47 > button[button] \"def message-queue dependency loss with r…\"": {
+      "font-family": "Arial",
+      "font-size": "12px",
+      "line-height": "normal",
+      "display": "inline-block",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "4px",
+      "padding": "3px 8px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #47 > button[button] \"def message-queue dependency loss with r…\" > span.kind": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "inline",
+      "margin": "0px 4px 0px 0px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #48": {
+      "display": "list-item"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #48 > button[button] \"def never-ran dns outage\"": {
+      "font-family": "Arial",
+      "font-size": "12px",
+      "line-height": "normal",
+      "display": "inline-block",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "4px",
+      "padding": "3px 8px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #48 > button[button] \"def never-ran dns outage\" > span.kind": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "inline",
+      "margin": "0px 4px 0px 0px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #49": {
+      "display": "list-item"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #49 > button[button] \"def service network delay\"": {
+      "font-family": "Arial",
+      "font-size": "12px",
+      "line-height": "normal",
+      "display": "inline-block",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "4px",
+      "padding": "3px 8px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #49 > button[button] \"def service network delay\" > span.kind": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "inline",
+      "margin": "0px 4px 0px 0px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #50": {
+      "display": "list-item"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #50 > button[button] \"def storage disk fill\"": {
+      "font-family": "Arial",
+      "font-size": "12px",
+      "line-height": "normal",
+      "display": "inline-block",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "4px",
+      "padding": "3px 8px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #50 > button[button] \"def storage disk fill\" > span.kind": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "inline",
+      "margin": "0px 4px 0px 0px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #51": {
+      "display": "list-item"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #51 > button[button] \"def worker memory pressure\"": {
+      "font-family": "Arial",
+      "font-size": "12px",
+      "line-height": "normal",
+      "display": "inline-block",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "4px",
+      "padding": "3px 8px"
+    },
+    "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #51 > button[button] \"def worker memory pressure\" > span.kind": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "inline",
+      "margin": "0px 4px 0px 0px"
+    },
+    "div": {
+      "display": "block"
+    }
+  }
+}

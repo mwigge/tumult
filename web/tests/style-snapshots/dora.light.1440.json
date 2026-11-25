@@ -1,0 +1,2584 @@
+{
+  "page": "dora",
+  "path": "/scores?view=dora",
+  "theme": "light",
+  "width": 1440,
+  "height": 900,
+  "elements": {
+    "html": {
+      "color": "rgb(27, 35, 41)",
+      "font-family": "-apple-system, \"Segoe UI\", Inter, Roboto, sans-serif",
+      "font-size": "14px",
+      "font-weight": "400",
+      "line-height": "1.5",
+      "visibility": "visible",
+      "display": "block",
+      "background-color": "rgb(244, 246, 248)"
+    },
+    "body": {
+      "display": "block",
+      "background-color": "rgb(244, 246, 248)"
+    },
+    "div.shell": {
+      "display": "grid",
+      "grid-template-columns": "208px 1fr"
+    },
+    "div.shell > aside[complementary].side": {
+      "display": "flex",
+      "background-color": "rgb(255, 255, 255)",
+      "border-right": "1px solid rgb(227, 232, 237)",
+      "padding": "16px 0px"
+    },
+    "div.shell > aside[complementary].side > div.brand": {
+      "display": "block",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "0px 18px 14px",
+      "margin": "0px 0px 10px"
+    },
+    "div.shell > aside[complementary].side > div.brand > div.name": {
+      "font-size": "17px",
+      "font-weight": "700",
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > div.brand > div.tag": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "block",
+      "margin": "2px 0px 0px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav": {
+      "display": "block",
+      "padding": "0px 0px 1px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◧ Overview\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◧ Overview\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◎ Resilience\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◎ Resilience\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◭ Performance\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◭ Performance\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"▦ Scores\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"▦ Scores\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link].active \"⚖ DORA\"": {
+      "font-size": "13.5px",
+      "display": "flex",
+      "background-color": "rgb(233, 238, 242)",
+      "border-left": "2px solid rgb(31, 111, 178)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link].active \"⚖ DORA\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⟲ Disaster recovery\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⟲ Disaster recovery\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⚗ Experiments\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⚗ Experiments\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"▶ Runs\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"▶ Runs\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✚ Author\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✚ Author\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"☷ GameDays\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"☷ GameDays\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✓ Approvals\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✓ Approvals\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✎ Manual\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✎ Manual\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"≣ Logs\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"≣ Logs\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⌁ Traces\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⌁ Traces\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"∿ Metrics\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"∿ Metrics\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✳ Star Map\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✳ Star Map\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✦ Ask\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✦ Ask\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"▤ Reports\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"▤ Reports\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◔ Events\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◔ Events\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⚿ Users\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⚿ Users\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"➤ Webhooks\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"➤ Webhooks\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"↻ Schedules\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"↻ Schedules\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > button[button].theme \"○ light\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "display": "block",
+      "border-top": "1px solid rgb(227, 232, 237)",
+      "border-right": "1px solid rgb(227, 232, 237)",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "border-left": "1px solid rgb(227, 232, 237)",
+      "border-radius": "4px",
+      "padding": "2px 8px",
+      "margin": "8px 18px 0px"
+    },
+    "div.shell > main[main].main": {
+      "display": "block",
+      "padding": "22px 26px 60px"
+    },
+    "div.shell > main[main].main > div.page-head": {
+      "display": "flex",
+      "margin": "0px 0px 18px",
+      "gap": "14px"
+    },
+    "div.shell > main[main].main > div.page-head > h1[heading] \"Scores\"": {
+      "font-size": "19px",
+      "font-weight": "600",
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.page-head > div[group].views \"score view\"": {
+      "display": "flex",
+      "margin": "0px 0px 0px 12px"
+    },
+    "div.shell > main[main].main > div.page-head > div[group].views \"score view\" > button[button] \"Org scores\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "12px",
+      "display": "block",
+      "background-color": "rgb(255, 255, 255)",
+      "border-top": "1px solid rgb(197, 206, 214)",
+      "border-right": "1px solid rgb(197, 206, 214)",
+      "border-bottom": "1px solid rgb(197, 206, 214)",
+      "border-left": "1px solid rgb(197, 206, 214)",
+      "border-radius": "4px 0px 0px 4px",
+      "padding": "3px 10px"
+    },
+    "div.shell > main[main].main > div.page-head > div[group].views \"score view\" > button[button].on \"DORA and maturity\"": {
+      "font-size": "12px",
+      "display": "block",
+      "background-color": "rgb(233, 238, 242)",
+      "border-top": "1px solid rgb(31, 111, 178)",
+      "border-right": "1px solid rgb(31, 111, 178)",
+      "border-bottom": "1px solid rgb(31, 111, 178)",
+      "border-radius": "0px 4px 4px 0px",
+      "padding": "3px 10px"
+    },
+    "div.shell > main[main].main > div": {
+      "display": "block"
+    },
+    "div.shell > main[main].main > section.panel.head": {
+      "display": "block",
+      "background-color": "rgb(255, 255, 255)",
+      "border-top": "1px solid rgb(227, 232, 237)",
+      "border-right": "1px solid rgb(227, 232, 237)",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "border-left": "1px solid rgb(227, 232, 237)",
+      "border-radius": "6px",
+      "padding": "14px 16px",
+      "margin": "0px 0px 12px"
+    },
+    "div.shell > main[main].main > section.panel.head > div.who": {
+      "display": "flex",
+      "gap": "10px"
+    },
+    "div.shell > main[main].main > section.panel.head > div.who > label[LabelText]": {
+      "display": "block"
+    },
+    "div.shell > main[main].main > section.panel.head > div.who > label[LabelText] > span.lbl": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "display": "inline",
+      "margin": "0px 6px 0px 0px"
+    },
+    "div.shell > main[main].main > section.panel.head > div.who > label[LabelText] > select[combobox] \"Legal entity\"": {
+      "font-size": "12.5px",
+      "line-height": "normal",
+      "display": "inline-block",
+      "background-color": "rgb(255, 255, 255)",
+      "border-top": "1px solid rgb(197, 206, 214)",
+      "border-right": "1px solid rgb(197, 206, 214)",
+      "border-bottom": "1px solid rgb(197, 206, 214)",
+      "border-left": "1px solid rgb(197, 206, 214)",
+      "border-radius": "4px",
+      "padding": "3px 6px"
+    },
+    "div.shell > main[main].main > section.panel.head > div.who > span.name": {
+      "font-weight": "600",
+      "display": "block"
+    },
+    "div.shell > main[main].main > section.panel.head > div.who > span.badge.neutral": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "display": "block",
+      "background-color": "rgb(233, 238, 242)",
+      "border-radius": "10px",
+      "padding": "1px 9px"
+    },
+    "div.shell > main[main].main > section.panel.head > div.headline.capped": {
+      "color": "rgb(180, 83, 9)",
+      "font-size": "22px",
+      "font-weight": "600",
+      "display": "block",
+      "margin": "10px 0px 0px"
+    },
+    "div.shell > main[main].main > section.panel.head > div.cap": {
+      "display": "block",
+      "margin": "4px 0px 0px"
+    },
+    "div.shell > main[main].main > section.panel.head > div.note": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11.5px",
+      "display": "block",
+      "margin": "8px 0px 0px"
+    },
+    "div.shell > main[main].main > section.panel.head > dl[DescriptionList].facts": {
+      "font-size": "12.5px",
+      "display": "grid",
+      "grid-template-columns": "max-content 1fr",
+      "margin": "10px 0px 0px",
+      "gap": "4px 16px"
+    },
+    "div.shell > main[main].main > section.panel.head > dl[DescriptionList].facts > dt[term] \"House parameters\"": {
+      "color": "rgb(91, 103, 114)",
+      "display": "block"
+    },
+    "div.shell > main[main].main > section.panel.head > dl[DescriptionList].facts > dd[definition]": {
+      "display": "flex",
+      "gap": "4px 12px"
+    },
+    "div.shell > main[main].main > section.panel.head > dl[DescriptionList].facts > dt[term] \"Function register\"": {
+      "color": "rgb(91, 103, 114)",
+      "display": "block"
+    },
+    "div.shell > main[main].main > section.panel.head > dl[DescriptionList].facts > dd[definition] #2": {
+      "display": "flex",
+      "gap": "4px 12px"
+    },
+    "div.shell > main[main].main > section.panel.head > dl[DescriptionList].facts > dd[definition] #2 > span.badge.ok": {
+      "color": "rgb(15, 138, 95)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "display": "block",
+      "background-color": "color(srgb 0.0588235 0.541176 0.372549 / 0.14)",
+      "border-radius": "10px",
+      "padding": "1px 9px"
+    },
+    "div.shell > main[main].main > section.panel.head > dl[DescriptionList].facts > dt[term] \"Feeds\"": {
+      "color": "rgb(91, 103, 114)",
+      "display": "block"
+    },
+    "div.shell > main[main].main > section.panel.head > dl[DescriptionList].facts > dd[definition] #3": {
+      "display": "flex",
+      "gap": "4px 12px"
+    },
+    "div.shell > main[main].main > section.panel.head > dl[DescriptionList].facts > dd[definition] #3 > span.feed": {
+      "display": "block"
+    },
+    "div.shell > main[main].main > section.panel.head > dl[DescriptionList].facts > dd[definition] #3 > span.feed > span.mono": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.5px",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > section.panel.head > dl[DescriptionList].facts > dd[definition] #3 > span.feed > span.badge.ok": {
+      "color": "rgb(15, 138, 95)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "display": "inline-block",
+      "background-color": "color(srgb 0.0588235 0.541176 0.372549 / 0.14)",
+      "border-radius": "10px",
+      "padding": "1px 9px"
+    },
+    "div.shell > main[main].main > section.panel.head > dl[DescriptionList].facts > dd[definition] #3 > span.feed #2": {
+      "display": "block"
+    },
+    "div.shell > main[main].main > section.panel.head > dl[DescriptionList].facts > dd[definition] #3 > span.feed #2 > span.mono": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.5px",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > section.panel.head > dl[DescriptionList].facts > dd[definition] #3 > span.feed #2 > span.badge.neutral": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "display": "inline-block",
+      "background-color": "rgb(233, 238, 242)",
+      "border-radius": "10px",
+      "padding": "1px 9px"
+    },
+    "div.shell > main[main].main > section.panel.head > dl[DescriptionList].facts > dd[definition] #3 > span.feed #2 > span.dim": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11.5px",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > div.tiles": {
+      "display": "grid",
+      "grid-template-columns": "repeat(4, 1fr)",
+      "margin": "12px 0px",
+      "gap": "12px"
+    },
+    "div.shell > main[main].main > div.tiles > div.panel.num": {
+      "display": "block",
+      "background-color": "rgb(255, 255, 255)",
+      "border-top": "1px solid rgb(227, 232, 237)",
+      "border-right": "1px solid rgb(227, 232, 237)",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "border-left": "1px solid rgb(227, 232, 237)",
+      "border-radius": "6px",
+      "padding": "14px 16px"
+    },
+    "div.shell > main[main].main > div.tiles > div.panel.num > div.label": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "display": "block",
+      "margin": "0px 0px 6px"
+    },
+    "div.shell > main[main].main > div.tiles > div.panel.num > div.row": {
+      "display": "flex",
+      "gap": "10px"
+    },
+    "div.shell > main[main].main > div.tiles > div.panel.num > div.row > span.value.mono": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "24px",
+      "font-weight": "600",
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.tiles > div.panel.num > div.row > span.unknown.some": {
+      "color": "rgb(180, 83, 9)",
+      "font-size": "11.5px",
+      "display": "block",
+      "border-top": "1px dashed rgb(180, 83, 9)",
+      "border-right": "1px dashed rgb(180, 83, 9)",
+      "border-bottom": "1px dashed rgb(180, 83, 9)",
+      "border-left": "1px dashed rgb(180, 83, 9)",
+      "border-radius": "4px",
+      "padding": "1px 6px"
+    },
+    "div.shell > main[main].main > div.tiles > div.panel.num > div.hint": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11.5px",
+      "display": "block",
+      "margin": "4px 0px 0px"
+    },
+    "div.shell > main[main].main > div.tiles > div.panel.num #2": {
+      "display": "block",
+      "background-color": "rgb(255, 255, 255)",
+      "border-top": "1px solid rgb(227, 232, 237)",
+      "border-right": "1px solid rgb(227, 232, 237)",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "border-left": "1px solid rgb(227, 232, 237)",
+      "border-radius": "6px",
+      "padding": "14px 16px"
+    },
+    "div.shell > main[main].main > div.tiles > div.panel.num #2 > div.label": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "display": "block",
+      "margin": "0px 0px 6px"
+    },
+    "div.shell > main[main].main > div.tiles > div.panel.num #2 > div.row": {
+      "display": "flex",
+      "gap": "10px"
+    },
+    "div.shell > main[main].main > div.tiles > div.panel.num #2 > div.row > span.value.mono.muted": {
+      "color": "rgb(139, 152, 165)",
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "24px",
+      "font-weight": "600",
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.tiles > div.panel.num #2 > div.row > span.unknown.some": {
+      "color": "rgb(180, 83, 9)",
+      "font-size": "11.5px",
+      "display": "block",
+      "border-top": "1px dashed rgb(180, 83, 9)",
+      "border-right": "1px dashed rgb(180, 83, 9)",
+      "border-bottom": "1px dashed rgb(180, 83, 9)",
+      "border-left": "1px dashed rgb(180, 83, 9)",
+      "border-radius": "4px",
+      "padding": "1px 6px"
+    },
+    "div.shell > main[main].main > div.tiles > div.panel.num #2 > div.hint": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11.5px",
+      "display": "block",
+      "margin": "4px 0px 0px"
+    },
+    "div.shell > main[main].main > div.tiles > div.panel.num #3": {
+      "display": "block",
+      "background-color": "rgb(255, 255, 255)",
+      "border-top": "1px solid rgb(227, 232, 237)",
+      "border-right": "1px solid rgb(227, 232, 237)",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "border-left": "1px solid rgb(227, 232, 237)",
+      "border-radius": "6px",
+      "padding": "14px 16px"
+    },
+    "div.shell > main[main].main > div.tiles > div.panel.num #3 > div.label": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "display": "block",
+      "margin": "0px 0px 6px"
+    },
+    "div.shell > main[main].main > div.tiles > div.panel.num #3 > div.row": {
+      "display": "flex",
+      "gap": "10px"
+    },
+    "div.shell > main[main].main > div.tiles > div.panel.num #3 > div.row > span.value.mono": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "24px",
+      "font-weight": "600",
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.tiles > div.panel.num #3 > div.row > span.unknown.some": {
+      "color": "rgb(180, 83, 9)",
+      "font-size": "11.5px",
+      "display": "block",
+      "border-top": "1px dashed rgb(180, 83, 9)",
+      "border-right": "1px dashed rgb(180, 83, 9)",
+      "border-bottom": "1px dashed rgb(180, 83, 9)",
+      "border-left": "1px dashed rgb(180, 83, 9)",
+      "border-radius": "4px",
+      "padding": "1px 6px"
+    },
+    "div.shell > main[main].main > div.tiles > div.panel.num #3 > div.hint": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11.5px",
+      "display": "block",
+      "margin": "4px 0px 0px"
+    },
+    "div.shell > main[main].main > div.tiles > div.panel.num #4": {
+      "display": "block",
+      "background-color": "rgb(255, 255, 255)",
+      "border-top": "1px solid rgb(227, 232, 237)",
+      "border-right": "1px solid rgb(227, 232, 237)",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "border-left": "1px solid rgb(227, 232, 237)",
+      "border-radius": "6px",
+      "padding": "14px 16px"
+    },
+    "div.shell > main[main].main > div.tiles > div.panel.num #4 > div.label": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "display": "block",
+      "margin": "0px 0px 6px"
+    },
+    "div.shell > main[main].main > div.tiles > div.panel.num #4 > div.row": {
+      "display": "flex",
+      "gap": "10px"
+    },
+    "div.shell > main[main].main > div.tiles > div.panel.num #4 > div.row > span.value.mono": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "24px",
+      "font-weight": "600",
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.tiles > div.panel.num #4 > div.row > span.unknown.some": {
+      "color": "rgb(180, 83, 9)",
+      "font-size": "11.5px",
+      "display": "block",
+      "border-top": "1px dashed rgb(180, 83, 9)",
+      "border-right": "1px dashed rgb(180, 83, 9)",
+      "border-bottom": "1px dashed rgb(180, 83, 9)",
+      "border-left": "1px dashed rgb(180, 83, 9)",
+      "border-radius": "4px",
+      "padding": "1px 6px"
+    },
+    "div.shell > main[main].main > div.tiles > div.panel.num #4 > div.hint": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11.5px",
+      "display": "block",
+      "margin": "4px 0px 0px"
+    },
+    "div.shell > main[main].main > section.panel": {
+      "display": "block",
+      "background-color": "rgb(255, 255, 255)",
+      "border-top": "1px solid rgb(227, 232, 237)",
+      "border-right": "1px solid rgb(227, 232, 237)",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "border-left": "1px solid rgb(227, 232, 237)",
+      "border-radius": "6px",
+      "padding": "14px 16px",
+      "margin": "0px 0px 12px"
+    },
+    "div.shell > main[main].main > section.panel > div.panel-head": {
+      "display": "flex",
+      "gap": "12px"
+    },
+    "div.shell > main[main].main > section.panel > div.panel-head > h2[heading] \"ARTICLES × FUNCTIONS\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "12px",
+      "font-weight": "600",
+      "display": "block",
+      "margin": "0px 0px 10px"
+    },
+    "div.shell > main[main].main > section.panel > div.panel-head > div[group].toggle \"heatmap value\"": {
+      "display": "block"
+    },
+    "div.shell > main[main].main > section.panel > div.panel-head > div[group].toggle \"heatmap value\" > button[button].on \"Coverage\"": {
+      "font-size": "12px",
+      "display": "inline-block",
+      "background-color": "rgb(233, 238, 242)",
+      "border-top": "1px solid rgb(31, 111, 178)",
+      "border-right": "1px solid rgb(31, 111, 178)",
+      "border-bottom": "1px solid rgb(31, 111, 178)",
+      "border-left": "1px solid rgb(31, 111, 178)",
+      "border-radius": "4px 0px 0px 4px",
+      "padding": "3px 10px"
+    },
+    "div.shell > main[main].main > section.panel > div.panel-head > div[group].toggle \"heatmap value\" > button[button] \"Evidence status\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "12px",
+      "display": "inline-block",
+      "background-color": "rgb(255, 255, 255)",
+      "border-top": "1px solid rgb(197, 206, 214)",
+      "border-right": "1px solid rgb(197, 206, 214)",
+      "border-bottom": "1px solid rgb(197, 206, 214)",
+      "border-radius": "0px 4px 4px 0px",
+      "padding": "3px 10px"
+    },
+    "div.shell > main[main].main > section.panel > div[image] \"Heatmap of coverage per article and func…\"": {
+      "display": "block"
+    },
+    "div.shell > main[main].main > section.panel > div[image] \"Heatmap of coverage per article and func…\" > div": {
+      "display": "block"
+    },
+    "div.shell > main[main].main > section.panel > div[image] \"Heatmap of coverage per article and func…\" > canvas[Canvas]": {
+      "display": "block"
+    },
+    "div.shell > main[main].main > section.panel > div[image] \"Heatmap of coverage per article and func…\" > div.dora-tooltip": {
+      "display": "block"
+    },
+    "div.shell > main[main].main > section.panel > details[group].alt": {
+      "font-size": "12.5px",
+      "display": "block",
+      "margin": "4px 0px 10px"
+    },
+    "div.shell > main[main].main > section.panel > details[group].alt > summary[DisclosureTriangle] \"Show the heatmap as a table\"": {
+      "color": "rgb(91, 103, 114)",
+      "display": "list-item"
+    },
+    "div.shell > main[main].main > section.panel > div.legend": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "display": "flex",
+      "margin": "6px 0px 10px",
+      "gap": "6px 16px"
+    },
+    "div.shell > main[main].main > section.panel > div.legend > span.item": {
+      "display": "block"
+    },
+    "div.shell > main[main].main > section.panel > div.legend > span.item #2": {
+      "display": "block"
+    },
+    "div.shell > main[main].main > section.panel > div.legend > span.item #2 > i.swatch.box": {
+      "display": "inline-block",
+      "background-color": "rgb(213, 94, 0)",
+      "border-top": "1px solid rgb(197, 206, 214)",
+      "border-right": "1px solid rgb(197, 206, 214)",
+      "border-bottom": "1px solid rgb(197, 206, 214)",
+      "border-left": "1px solid rgb(197, 206, 214)",
+      "border-radius": "2px",
+      "margin": "0px 2px 0px 0px"
+    },
+    "div.shell > main[main].main > section.panel > div.legend > span.item #3": {
+      "display": "block"
+    },
+    "div.shell > main[main].main > section.panel > div.legend > span.item #3 > i.swatch.box": {
+      "display": "inline-block",
+      "background-color": "rgb(230, 159, 0)",
+      "border-top": "1px solid rgb(197, 206, 214)",
+      "border-right": "1px solid rgb(197, 206, 214)",
+      "border-bottom": "1px solid rgb(197, 206, 214)",
+      "border-left": "1px solid rgb(197, 206, 214)",
+      "border-radius": "2px",
+      "margin": "0px 2px 0px 0px"
+    },
+    "div.shell > main[main].main > section.panel > div.legend > span.item #4": {
+      "display": "block"
+    },
+    "div.shell > main[main].main > section.panel > div.legend > span.item #4 > i.swatch.box": {
+      "display": "inline-block",
+      "background-color": "rgb(0, 158, 115)",
+      "border-top": "1px solid rgb(197, 206, 214)",
+      "border-right": "1px solid rgb(197, 206, 214)",
+      "border-bottom": "1px solid rgb(197, 206, 214)",
+      "border-left": "1px solid rgb(197, 206, 214)",
+      "border-radius": "2px",
+      "margin": "0px 2px 0px 0px"
+    },
+    "div.shell > main[main].main > section.panel > div.legend > span.item #5": {
+      "display": "block"
+    },
+    "div.shell > main[main].main > section.panel > div.legend > span.item #5 > i.swatch.hatch": {
+      "display": "inline-block",
+      "background-image": "repeating-linear-gradient(135deg, rgb(91, 103, 114) 0px, rgb(91, 103, 114) 1px, rgba(0, 0, 0, 0) 1px, rgba(0, 0, 0, 0) 4px)",
+      "border-top": "1px solid rgb(197, 206, 214)",
+      "border-right": "1px solid rgb(197, 206, 214)",
+      "border-bottom": "1px solid rgb(197, 206, 214)",
+      "border-left": "1px solid rgb(197, 206, 214)",
+      "margin": "0px 2px 0px 0px"
+    },
+    "div.shell > main[main].main > section.panel > div.legend > span.item #6": {
+      "display": "block"
+    },
+    "div.shell > main[main].main > section.panel > div.legend > span.item #6 > b": {
+      "font-weight": "700",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > section.panel > div.legend > span.item #7": {
+      "display": "block"
+    },
+    "div.shell > main[main].main > section.panel > div.legend > span.item #7 > b": {
+      "font-weight": "700",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > section.panel > table[table].data.articles": {
+      "font-size": "13px",
+      "display": "table"
+    },
+    "div.shell > main[main].main > section.panel > table[table].data.articles > thead[rowgroup]": {
+      "display": "table-header-group"
+    },
+    "div.shell > main[main].main > section.panel > table[table].data.articles > thead[rowgroup] > tr[row]": {
+      "display": "table-row"
+    },
+    "div.shell > main[main].main > section.panel > table[table].data.articles > thead[rowgroup] > tr[row] > th[columnheader] \"ARTICLE\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(197, 206, 214)",
+      "padding": "6px 10px"
+    },
+    "div.shell > main[main].main > section.panel > table[table].data.articles > thead[rowgroup] > tr[row] > th[columnheader] \"COVERAGE\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(197, 206, 214)",
+      "padding": "6px 10px"
+    },
+    "div.shell > main[main].main > section.panel > table[table].data.articles > thead[rowgroup] > tr[row] > th[columnheader] \"MEETS\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(197, 206, 214)",
+      "padding": "6px 10px"
+    },
+    "div.shell > main[main].main > section.panel > table[table].data.articles > thead[rowgroup] > tr[row] > th[columnheader] \"GAP\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(197, 206, 214)",
+      "padding": "6px 10px"
+    },
+    "div.shell > main[main].main > section.panel > table[table].data.articles > tbody": {
+      "display": "table-row-group"
+    },
+    "div.shell > main[main].main > section.panel > table[table].data.articles > tr[row]": {
+      "display": "table-row"
+    },
+    "div.shell > main[main].main > section.panel > table[table].data.articles > tr[row] > td[cell] \"Art. 16 Simplified ICT risk management f…\"": {
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel > table[table].data.articles > tr[row] > td[cell] \"Art. 16 Simplified ICT risk management f…\" > span.dim": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11.5px",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > section.panel > table[table].data.articles > tr[row] > td[cell] \"70 % unknown 5 %\"": {
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel > table[table].data.articles > tr[row] > td[cell] \"70 % unknown 5 %\" > span.mono": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > section.panel > table[table].data.articles > tr[row] > td[cell] \"70 % unknown 5 %\" > span.unk": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "inline",
+      "margin": "0px 0px 0px 6px"
+    },
+    "div.shell > main[main].main > section.panel > table[table].data.articles > tr[row] > td[cell].mono \"1\"": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel > table[table].data.articles > tr[row] > td[cell].mono \"1\" #2": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel > table[table].data.articles > tr[row] #2": {
+      "display": "table-row"
+    },
+    "div.shell > main[main].main > section.panel > table[table].data.articles > tr[row] #2 > td[cell] \"Art. 19 Reporting of major ICT-related i…\"": {
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel > table[table].data.articles > tr[row] #2 > td[cell] \"Art. 19 Reporting of major ICT-related i…\" > span.dim": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11.5px",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > section.panel > table[table].data.articles > tr[row] #2 > td[cell] \"unknown unknown 100 %\"": {
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel > table[table].data.articles > tr[row] #2 > td[cell] \"unknown unknown 100 %\" > span.mono": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > section.panel > table[table].data.articles > tr[row] #2 > td[cell] \"unknown unknown 100 %\" > span.unk": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "inline",
+      "margin": "0px 0px 0px 6px"
+    },
+    "div.shell > main[main].main > section.panel > table[table].data.articles > tr[row] #2 > td[cell].mono \"1\"": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel > table[table].data.articles > tr[row] #2 > td[cell].mono \"1\" #2": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel > table[table].data.articles > tr[row] #3": {
+      "display": "table-row"
+    },
+    "div.shell > main[main].main > section.panel > table[table].data.articles > tr[row] #3 > td[cell] \"Art. 24 General requirements for testing\"": {
+      "display": "table-cell",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel > table[table].data.articles > tr[row] #3 > td[cell] \"Art. 24 General requirements for testing\" > span.dim": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11.5px",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > section.panel > table[table].data.articles > tr[row] #3 > td[cell] \"55 % unknown 20 %\"": {
+      "display": "table-cell",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel > table[table].data.articles > tr[row] #3 > td[cell] \"55 % unknown 20 %\" > span.mono": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > section.panel > table[table].data.articles > tr[row] #3 > td[cell] \"55 % unknown 20 %\" > span.unk": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "inline",
+      "margin": "0px 0px 0px 6px"
+    },
+    "div.shell > main[main].main > section.panel > table[table].data.articles > tr[row] #3 > td[cell].mono \"1\"": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "table-cell",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel > table[table].data.articles > tr[row] #3 > td[cell].mono \"1\" #2": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "table-cell",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel > div.foot": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11.5px",
+      "display": "block",
+      "margin": "8px 0px 0px"
+    },
+    "div.shell > main[main].main > section.panel #2": {
+      "display": "block",
+      "background-color": "rgb(255, 255, 255)",
+      "border-top": "1px solid rgb(227, 232, 237)",
+      "border-right": "1px solid rgb(227, 232, 237)",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "border-left": "1px solid rgb(227, 232, 237)",
+      "border-radius": "6px",
+      "padding": "14px 16px",
+      "margin": "0px 0px 12px"
+    },
+    "div.shell > main[main].main > section.panel #2 > h2[heading] \"EXPECTED AND ACTUAL EVIDENCE STATUS, LAR…\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "12px",
+      "font-weight": "600",
+      "display": "block",
+      "margin": "0px 0px 10px"
+    },
+    "div.shell > main[main].main > section.panel #2 > table[table].data": {
+      "font-size": "13px",
+      "display": "table"
+    },
+    "div.shell > main[main].main > section.panel #2 > table[table].data > thead[rowgroup]": {
+      "display": "table-header-group"
+    },
+    "div.shell > main[main].main > section.panel #2 > table[table].data > thead[rowgroup] > tr[row]": {
+      "display": "table-row"
+    },
+    "div.shell > main[main].main > section.panel #2 > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"REQUIREMENT\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(197, 206, 214)",
+      "padding": "6px 10px"
+    },
+    "div.shell > main[main].main > section.panel #2 > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"EXPECTED\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(197, 206, 214)",
+      "padding": "6px 10px"
+    },
+    "div.shell > main[main].main > section.panel #2 > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"ACTUAL\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(197, 206, 214)",
+      "padding": "6px 10px"
+    },
+    "div.shell > main[main].main > section.panel #2 > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"GAP\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(197, 206, 214)",
+      "padding": "6px 10px"
+    },
+    "div.shell > main[main].main > section.panel #2 > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"OLDEST EVIDENCE\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(197, 206, 214)",
+      "padding": "6px 10px"
+    },
+    "div.shell > main[main].main > section.panel #2 > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"DAYS UNTIL OPERATING\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(197, 206, 214)",
+      "padding": "6px 10px"
+    },
+    "div.shell > main[main].main > section.panel #2 > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"EVIDENCE\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(197, 206, 214)",
+      "padding": "6px 10px"
+    },
+    "div.shell > main[main].main > section.panel #2 > table[table].data > tbody": {
+      "display": "table-row-group"
+    },
+    "div.shell > main[main].main > section.panel #2 > table[table].data > tr[row]": {
+      "display": "table-row"
+    },
+    "div.shell > main[main].main > section.panel #2 > table[table].data > tr[row] > td[cell] \"Art. 24(1) Requirement dora.art24.1 hous…\"": {
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #2 > table[table].data > tr[row] > td[cell] \"Art. 24(1) Requirement dora.art24.1 hous…\" > span.mono": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > section.panel #2 > table[table].data > tr[row] > td[cell] \"Art. 24(1) Requirement dora.art24.1 hous…\" > span.badge.neutral": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "display": "inline-block",
+      "background-color": "rgb(233, 238, 242)",
+      "border-radius": "10px",
+      "padding": "1px 9px"
+    },
+    "div.shell > main[main].main > section.panel #2 > table[table].data > tr[row] > td[cell] \"Art. 24(1) Requirement dora.art24.1 hous…\" > div.dim.mono": {
+      "color": "rgb(139, 152, 165)",
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.5px",
+      "display": "block"
+    },
+    "div.shell > main[main].main > section.panel #2 > table[table].data > tr[row] > td[cell] \"operating\"": {
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #2 > table[table].data > tr[row] > td[cell] \"designed\"": {
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #2 > table[table].data > tr[row] > td[cell] \"−2 cif-0001\"": {
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #2 > table[table].data > tr[row] > td[cell] \"−2 cif-0001\" > span.badge.fail": {
+      "color": "rgb(192, 57, 43)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "display": "inline-block",
+      "background-color": "color(srgb 0.752941 0.223529 0.168627 / 0.14)",
+      "border-radius": "10px",
+      "padding": "1px 9px"
+    },
+    "div.shell > main[main].main > section.panel #2 > table[table].data > tr[row] > td[cell] \"−2 cif-0001\" > div.dim.mono": {
+      "color": "rgb(139, 152, 165)",
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.5px",
+      "display": "block"
+    },
+    "div.shell > main[main].main > section.panel #2 > table[table].data > tr[row] > td[cell].mono \"2026-09-21\"": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #2 > table[table].data > tr[row] > td[cell].mono \"–\"": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #2 > table[table].data > tr[row] > td[cell] \"ev-dora.art24.1\"": {
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #2 > table[table].data > tr[row] > td[cell] \"ev-dora.art24.1\" > button[button].link.mono \"ev-dora.art24.1\"": {
+      "color": "rgb(31, 111, 178)",
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "line-height": "normal",
+      "display": "inline-block"
+    },
+    "div.shell > main[main].main > section.panel #2 > table[table].data > tr[row] #2": {
+      "display": "table-row"
+    },
+    "div.shell > main[main].main > section.panel #2 > table[table].data > tr[row] #2 > td[cell] \"Art. 16(1) Requirement dora.art16.1.c do…\"": {
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #2 > table[table].data > tr[row] #2 > td[cell] \"Art. 16(1) Requirement dora.art16.1.c do…\" > span.mono": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > section.panel #2 > table[table].data > tr[row] #2 > td[cell] \"Art. 16(1) Requirement dora.art16.1.c do…\" > div.dim.mono": {
+      "color": "rgb(139, 152, 165)",
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.5px",
+      "display": "block"
+    },
+    "div.shell > main[main].main > section.panel #2 > table[table].data > tr[row] #2 > td[cell] \"existing\"": {
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #2 > table[table].data > tr[row] #2 > td[cell] \"designed\"": {
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #2 > table[table].data > tr[row] #2 > td[cell] \"−1 cif-0001\"": {
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #2 > table[table].data > tr[row] #2 > td[cell] \"−1 cif-0001\" > span.badge.fail": {
+      "color": "rgb(192, 57, 43)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "display": "inline-block",
+      "background-color": "color(srgb 0.752941 0.223529 0.168627 / 0.14)",
+      "border-radius": "10px",
+      "padding": "1px 9px"
+    },
+    "div.shell > main[main].main > section.panel #2 > table[table].data > tr[row] #2 > td[cell] \"−1 cif-0001\" > div.dim.mono": {
+      "color": "rgb(139, 152, 165)",
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.5px",
+      "display": "block"
+    },
+    "div.shell > main[main].main > section.panel #2 > table[table].data > tr[row] #2 > td[cell].mono \"2026-09-21\"": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #2 > table[table].data > tr[row] #2 > td[cell].mono \"–\"": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #2 > table[table].data > tr[row] #2 > td[cell] \"ev-dora.art16.1.c\"": {
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #2 > table[table].data > tr[row] #2 > td[cell] \"ev-dora.art16.1.c\" > button[button].link.mono \"ev-dora.art16.1.c\"": {
+      "color": "rgb(31, 111, 178)",
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "line-height": "normal",
+      "display": "inline-block"
+    },
+    "div.shell > main[main].main > section.panel #2 > table[table].data > tr[row] #3": {
+      "display": "table-row"
+    },
+    "div.shell > main[main].main > section.panel #2 > table[table].data > tr[row] #3 > td[cell] \"Art. 16(1) Requirement dora.art16.1.a do…\"": {
+      "display": "table-cell",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #2 > table[table].data > tr[row] #3 > td[cell] \"Art. 16(1) Requirement dora.art16.1.a do…\" > span.mono": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > section.panel #2 > table[table].data > tr[row] #3 > td[cell] \"Art. 16(1) Requirement dora.art16.1.a do…\" > div.dim.mono": {
+      "color": "rgb(139, 152, 165)",
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.5px",
+      "display": "block"
+    },
+    "div.shell > main[main].main > section.panel #2 > table[table].data > tr[row] #3 > td[cell] \"existing\"": {
+      "display": "table-cell",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #2 > table[table].data > tr[row] #3 > td[cell] \"existing\" #2": {
+      "display": "table-cell",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #2 > table[table].data > tr[row] #3 > td[cell] \"meets\"": {
+      "display": "table-cell",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #2 > table[table].data > tr[row] #3 > td[cell] \"meets\" > span.badge.ok": {
+      "color": "rgb(15, 138, 95)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "display": "inline-block",
+      "background-color": "color(srgb 0.0588235 0.541176 0.372549 / 0.14)",
+      "border-radius": "10px",
+      "padding": "1px 9px"
+    },
+    "div.shell > main[main].main > section.panel #2 > table[table].data > tr[row] #3 > td[cell].mono \"2026-09-21\"": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "table-cell",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #2 > table[table].data > tr[row] #3 > td[cell].mono \"42\"": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "table-cell",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #2 > table[table].data > tr[row] #3 > td[cell] \"ev-dora.art16.1.a\"": {
+      "display": "table-cell",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #2 > table[table].data > tr[row] #3 > td[cell] \"ev-dora.art16.1.a\" > button[button].link.mono \"ev-dora.art16.1.a\"": {
+      "color": "rgb(31, 111, 178)",
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "line-height": "normal",
+      "display": "inline-block"
+    },
+    "div.shell > main[main].main > section.panel #2 > div.foot": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11.5px",
+      "display": "block",
+      "margin": "8px 0px 0px"
+    },
+    "div.shell > main[main].main > section.panel #3": {
+      "display": "block",
+      "background-color": "rgb(255, 255, 255)",
+      "border-top": "1px solid rgb(227, 232, 237)",
+      "border-right": "1px solid rgb(227, 232, 237)",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "border-left": "1px solid rgb(227, 232, 237)",
+      "border-radius": "6px",
+      "padding": "14px 16px",
+      "margin": "0px 0px 12px"
+    },
+    "div.shell > main[main].main > section.panel #3 > h2[heading] \"MATURITY — LEVEL 2 OF TARGET 3 (SIMPLIFI…\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "12px",
+      "font-weight": "600",
+      "display": "block",
+      "margin": "0px 0px 10px"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity": {
+      "display": "grid",
+      "grid-template-columns": "minmax(220px, 1fr) 2fr",
+      "margin": "0px 0px 12px",
+      "gap": "16px"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity > div.gauge": {
+      "display": "block"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity > div.gauge > div[image] \"Gauge: maturity index 3.60 on the intern…\"": {
+      "display": "block"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity > div.gauge > div[image] \"Gauge: maturity index 3.60 on the intern…\" > div": {
+      "display": "block"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity > div.gauge > div[image] \"Gauge: maturity index 3.60 on the intern…\" > canvas[Canvas]": {
+      "display": "block"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity > div.gauge > div.dim.center": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11.5px",
+      "display": "block"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity > div.gauge > div.dim.center #2": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11.5px",
+      "display": "block"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity > div.bars": {
+      "display": "block"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity > div.bars > div[image] \"Bars: Conformance 81.0, Test coverage 64…\"": {
+      "display": "block"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity > div.bars > div[image] \"Bars: Conformance 81.0, Test coverage 64…\" > div": {
+      "display": "block"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity > div.bars > div[image] \"Bars: Conformance 81.0, Test coverage 64…\" > canvas[Canvas]": {
+      "display": "block"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity > div.bars > div[image] \"Bars: Conformance 81.0, Test coverage 64…\" > div #2": {
+      "display": "block"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity > div.bars > div.legend": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "display": "flex",
+      "margin": "6px 0px 10px",
+      "gap": "6px 16px"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity > div.bars > div.legend > span.item": {
+      "display": "block"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity > div.bars > div.legend > span.item > i.swatch.box": {
+      "display": "inline-block",
+      "background-color": "rgb(31, 111, 178)",
+      "border-top": "1px solid rgb(197, 206, 214)",
+      "border-right": "1px solid rgb(197, 206, 214)",
+      "border-bottom": "1px solid rgb(197, 206, 214)",
+      "border-left": "1px solid rgb(197, 206, 214)",
+      "border-radius": "2px",
+      "margin": "0px 2px 0px 0px"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity > div.bars > div.legend > span.item #2": {
+      "display": "block"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity > div.bars > div.legend > span.item #2 > i.swatch.box": {
+      "display": "inline-block",
+      "background-color": "rgb(180, 83, 9)",
+      "border-top": "1px solid rgb(197, 206, 214)",
+      "border-right": "1px solid rgb(197, 206, 214)",
+      "border-bottom": "1px solid rgb(197, 206, 214)",
+      "border-left": "1px solid rgb(197, 206, 214)",
+      "border-radius": "2px",
+      "margin": "0px 2px 0px 0px"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity > div.bars > ul[list].reasons": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "12px",
+      "display": "block",
+      "padding": "0px 0px 0px 18px",
+      "margin": "4px 0px 0px"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity > div.bars > ul[list].reasons > li[listitem]": {
+      "display": "list-item"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity > div.bars > ul[list].reasons > li[listitem] > b": {
+      "font-weight": "700",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity #2": {
+      "display": "grid",
+      "grid-template-columns": "minmax(220px, 1fr) 2fr",
+      "margin": "0px 0px 12px",
+      "gap": "16px"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity #2 > div.history": {
+      "display": "block"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity #2 > div.history > div[image] \"Line chart of level and index per quarte…\"": {
+      "display": "block"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity #2 > div.history > div[image] \"Line chart of level and index per quarte…\" > div": {
+      "display": "block"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity #2 > div.history > div[image] \"Line chart of level and index per quarte…\" > canvas[Canvas]": {
+      "display": "block"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity #2 > div.history > div[image] \"Line chart of level and index per quarte…\" > div #2": {
+      "display": "block"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity #2 > div.history > div.legend": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "display": "flex",
+      "margin": "6px 0px 10px",
+      "gap": "6px 16px"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity #2 > div.history > div.legend > span.item": {
+      "display": "block"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity #2 > div.history > div.legend > span.item > i.swatch.line": {
+      "display": "inline-block",
+      "border-top": "2px solid rgb(31, 111, 178)",
+      "margin": "0px 2px 0px 0px"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity #2 > div.history > div.legend > span.item #2": {
+      "display": "block"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity #2 > div.history > div.legend > span.item #2 > i.swatch.dashed": {
+      "display": "inline-block",
+      "border-top": "2px dashed rgb(91, 103, 114)",
+      "margin": "0px 2px 0px 0px"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity #2 > div.history > div.dim.center": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11.5px",
+      "display": "block"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity #2 > div.history > table[table].data": {
+      "font-size": "13px",
+      "display": "table"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity #2 > div.history > table[table].data > thead[rowgroup]": {
+      "display": "table-header-group"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity #2 > div.history > table[table].data > thead[rowgroup] > tr[row]": {
+      "display": "table-row"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity #2 > div.history > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"QUARTER\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(197, 206, 214)",
+      "padding": "6px 10px"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity #2 > div.history > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"FROM\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(197, 206, 214)",
+      "padding": "6px 10px"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity #2 > div.history > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"LEVEL\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(197, 206, 214)",
+      "padding": "6px 10px"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity #2 > div.history > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"INDEX\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(197, 206, 214)",
+      "padding": "6px 10px"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity #2 > div.history > table[table].data > tbody": {
+      "display": "table-row-group"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity #2 > div.history > table[table].data > tr[row]": {
+      "display": "table-row"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity #2 > div.history > table[table].data > tr[row] > td[cell].mono \"2026-Q1\"": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity #2 > div.history > table[table].data > tr[row] > td[cell] \"no data\"": {
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity #2 > div.history > table[table].data > tr[row] > td[cell].mono \"–\"": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity #2 > div.history > table[table].data > tr[row] > td[cell].mono \"–\" #2": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity #2 > div.history > table[table].data > tr[row] #2": {
+      "display": "table-row"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity #2 > div.history > table[table].data > tr[row] #2 > td[cell].mono \"2026-Q2\"": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity #2 > div.history > table[table].data > tr[row] #2 > td[cell] \"stored 2026-06-30\"": {
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity #2 > div.history > table[table].data > tr[row] #2 > td[cell].mono \"1\"": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity #2 > div.history > table[table].data > tr[row] #2 > td[cell] \"2.10 unknown 50 %\"": {
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity #2 > div.history > table[table].data > tr[row] #2 > td[cell] \"2.10 unknown 50 %\" > span.mono": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity #2 > div.history > table[table].data > tr[row] #2 > td[cell] \"2.10 unknown 50 %\" > span.unk": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "inline",
+      "margin": "0px 0px 0px 6px"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity #2 > div.history > table[table].data > tr[row] #3": {
+      "display": "table-row"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity #2 > div.history > table[table].data > tr[row] #3 > td[cell].mono \"2026-Q3\"": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity #2 > div.history > table[table].data > tr[row] #3 > td[cell] \"no data\"": {
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity #2 > div.history > table[table].data > tr[row] #3 > td[cell].mono \"–\"": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity #2 > div.history > table[table].data > tr[row] #3 > td[cell].mono \"–\" #2": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity #2 > div.history > table[table].data > tr[row] #4": {
+      "display": "table-row"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity #2 > div.history > table[table].data > tr[row] #4 > td[cell].mono \"2026-Q4\"": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "table-cell",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity #2 > div.history > table[table].data > tr[row] #4 > td[cell] \"today\"": {
+      "display": "table-cell",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity #2 > div.history > table[table].data > tr[row] #4 > td[cell].mono \"2\"": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "table-cell",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity #2 > div.history > table[table].data > tr[row] #4 > td[cell] \"3.60 unknown 25 %\"": {
+      "display": "table-cell",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity #2 > div.history > table[table].data > tr[row] #4 > td[cell] \"3.60 unknown 25 %\" > span.mono": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity #2 > div.history > table[table].data > tr[row] #4 > td[cell] \"3.60 unknown 25 %\" > span.unk": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "inline",
+      "margin": "0px 0px 0px 6px"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity #2 > table[table].data.gates": {
+      "font-size": "13px",
+      "display": "table"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity #2 > table[table].data.gates > thead[rowgroup]": {
+      "display": "table-header-group"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity #2 > table[table].data.gates > thead[rowgroup] > tr[row]": {
+      "display": "table-row"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity #2 > table[table].data.gates > thead[rowgroup] > tr[row] > th[columnheader] \"GATE\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(197, 206, 214)",
+      "padding": "6px 10px"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity #2 > table[table].data.gates > thead[rowgroup] > tr[row] > th[columnheader] \"STATE\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(197, 206, 214)",
+      "padding": "6px 10px"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity #2 > table[table].data.gates > thead[rowgroup] > tr[row] > th[columnheader] \"FAILING CONDITIONS\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(197, 206, 214)",
+      "padding": "6px 10px"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity #2 > table[table].data.gates > tbody": {
+      "display": "table-row-group"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity #2 > table[table].data.gates > tr[row]": {
+      "display": "table-row"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity #2 > table[table].data.gates > tr[row] > td[cell] \"Level 2 Repeatable\"": {
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity #2 > table[table].data.gates > tr[row] > td[cell] \"Level 2 Repeatable\" > span.dim": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11.5px",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity #2 > table[table].data.gates > tr[row] > td[cell] \"passed\"": {
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity #2 > table[table].data.gates > tr[row] > td[cell] \"passed\" > span.badge.ok": {
+      "color": "rgb(15, 138, 95)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "display": "inline-block",
+      "background-color": "color(srgb 0.0588235 0.541176 0.372549 / 0.14)",
+      "border-radius": "10px",
+      "padding": "1px 9px"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity #2 > table[table].data.gates > tr[row] > td[cell] \"–\"": {
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity #2 > table[table].data.gates > tr[row] #2": {
+      "display": "table-row"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity #2 > table[table].data.gates > tr[row] #2 > td[cell] \"Level 3 Defined\"": {
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity #2 > table[table].data.gates > tr[row] #2 > td[cell] \"Level 3 Defined\" > span.dim": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11.5px",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity #2 > table[table].data.gates > tr[row] #2 > td[cell] \"blocked\"": {
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity #2 > table[table].data.gates > tr[row] #2 > td[cell] \"blocked\" > span.badge.fail": {
+      "color": "rgb(192, 57, 43)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "display": "inline-block",
+      "background-color": "color(srgb 0.752941 0.223529 0.168627 / 0.14)",
+      "border-radius": "10px",
+      "padding": "1px 9px"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity #2 > table[table].data.gates > tr[row] #2 > td[cell] \"restore-test evidence is 150 days old\"": {
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity #2 > table[table].data.gates > tr[row] #3": {
+      "display": "table-row"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity #2 > table[table].data.gates > tr[row] #3 > td[cell] \"Level 4 Measured\"": {
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity #2 > table[table].data.gates > tr[row] #3 > td[cell] \"Level 4 Measured\" > span.dim": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11.5px",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity #2 > table[table].data.gates > tr[row] #3 > td[cell] \"blocked\"": {
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity #2 > table[table].data.gates > tr[row] #3 > td[cell] \"blocked\" > span.badge.fail": {
+      "color": "rgb(192, 57, 43)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "display": "inline-block",
+      "background-color": "color(srgb 0.752941 0.223529 0.168627 / 0.14)",
+      "border-radius": "10px",
+      "padding": "1px 9px"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity #2 > table[table].data.gates > tr[row] #3 > td[cell] \"SLO attainment (S) is unknown\"": {
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity #2 > table[table].data.gates > tr[row] #4": {
+      "display": "table-row"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity #2 > table[table].data.gates > tr[row] #4 > td[cell] \"Level 5 Improving\"": {
+      "display": "table-cell",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity #2 > table[table].data.gates > tr[row] #4 > td[cell] \"Level 5 Improving\" > span.dim": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11.5px",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity #2 > table[table].data.gates > tr[row] #4 > td[cell] \"blocked\"": {
+      "display": "table-cell",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity #2 > table[table].data.gates > tr[row] #4 > td[cell] \"blocked\" > span.badge.fail": {
+      "color": "rgb(192, 57, 43)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "display": "inline-block",
+      "background-color": "color(srgb 0.752941 0.223529 0.168627 / 0.14)",
+      "border-radius": "10px",
+      "padding": "1px 9px"
+    },
+    "div.shell > main[main].main > section.panel #3 > div.maturity #2 > table[table].data.gates > tr[row] #4 > td[cell] \"learning loop (L) below 80\"": {
+      "display": "table-cell",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #4": {
+      "display": "block",
+      "background-color": "rgb(255, 255, 255)",
+      "border-top": "1px solid rgb(227, 232, 237)",
+      "border-right": "1px solid rgb(227, 232, 237)",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "border-left": "1px solid rgb(227, 232, 237)",
+      "border-radius": "6px",
+      "padding": "14px 16px",
+      "margin": "0px 0px 12px"
+    },
+    "div.shell > main[main].main > section.panel #4 > h2[heading] \"MATURITY PER NODE — LEVEL 1, CAPPED BY S…\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "12px",
+      "font-weight": "600",
+      "display": "block",
+      "margin": "0px 0px 10px"
+    },
+    "div.shell > main[main].main > section.panel #4 > table[table].data": {
+      "font-size": "13px",
+      "display": "table"
+    },
+    "div.shell > main[main].main > section.panel #4 > table[table].data > thead[rowgroup]": {
+      "display": "table-header-group"
+    },
+    "div.shell > main[main].main > section.panel #4 > table[table].data > thead[rowgroup] > tr[row]": {
+      "display": "table-row"
+    },
+    "div.shell > main[main].main > section.panel #4 > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"NODE\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(197, 206, 214)",
+      "padding": "6px 10px"
+    },
+    "div.shell > main[main].main > section.panel #4 > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"LEVEL\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(197, 206, 214)",
+      "padding": "6px 10px"
+    },
+    "div.shell > main[main].main > section.panel #4 > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"INDEX\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(197, 206, 214)",
+      "padding": "6px 10px"
+    },
+    "div.shell > main[main].main > section.panel #4 > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"CAP\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(197, 206, 214)",
+      "padding": "6px 10px"
+    },
+    "div.shell > main[main].main > section.panel #4 > table[table].data > tbody": {
+      "display": "table-row-group"
+    },
+    "div.shell > main[main].main > section.panel #4 > table[table].data > tr[row]": {
+      "display": "table-row"
+    },
+    "div.shell > main[main].main > section.panel #4 > table[table].data > tr[row] > td[cell] \"org: organisation\"": {
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #4 > table[table].data > tr[row] > td[cell] \"org: organisation\" > span.mono": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > section.panel #4 > table[table].data > tr[row] > td[cell] \"org: organisation\" > span.dim": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11.5px",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > section.panel #4 > table[table].data > tr[row] > td[cell].mono \"1 / 3\"": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #4 > table[table].data > tr[row] > td[cell] \"2.90 unknown 20 %\"": {
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #4 > table[table].data > tr[row] > td[cell] \"2.90 unknown 20 %\" > span.mono": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > section.panel #4 > table[table].data > tr[row] > td[cell] \"2.90 unknown 20 %\" > span.unk": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "inline",
+      "margin": "0px 0px 0px 6px"
+    },
+    "div.shell > main[main].main > section.panel #4 > table[table].data > tr[row] > td[cell] \"level 1, capped by svc:ledger-archive\"": {
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #4 > table[table].data > tr[row] #2": {
+      "display": "table-row"
+    },
+    "div.shell > main[main].main > section.panel #4 > table[table].data > tr[row] #2 > td[cell] \"org:platform org\"": {
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px 7px 28px"
+    },
+    "div.shell > main[main].main > section.panel #4 > table[table].data > tr[row] #2 > td[cell] \"org:platform org\" > span.mono": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > section.panel #4 > table[table].data > tr[row] #2 > td[cell] \"org:platform org\" > span.dim": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11.5px",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > section.panel #4 > table[table].data > tr[row] #2 > td[cell].mono \"1 / 3\"": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #4 > table[table].data > tr[row] #2 > td[cell] \"2.90 unknown 20 %\"": {
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #4 > table[table].data > tr[row] #2 > td[cell] \"2.90 unknown 20 %\" > span.mono": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > section.panel #4 > table[table].data > tr[row] #2 > td[cell] \"2.90 unknown 20 %\" > span.unk": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "inline",
+      "margin": "0px 0px 0px 6px"
+    },
+    "div.shell > main[main].main > section.panel #4 > table[table].data > tr[row] #2 > td[cell] \"level 1, capped by svc:ledger-archive\"": {
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #4 > table[table].data > tr[row] #3": {
+      "display": "table-row"
+    },
+    "div.shell > main[main].main > section.panel #4 > table[table].data > tr[row] #3 > td[cell] \"ent:cif-0001 entity critical\"": {
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px 7px 46px"
+    },
+    "div.shell > main[main].main > section.panel #4 > table[table].data > tr[row] #3 > td[cell] \"ent:cif-0001 entity critical\" > span.mono": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > section.panel #4 > table[table].data > tr[row] #3 > td[cell] \"ent:cif-0001 entity critical\" > span.dim": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11.5px",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > section.panel #4 > table[table].data > tr[row] #3 > td[cell] \"ent:cif-0001 entity critical\" > span.badge.warn": {
+      "color": "rgb(180, 83, 9)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "display": "inline-block",
+      "background-color": "color(srgb 0.705882 0.32549 0.0352941 / 0.14)",
+      "border-radius": "10px",
+      "padding": "1px 9px"
+    },
+    "div.shell > main[main].main > section.panel #4 > table[table].data > tr[row] #3 > td[cell].mono \"1 / 3\"": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #4 > table[table].data > tr[row] #3 > td[cell] \"2.60 unknown 50 %\"": {
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #4 > table[table].data > tr[row] #3 > td[cell] \"2.60 unknown 50 %\" > span.mono": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > section.panel #4 > table[table].data > tr[row] #3 > td[cell] \"2.60 unknown 50 %\" > span.unk": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "inline",
+      "margin": "0px 0px 0px 6px"
+    },
+    "div.shell > main[main].main > section.panel #4 > table[table].data > tr[row] #3 > td[cell] \"level 1, capped by svc:ledger-archive\"": {
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #4 > table[table].data > tr[row] #4": {
+      "display": "table-row"
+    },
+    "div.shell > main[main].main > section.panel #4 > table[table].data > tr[row] #4 > td[cell] \"svc:payments-api service critical\"": {
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px 7px 64px"
+    },
+    "div.shell > main[main].main > section.panel #4 > table[table].data > tr[row] #4 > td[cell] \"svc:payments-api service critical\" > span.mono": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > section.panel #4 > table[table].data > tr[row] #4 > td[cell] \"svc:payments-api service critical\" > span.dim": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11.5px",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > section.panel #4 > table[table].data > tr[row] #4 > td[cell] \"svc:payments-api service critical\" > span.badge.warn": {
+      "color": "rgb(180, 83, 9)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "display": "inline-block",
+      "background-color": "color(srgb 0.705882 0.32549 0.0352941 / 0.14)",
+      "border-radius": "10px",
+      "padding": "1px 9px"
+    },
+    "div.shell > main[main].main > section.panel #4 > table[table].data > tr[row] #4 > td[cell].mono \"4 / 3\"": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #4 > table[table].data > tr[row] #4 > td[cell] \"4.20 unknown 0 %\"": {
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #4 > table[table].data > tr[row] #4 > td[cell] \"4.20 unknown 0 %\" > span.mono": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > section.panel #4 > table[table].data > tr[row] #4 > td[cell] \"4.20 unknown 0 %\" > span.unk": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "inline",
+      "margin": "0px 0px 0px 6px"
+    },
+    "div.shell > main[main].main > section.panel #4 > table[table].data > tr[row] #4 > td[cell] \"–\"": {
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #4 > table[table].data > tr[row] #5": {
+      "display": "table-row"
+    },
+    "div.shell > main[main].main > section.panel #4 > table[table].data > tr[row] #5 > td[cell] \"svc:ledger-archive service critical not …\"": {
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px 7px 64px"
+    },
+    "div.shell > main[main].main > section.panel #4 > table[table].data > tr[row] #5 > td[cell] \"svc:ledger-archive service critical not …\" > span.mono": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > section.panel #4 > table[table].data > tr[row] #5 > td[cell] \"svc:ledger-archive service critical not …\" > span.dim": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11.5px",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > section.panel #4 > table[table].data > tr[row] #5 > td[cell] \"svc:ledger-archive service critical not …\" > span.badge.warn": {
+      "color": "rgb(180, 83, 9)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "display": "inline-block",
+      "background-color": "color(srgb 0.705882 0.32549 0.0352941 / 0.14)",
+      "border-radius": "10px",
+      "padding": "1px 9px"
+    },
+    "div.shell > main[main].main > section.panel #4 > table[table].data > tr[row] #5 > td[cell] \"svc:ledger-archive service critical not …\" > span.badge.neutral": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "display": "inline-block",
+      "background-color": "rgb(233, 238, 242)",
+      "border-radius": "10px",
+      "padding": "1px 9px"
+    },
+    "div.shell > main[main].main > section.panel #4 > table[table].data > tr[row] #5 > td[cell] \"svc:ledger-archive service critical not …\" > div.dim": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11.5px",
+      "display": "block"
+    },
+    "div.shell > main[main].main > section.panel #4 > table[table].data > tr[row] #5 > td[cell].mono \"1 / 3\"": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #4 > table[table].data > tr[row] #5 > td[cell] \"1.00 unknown 100 %\"": {
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #4 > table[table].data > tr[row] #5 > td[cell] \"1.00 unknown 100 %\" > span.mono": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > section.panel #4 > table[table].data > tr[row] #5 > td[cell] \"1.00 unknown 100 %\" > span.unk": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "inline",
+      "margin": "0px 0px 0px 6px"
+    },
+    "div.shell > main[main].main > section.panel #4 > table[table].data > tr[row] #5 > td[cell] \"–\"": {
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #4 > table[table].data > tr[row] #6": {
+      "display": "table-row"
+    },
+    "div.shell > main[main].main > section.panel #4 > table[table].data > tr[row] #6 > td[cell] \"ent:cif-0002 entity\"": {
+      "display": "table-cell",
+      "padding": "7px 10px 7px 46px"
+    },
+    "div.shell > main[main].main > section.panel #4 > table[table].data > tr[row] #6 > td[cell] \"ent:cif-0002 entity\" > span.mono": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > section.panel #4 > table[table].data > tr[row] #6 > td[cell] \"ent:cif-0002 entity\" > span.dim": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11.5px",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > section.panel #4 > table[table].data > tr[row] #6 > td[cell].mono \"3 / 3\"": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "table-cell",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #4 > table[table].data > tr[row] #6 > td[cell] \"3.40 unknown 0 %\"": {
+      "display": "table-cell",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #4 > table[table].data > tr[row] #6 > td[cell] \"3.40 unknown 0 %\" > span.mono": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > section.panel #4 > table[table].data > tr[row] #6 > td[cell] \"3.40 unknown 0 %\" > span.unk": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "inline",
+      "margin": "0px 0px 0px 6px"
+    },
+    "div.shell > main[main].main > section.panel #4 > table[table].data > tr[row] #6 > td[cell] \"–\"": {
+      "display": "table-cell",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #4 > div.foot": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11.5px",
+      "display": "block",
+      "margin": "8px 0px 0px"
+    },
+    "div.shell > main[main].main > section.panel #5": {
+      "display": "block",
+      "background-color": "rgb(255, 255, 255)",
+      "border-top": "1px solid rgb(227, 232, 237)",
+      "border-right": "1px solid rgb(227, 232, 237)",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "border-left": "1px solid rgb(227, 232, 237)",
+      "border-radius": "6px",
+      "padding": "14px 16px",
+      "margin": "0px 0px 12px"
+    },
+    "div.shell > main[main].main > section.panel #5 > h2[heading] \"REPORTING READINESS — FUNCTION REGISTER\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "12px",
+      "font-weight": "600",
+      "display": "block",
+      "margin": "0px 0px 10px"
+    },
+    "div.shell > main[main].main > section.panel #5 > div.tiles": {
+      "display": "grid",
+      "grid-template-columns": "repeat(4, 1fr)",
+      "margin": "12px 0px",
+      "gap": "12px"
+    },
+    "div.shell > main[main].main > section.panel #5 > div.tiles > div.panel.num": {
+      "display": "block",
+      "background-color": "rgb(255, 255, 255)",
+      "border-top": "1px solid rgb(227, 232, 237)",
+      "border-right": "1px solid rgb(227, 232, 237)",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "border-left": "1px solid rgb(227, 232, 237)",
+      "border-radius": "6px",
+      "padding": "14px 16px"
+    },
+    "div.shell > main[main].main > section.panel #5 > div.tiles > div.panel.num > div.label": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "display": "block",
+      "margin": "0px 0px 6px"
+    },
+    "div.shell > main[main].main > section.panel #5 > div.tiles > div.panel.num > div.row": {
+      "display": "flex",
+      "gap": "10px"
+    },
+    "div.shell > main[main].main > section.panel #5 > div.tiles > div.panel.num > div.row > span.value.mono": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "24px",
+      "font-weight": "600",
+      "display": "block"
+    },
+    "div.shell > main[main].main > section.panel #5 > div.tiles > div.panel.num > div.row > span.unknown": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11.5px",
+      "display": "block",
+      "border-top": "1px dashed rgb(197, 206, 214)",
+      "border-right": "1px dashed rgb(197, 206, 214)",
+      "border-bottom": "1px dashed rgb(197, 206, 214)",
+      "border-left": "1px dashed rgb(197, 206, 214)",
+      "border-radius": "4px",
+      "padding": "1px 6px"
+    },
+    "div.shell > main[main].main > section.panel #5 > div.tiles > div.panel.num #2": {
+      "display": "block",
+      "background-color": "rgb(255, 255, 255)",
+      "border-top": "1px solid rgb(227, 232, 237)",
+      "border-right": "1px solid rgb(227, 232, 237)",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "border-left": "1px solid rgb(227, 232, 237)",
+      "border-radius": "6px",
+      "padding": "14px 16px"
+    },
+    "div.shell > main[main].main > section.panel #5 > div.tiles > div.panel.num #2 > div.label": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "display": "block",
+      "margin": "0px 0px 6px"
+    },
+    "div.shell > main[main].main > section.panel #5 > div.tiles > div.panel.num #2 > div.row": {
+      "display": "flex",
+      "gap": "10px"
+    },
+    "div.shell > main[main].main > section.panel #5 > div.tiles > div.panel.num #2 > div.row > span.value.mono": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "24px",
+      "font-weight": "600",
+      "display": "block"
+    },
+    "div.shell > main[main].main > section.panel #5 > div.tiles > div.panel.num #2 > div.row > span.unknown": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11.5px",
+      "display": "block",
+      "border-top": "1px dashed rgb(197, 206, 214)",
+      "border-right": "1px dashed rgb(197, 206, 214)",
+      "border-bottom": "1px dashed rgb(197, 206, 214)",
+      "border-left": "1px dashed rgb(197, 206, 214)",
+      "border-radius": "4px",
+      "padding": "1px 6px"
+    },
+    "div.shell > main[main].main > section.panel #5 > div.tiles > div.panel.num #3": {
+      "display": "block",
+      "background-color": "rgb(255, 255, 255)",
+      "border-top": "1px solid rgb(227, 232, 237)",
+      "border-right": "1px solid rgb(227, 232, 237)",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "border-left": "1px solid rgb(227, 232, 237)",
+      "border-radius": "6px",
+      "padding": "14px 16px"
+    },
+    "div.shell > main[main].main > section.panel #5 > div.tiles > div.panel.num #3 > div.label": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "display": "block",
+      "margin": "0px 0px 6px"
+    },
+    "div.shell > main[main].main > section.panel #5 > div.tiles > div.panel.num #3 > div.row": {
+      "display": "flex",
+      "gap": "10px"
+    },
+    "div.shell > main[main].main > section.panel #5 > div.tiles > div.panel.num #3 > div.row > span.value.mono": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "24px",
+      "font-weight": "600",
+      "display": "block"
+    },
+    "div.shell > main[main].main > section.panel #5 > div.tiles > div.panel.num #3 > div.row > span.unknown": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11.5px",
+      "display": "block",
+      "border-top": "1px dashed rgb(197, 206, 214)",
+      "border-right": "1px dashed rgb(197, 206, 214)",
+      "border-bottom": "1px dashed rgb(197, 206, 214)",
+      "border-left": "1px dashed rgb(197, 206, 214)",
+      "border-radius": "4px",
+      "padding": "1px 6px"
+    },
+    "div.shell > main[main].main > section.panel #5 > div.tiles > div.panel.num #4": {
+      "display": "block",
+      "background-color": "rgb(255, 255, 255)",
+      "border-top": "1px solid rgb(227, 232, 237)",
+      "border-right": "1px solid rgb(227, 232, 237)",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "border-left": "1px solid rgb(227, 232, 237)",
+      "border-radius": "6px",
+      "padding": "14px 16px"
+    },
+    "div.shell > main[main].main > section.panel #5 > div.tiles > div.panel.num #4 > div.label": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "display": "block",
+      "margin": "0px 0px 6px"
+    },
+    "div.shell > main[main].main > section.panel #5 > div.tiles > div.panel.num #4 > div.row": {
+      "display": "flex",
+      "gap": "10px"
+    },
+    "div.shell > main[main].main > section.panel #5 > div.tiles > div.panel.num #4 > div.row > span.value.mono": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "24px",
+      "font-weight": "600",
+      "display": "block"
+    },
+    "div.shell > main[main].main > section.panel #5 > div.tiles > div.panel.num #4 > div.row > span.unknown": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11.5px",
+      "display": "block",
+      "border-top": "1px dashed rgb(197, 206, 214)",
+      "border-right": "1px dashed rgb(197, 206, 214)",
+      "border-bottom": "1px dashed rgb(197, 206, 214)",
+      "border-left": "1px dashed rgb(197, 206, 214)",
+      "border-radius": "4px",
+      "padding": "1px 6px"
+    },
+    "div.shell > main[main].main > section.panel #5 > div.tiles > div.panel.num #4 > div.hint": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11.5px",
+      "display": "block",
+      "margin": "4px 0px 0px"
+    },
+    "div.shell > main[main].main > section.panel #5 > table[table].data.functions": {
+      "font-size": "13px",
+      "display": "table"
+    },
+    "div.shell > main[main].main > section.panel #5 > table[table].data.functions > thead[rowgroup]": {
+      "display": "table-header-group"
+    },
+    "div.shell > main[main].main > section.panel #5 > table[table].data.functions > thead[rowgroup] > tr[row]": {
+      "display": "table-row"
+    },
+    "div.shell > main[main].main > section.panel #5 > table[table].data.functions > thead[rowgroup] > tr[row] > th[columnheader] \"FUNCTION\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(197, 206, 214)",
+      "padding": "6px 10px"
+    },
+    "div.shell > main[main].main > section.panel #5 > table[table].data.functions > thead[rowgroup] > tr[row] > th[columnheader] \"CODE\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(197, 206, 214)",
+      "padding": "6px 10px"
+    },
+    "div.shell > main[main].main > section.panel #5 > table[table].data.functions > thead[rowgroup] > tr[row] > th[columnheader] \"TIER\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(197, 206, 214)",
+      "padding": "6px 10px"
+    },
+    "div.shell > main[main].main > section.panel #5 > table[table].data.functions > thead[rowgroup] > tr[row] > th[columnheader] \"RTO\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(197, 206, 214)",
+      "padding": "6px 10px"
+    },
+    "div.shell > main[main].main > section.panel #5 > table[table].data.functions > thead[rowgroup] > tr[row] > th[columnheader] \"RPO\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(197, 206, 214)",
+      "padding": "6px 10px"
+    },
+    "div.shell > main[main].main > section.panel #5 > table[table].data.functions > thead[rowgroup] > tr[row] > th[columnheader] \"ASSESSED\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(197, 206, 214)",
+      "padding": "6px 10px"
+    },
+    "div.shell > main[main].main > section.panel #5 > table[table].data.functions > thead[rowgroup] > tr[row] > th[columnheader] \"COVERAGE\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(197, 206, 214)",
+      "padding": "6px 10px"
+    },
+    "div.shell > main[main].main > section.panel #5 > table[table].data.functions > tbody": {
+      "display": "table-row-group"
+    },
+    "div.shell > main[main].main > section.panel #5 > table[table].data.functions > tr[row]": {
+      "display": "table-row"
+    },
+    "div.shell > main[main].main > section.panel #5 > table[table].data.functions > tr[row] > td[cell] \"cif-0001 Payments\"": {
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #5 > table[table].data.functions > tr[row] > td[cell] \"cif-0001 Payments\" > span.mono": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > section.panel #5 > table[table].data.functions > tr[row] > td[cell].mono \"F1\"": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #5 > table[table].data.functions > tr[row] > td[cell] \"critical\"": {
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #5 > table[table].data.functions > tr[row] > td[cell].mono \"1 h\"": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #5 > table[table].data.functions > tr[row] > td[cell].mono \"5 min\"": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #5 > table[table].data.functions > tr[row] > td[cell].mono \"2026-10-01\"": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #5 > table[table].data.functions > tr[row] > td[cell] \"70 % unknown 10 %\"": {
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #5 > table[table].data.functions > tr[row] > td[cell] \"70 % unknown 10 %\" > span.mono": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > section.panel #5 > table[table].data.functions > tr[row] > td[cell] \"70 % unknown 10 %\" > span.unk": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "inline",
+      "margin": "0px 0px 0px 6px"
+    },
+    "div.shell > main[main].main > section.panel #5 > table[table].data.functions > tr[row] #2": {
+      "display": "table-row"
+    },
+    "div.shell > main[main].main > section.panel #5 > table[table].data.functions > tr[row] #2 > td[cell] \"cif-0002 Reporting\"": {
+      "display": "table-cell",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #5 > table[table].data.functions > tr[row] #2 > td[cell] \"cif-0002 Reporting\" > span.mono": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > section.panel #5 > table[table].data.functions > tr[row] #2 > td[cell].mono \"F2\"": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "table-cell",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #5 > table[table].data.functions > tr[row] #2 > td[cell] \"important\"": {
+      "display": "table-cell",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #5 > table[table].data.functions > tr[row] #2 > td[cell].mono \"–\"": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "table-cell",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #5 > table[table].data.functions > tr[row] #2 > td[cell].mono \"–\" #2": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "table-cell",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #5 > table[table].data.functions > tr[row] #2 > td[cell].mono \"–\" #3": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "table-cell",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #5 > table[table].data.functions > tr[row] #2 > td[cell] \"unknown unknown 100 %\"": {
+      "display": "table-cell",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > section.panel #5 > table[table].data.functions > tr[row] #2 > td[cell] \"unknown unknown 100 %\" > span.mono": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > section.panel #5 > table[table].data.functions > tr[row] #2 > td[cell] \"unknown unknown 100 %\" > span.unk": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "inline",
+      "margin": "0px 0px 0px 6px"
+    },
+    "div.shell > main[main].main > section.panel #5 > dl[DescriptionList].register": {
+      "font-size": "12.5px",
+      "display": "grid",
+      "grid-template-columns": "max-content 1fr",
+      "margin": "12px 0px 0px",
+      "gap": "4px 16px"
+    },
+    "div.shell > main[main].main > section.panel #5 > dl[DescriptionList].register > dt[term] \"Register of information\"": {
+      "color": "rgb(91, 103, 114)",
+      "display": "block"
+    },
+    "div.shell > main[main].main > section.panel #5 > dl[DescriptionList].register > dd[definition]": {
+      "display": "block"
+    },
+    "div.shell > main[main].main > section.panel #5 > dl[DescriptionList].register > dt[term] \"Signed off\"": {
+      "color": "rgb(91, 103, 114)",
+      "display": "block"
+    },
+    "div.shell > main[main].main > section.panel #5 > dl[DescriptionList].register > dd[definition] #2": {
+      "display": "block"
+    },
+    "div.shell > main[main].main > section.panel #5 > dl[DescriptionList].register > dt[term] \"Services mapped to no function\"": {
+      "color": "rgb(91, 103, 114)",
+      "display": "block"
+    },
+    "div.shell > main[main].main > section.panel #5 > dl[DescriptionList].register > dd[definition].mono": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.5px",
+      "display": "block"
+    },
+    "div.shell > main[main].main > section.panel #5 > div.foot": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11.5px",
+      "display": "block",
+      "margin": "8px 0px 0px"
+    },
+    "div": {
+      "display": "block"
+    }
+  }
+}
