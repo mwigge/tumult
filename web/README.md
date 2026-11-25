@@ -91,6 +91,21 @@ A page uses the class and keeps no copy of the rule in its own style
 block. `src/lib/theme-rules.test.ts` fails on a copy, and on a `:global()`
 rule in the Manual page or its components.
 
+## Badges
+
+A badge is `src/lib/components/Badge.svelte`. Give it a `tone` and a
+`label`, or a `kind` and a `value`:
+
+```svelte
+<Badge tone="warn" label="rollback pending" />
+<Badge kind="finding" value={risk.severity} />
+```
+
+`src/lib/tone.ts` holds one table per kind, such as `status`, `finding`
+and `verdict`, so a word of a kind has one tone on every page. A word that
+its table does not hold is neutral. `src/lib/badge-scan.test.ts` fails on a badge
+class or a tone that is worked out anywhere else.
+
 ## Stack
 
 | Choice                                           | Why                                                                                                                               |
