@@ -704,16 +704,16 @@
       "color": "rgb(91, 103, 114)",
       "display": "inline"
     },
-    "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > tr[row] #2 > td[cell] \"14 s target 10 s\"": {
+    "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > tr[row] #2 > td[cell] \"14 s target 10 s, missed\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
       "padding": "7px 10px"
     },
-    "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > tr[row] #2 > td[cell] \"14 s target 10 s\" > span.measured.alarm": {
+    "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > tr[row] #2 > td[cell] \"14 s target 10 s, missed\" > span.measured.alarm": {
       "color": "rgb(239, 68, 68)",
       "display": "block"
     },
-    "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > tr[row] #2 > td[cell] \"14 s target 10 s\" > span.target": {
+    "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > tr[row] #2 > td[cell] \"14 s target 10 s, missed\" > span.target": {
       "color": "rgb(91, 103, 114)",
       "font-size": "11.5px",
       "display": "block"
@@ -2804,16 +2804,16 @@
       "border-radius": "10px",
       "padding": "1px 9px"
     },
-    "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #11 > td[cell] \"12.5 s target 10 s\"": {
+    "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #11 > td[cell] \"12.5 s target 10 s, missed\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
       "padding": "7px 10px"
     },
-    "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #11 > td[cell] \"12.5 s target 10 s\" > span.measured.alarm": {
+    "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #11 > td[cell] \"12.5 s target 10 s, missed\" > span.measured.alarm": {
       "color": "rgb(239, 68, 68)",
       "display": "block"
     },
-    "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #11 > td[cell] \"12.5 s target 10 s\" > span.target": {
+    "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #11 > td[cell] \"12.5 s target 10 s, missed\" > span.target": {
       "color": "rgb(91, 103, 114)",
       "font-size": "11.5px",
       "display": "block"
@@ -3464,16 +3464,16 @@
       "border-radius": "10px",
       "padding": "1px 9px"
     },
-    "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #18 > td[cell] \"at least 75 s, not recovered target 60 s\"": {
+    "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #18 > td[cell] \"at least 75 s, not recovered target 60 s…\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
       "padding": "7px 10px"
     },
-    "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #18 > td[cell] \"at least 75 s, not recovered target 60 s\" > span.measured.alarm": {
+    "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #18 > td[cell] \"at least 75 s, not recovered target 60 s…\" > span.measured.alarm": {
       "color": "rgb(239, 68, 68)",
       "display": "block"
     },
-    "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #18 > td[cell] \"at least 75 s, not recovered target 60 s\" > span.target": {
+    "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #18 > td[cell] \"at least 75 s, not recovered target 60 s…\" > span.target": {
       "color": "rgb(91, 103, 114)",
       "font-size": "11.5px",
       "display": "block"

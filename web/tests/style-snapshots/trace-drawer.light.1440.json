@@ -612,6 +612,13 @@
       "font-size": "11.5px",
       "display": "block"
     },
+    "div.shell > main.main > div.panel > div.wf > button.row #3 > span.dur.mono > span.mark.fail": {
+      "color": "rgb(192, 57, 43)",
+      "display": "inline"
+    },
+    "div.shell > main.main > div.panel > div.wf > button.row #3 > span.dur.mono > span.sr-only": {
+      "display": "block"
+    },
     "div.shell > main.main > div.panel > div.wf > button.row #4": {
       "display": "grid",
       "grid-template-columns": "240px 1fr 66px",

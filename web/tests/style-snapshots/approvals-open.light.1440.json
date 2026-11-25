@@ -587,7 +587,7 @@
     "div.shell > main[main].main > div.panel > table[table].data > tr[row].detail-row > td[cell] \"PARAMETERS { \"region\": \"eu-north\" } PIN …\" > div.detail > div": {
       "display": "block"
     },
-    "div.shell > main[main].main > div.panel > table[table].data > tr[row].detail-row > td[cell] \"PARAMETERS { \"region\": \"eu-north\" } PIN …\" > div.detail > h3[heading] \"PARAMETERS\"": {
+    "div.shell > main[main].main > div.panel > table[table].data > tr[row].detail-row > td[cell] \"PARAMETERS { \"region\": \"eu-north\" } PIN …\" > div.detail > h2[heading] \"PARAMETERS\"": {
       "color": "rgb(91, 103, 114)",
       "font-size": "12px",
       "font-weight": "600",
@@ -605,7 +605,7 @@
     "div.shell > main[main].main > div.panel > table[table].data > tr[row].detail-row > td[cell] \"PARAMETERS { \"region\": \"eu-north\" } PIN …\" > div.detail > div #2": {
       "display": "block"
     },
-    "div.shell > main[main].main > div.panel > table[table].data > tr[row].detail-row > td[cell] \"PARAMETERS { \"region\": \"eu-north\" } PIN …\" > div.detail > h3[heading] \"PIN HASH\"": {
+    "div.shell > main[main].main > div.panel > table[table].data > tr[row].detail-row > td[cell] \"PARAMETERS { \"region\": \"eu-north\" } PIN …\" > div.detail > h2[heading] \"PIN HASH\"": {
       "color": "rgb(91, 103, 114)",
       "font-size": "12px",
       "font-weight": "600",
@@ -620,7 +620,7 @@
       "font-size": "12.5px",
       "display": "block"
     },
-    "div.shell > main[main].main > div.panel > table[table].data > tr[row].detail-row > td[cell] \"PARAMETERS { \"region\": \"eu-north\" } PIN …\" > div.detail > h3[heading] \"TARGET\"": {
+    "div.shell > main[main].main > div.panel > table[table].data > tr[row].detail-row > td[cell] \"PARAMETERS { \"region\": \"eu-north\" } PIN …\" > div.detail > h2[heading] \"TARGET\"": {
       "color": "rgb(91, 103, 114)",
       "font-size": "12px",
       "font-weight": "600",

@@ -58,7 +58,7 @@
 <div class="login-wrap">
     <div class="panel login-panel">
         <div class="brand">
-            <div class="name">Tumult</div>
+            <h1 class="name">Tumult</h1>
             <div class="tag">{TAGLINE}</div>
         </div>
 

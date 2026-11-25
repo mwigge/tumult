@@ -75,13 +75,13 @@
         }
     }
 
-    /** Remaining approval TTL; `soon` (under 1h left, or lapsed) gets warn. */
+    /** Remaining approval TTL; `soon` (under 1h left, or lapsed) gets warn, and says so. */
     function expiry(ns: number): { text: string; soon: boolean } {
         const ms = ns / 1_000_000 - Date.now();
         if (ms <= 0) return { text: 'expired', soon: true };
         const m = Math.floor(ms / 60_000);
         if (m >= 60) return { text: `${Math.floor(m / 60)}h ${m % 60}m`, soon: false };
-        return { text: `${m}m ${Math.floor((ms % 60_000) / 1000)}s`, soon: true };
+        return { text: `${m}m ${Math.floor((ms % 60_000) / 1000)}s, soon`, soon: true };
     }
 </script>
 

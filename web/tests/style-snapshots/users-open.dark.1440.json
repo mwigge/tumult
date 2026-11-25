@@ -496,7 +496,7 @@
     "div.shell > main[main].main > div.panel > table[table].data > tr[row].detail-row > td[cell] \"ROLE admin Save ENVIRONMENT SCOPES Envir…\" > div.detail > div": {
       "display": "block"
     },
-    "div.shell > main[main].main > div.panel > table[table].data > tr[row].detail-row > td[cell] \"ROLE admin Save ENVIRONMENT SCOPES Envir…\" > div.detail > h3[heading] \"ROLE\"": {
+    "div.shell > main[main].main > div.panel > table[table].data > tr[row].detail-row > td[cell] \"ROLE admin Save ENVIRONMENT SCOPES Envir…\" > div.detail > h2[heading] \"ROLE\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "12px",
       "font-weight": "600",
@@ -534,7 +534,7 @@
       "border-radius": "6px",
       "padding": "6px 14px"
     },
-    "div.shell > main[main].main > div.panel > table[table].data > tr[row].detail-row > td[cell] \"ROLE admin Save ENVIRONMENT SCOPES Envir…\" > div.detail > h3[heading] \"ENVIRONMENT SCOPES\"": {
+    "div.shell > main[main].main > div.panel > table[table].data > tr[row].detail-row > td[cell] \"ROLE admin Save ENVIRONMENT SCOPES Envir…\" > div.detail > h2[heading] \"ENVIRONMENT SCOPES\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "12px",
       "font-weight": "600",
@@ -574,7 +574,7 @@
     "div.shell > main[main].main > div.panel > table[table].data > tr[row].detail-row > td[cell] \"ROLE admin Save ENVIRONMENT SCOPES Envir…\" > div.detail > div #2": {
       "display": "block"
     },
-    "div.shell > main[main].main > div.panel > table[table].data > tr[row].detail-row > td[cell] \"ROLE admin Save ENVIRONMENT SCOPES Envir…\" > div.detail > h3[heading] \"RESET PASSWORD\"": {
+    "div.shell > main[main].main > div.panel > table[table].data > tr[row].detail-row > td[cell] \"ROLE admin Save ENVIRONMENT SCOPES Envir…\" > div.detail > h2[heading] \"RESET PASSWORD\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "12px",
       "font-weight": "600",
@@ -619,7 +619,7 @@
       "display": "block",
       "margin": "4px 0px 0px"
     },
-    "div.shell > main[main].main > div.panel > table[table].data > tr[row].detail-row > td[cell] \"ROLE admin Save ENVIRONMENT SCOPES Envir…\" > div.detail > h3[heading] \"ACCOUNT\"": {
+    "div.shell > main[main].main > div.panel > table[table].data > tr[row].detail-row > td[cell] \"ROLE admin Save ENVIRONMENT SCOPES Envir…\" > div.detail > h2[heading] \"ACCOUNT\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "12px",
       "font-weight": "600",

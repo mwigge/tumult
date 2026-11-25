@@ -246,3 +246,6 @@ way: a style with `position: fixed` or a dialog in another file.
   run.
 - A panel names the time window it shows, and says so when it has no data.
 - Filters live in the URL, so a view is a link you can share.
+- Colour is never the only signal: what a colour says, a word or a mark
+  says too, such as "soon" on an approval that lapses within the hour.
+- Headings go down one level at a time, from the h1 of the page.

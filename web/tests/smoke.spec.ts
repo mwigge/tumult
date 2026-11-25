@@ -28,11 +28,9 @@ for (const target of PAGES.filter((p) => UNTESTED.includes(p.name))) {
         const missing = await serve(page, target);
         await page.goto(target.path);
 
-        // The login page has no h1: its form is what it shows.
-        const shown = target.heading
-            ? page.getByRole('heading', { level: 1, name: target.heading, exact: true })
-            : page.getByRole('button', { name: 'Sign in' });
-        await expect(shown).toBeVisible();
+        await expect(
+            page.getByRole('heading', { level: 1, name: target.heading ?? '', exact: true }),
+        ).toBeVisible();
         await page.waitForLoadState('networkidle');
         expect(missing, 'every API call of the page has an answer').toEqual([]);
         expect(errors, 'the console has no error').toEqual([]);

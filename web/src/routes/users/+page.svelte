@@ -286,7 +286,7 @@
                                 <td colspan={6}>
                                     <div class="detail">
                                         <div>
-                                            <h3>Role</h3>
+                                            <h2>Role</h2>
                                             {#if me?.username === u.username}
                                                 <div class="hint">
                                                     You cannot change your own role — ask another
@@ -307,7 +307,7 @@
                                                     >
                                                 </div>
                                             {/if}
-                                            <h3>Environment scopes</h3>
+                                            <h2>Environment scopes</h2>
                                             <div class="row">
                                                 <input
                                                     type="text"
@@ -323,7 +323,7 @@
                                             </div>
                                         </div>
                                         <div>
-                                            <h3>Reset password</h3>
+                                            <h2>Reset password</h2>
                                             <div class="row">
                                                 <input
                                                     type="password"
@@ -342,7 +342,7 @@
                                             <div class="hint">
                                                 The user must change it at next login.
                                             </div>
-                                            <h3>Account</h3>
+                                            <h2>Account</h2>
                                             {#if me?.username === u.username}
                                                 <div class="hint">
                                                     You cannot disable your own account.
@@ -545,14 +545,14 @@
         padding: var(--space-2) var(--space-1);
         cursor: default;
     }
-    .detail h3 {
+    .detail h2 {
         font-size: var(--font-size-xs);
         text-transform: uppercase;
         letter-spacing: var(--letter-spacing-sm);
         color: var(--text-dim);
         margin: 0 0 var(--space-1-5);
     }
-    .detail h3:not(:first-child) {
+    .detail h2:not(:first-child) {
         margin-top: var(--space-3);
     }
     .row {

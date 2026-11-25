@@ -582,34 +582,41 @@
       "font-size": "11.5px",
       "display": "block"
     },
-    "div.shell > main[main].main > div.panel > div.wf > button[button].row \"action 3.0s\"": {
+    "div.shell > main[main].main > div.panel > div.wf > button[button].row \"action error 3.0s\"": {
       "display": "grid",
       "grid-template-columns": "240px 1fr 66px",
       "border-bottom": "1px solid color(srgb 0.890196 0.909804 0.929412 / 0.55)",
       "padding": "3px 0px",
       "gap": "10px"
     },
-    "div.shell > main[main].main > div.panel > div.wf > button[button].row \"action 3.0s\" > span.name": {
+    "div.shell > main[main].main > div.panel > div.wf > button[button].row \"action error 3.0s\" > span.name": {
       "color": "rgb(91, 103, 114)",
       "display": "block",
       "padding": "0px 0px 0px 16px"
     },
-    "div.shell > main[main].main > div.panel > div.wf > button[button].row \"action 3.0s\" > span.name > em[emphasis]": {
+    "div.shell > main[main].main > div.panel > div.wf > button[button].row \"action error 3.0s\" > span.name > em[emphasis]": {
       "color": "rgb(31, 111, 178)",
       "display": "inline"
     },
-    "div.shell > main[main].main > div.panel > div.wf > button[button].row \"action 3.0s\" > span.lane": {
+    "div.shell > main[main].main > div.panel > div.wf > button[button].row \"action error 3.0s\" > span.lane": {
       "display": "block"
     },
-    "div.shell > main[main].main > div.panel > div.wf > button[button].row \"action 3.0s\" > span.lane > span.bar": {
+    "div.shell > main[main].main > div.panel > div.wf > button[button].row \"action error 3.0s\" > span.lane > span.bar": {
       "display": "block",
       "background-color": "rgb(192, 57, 43)",
       "border-radius": "2px"
     },
-    "div.shell > main[main].main > div.panel > div.wf > button[button].row \"action 3.0s\" > span.dur.mono": {
+    "div.shell > main[main].main > div.panel > div.wf > button[button].row \"action error 3.0s\" > span.dur.mono": {
       "color": "rgb(91, 103, 114)",
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.5px",
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.panel > div.wf > button[button].row \"action error 3.0s\" > span.dur.mono > span.mark.fail": {
+      "color": "rgb(192, 57, 43)",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > div.panel > div.wf > button[button].row \"action error 3.0s\" > span.dur.mono > span.sr-only": {
       "display": "block"
     },
     "div.shell > main[main].main > div.panel > div.wf > button[button].row \"hypothesis.after 1ms\"": {
