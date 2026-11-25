@@ -128,6 +128,13 @@ can allow it. `tests/first-paint.spec.ts` checks the first paint.
   `src/lib/keyboard-scan.test.ts` fails on a row with a click handler and
   no link or button.
 - Forms: `.form`, `.row2` and the list editor `.grid-rows`.
+- Focus: one rule draws the focus ring of a field, and of the heading a
+  drawer gives the focus, when the keyboard moves the focus there
+  (`:focus-visible`). A button and a link keep the ring of the browser.
+  The first Tab stop of a page is `.skip-link`, a link past the
+  navigation to the main content, seen only while it has the focus. The
+  navigation is named "Main" and marks the page it shows with
+  `aria-current`.
 
 A page uses the class and keeps no copy of the rule in its own style
 block. `src/lib/theme-rules.test.ts` fails on a copy, and on a `:global()`

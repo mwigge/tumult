@@ -386,10 +386,6 @@
         font-weight: var(--font-weight-strong);
         word-break: break-all;
     }
-    .title:focus-visible {
-        outline: var(--border-width-md) solid var(--accent);
-        outline-offset: 2px;
-    }
     .flag {
         color: var(--warn);
     }

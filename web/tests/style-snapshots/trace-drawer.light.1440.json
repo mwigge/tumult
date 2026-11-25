@@ -21,6 +21,10 @@
       "display": "block",
       "background-color": "rgb(244, 246, 248)"
     },
+    "a.sr-only.skip-link": {
+      "color": "rgb(31, 111, 178)",
+      "display": "block"
+    },
     "div.shell": {
       "display": "grid",
       "grid-template-columns": "208px 1fr"
