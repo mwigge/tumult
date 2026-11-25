@@ -107,6 +107,30 @@ and `verdict`, so a word of a kind has one tone on every page. A word that
 its table does not hold is neutral. `src/lib/badge-scan.test.ts` fails on a badge
 class or a tone that is worked out anywhere else.
 
+## Drawers
+
+A drawer is `src/lib/components/Drawer.svelte`, on a native `<dialog>`.
+Give it the id of the heading that names it, and an `onclose` that
+removes it:
+
+```svelte
+<Drawer labelledby={title} {onclose} backdrop>
+    <div class="title" id={title}>{span.span_name}</div>
+</Drawer>
+```
+
+- A drawer is modal by default: it lies over the right edge of the
+  window, `narrow` (480 px) or `wide` (620 px). With `backdrop` it shades
+  the page, and a click on the shade closes it.
+- With `modal={false}` it is a panel in the flow of the page, such as the
+  drawer of the Star Map.
+- Escape closes it. When it opens, the focus goes to its first control,
+  or to its heading with `focus="heading"`. When it closes, the focus
+  goes back to the element that opened it.
+
+`src/lib/components/drawers.test.ts` fails on a drawer built any other
+way: a style with `position: fixed` or a dialog in another file.
+
 ## Stack
 
 | Choice                                           | Why                                                                                                                               |
