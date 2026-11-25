@@ -115,6 +115,13 @@ describe('the plan scenarios of the DORA view', () => {
         expect(textOf(page)).toContain('rts1774.art26');
     });
 
+    it('names one scored row in the singular and two in the plural', () => {
+        const one = textOf(html(block({ rows: ['rts1774.art39'] })));
+        expect.soft(one).toContain('Row rts1774.art39 is scored from them.');
+        const two = textOf(html(block({ rows: ['rts1774.art26', 'rts1774.art39'] })));
+        expect.soft(two).toContain('Rows rts1774.art26 and rts1774.art39 are scored from them.');
+    });
+
     it('says so when no critical or important function is on record', () => {
         const page = html(block({ functions: [] }));
         expect(page).not.toContain('<table');
