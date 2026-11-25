@@ -347,8 +347,8 @@ The page has five tabs:
 - **New entry** records an exercise. See [Record a DR exercise](#record-a-dr-exercise).
 - **Plans** lists the plans with their due dates, and plans an exercise.
 - **Verification queue** lists the submitted records. Open one to sign it off.
-- **All records** lists every record. Open one to see its steps, actions,
-  evidence, sign-offs and audit trail, and to verify it.
+- **All records** lists every record. Open one to see its plan scenarios,
+  steps, actions, evidence, sign-offs and audit trail, and to verify it.
 - **Import** takes records as JSON, as drafts in one batch.
 
 **Plans**, **Verification queue** and **All records** keep to the target in

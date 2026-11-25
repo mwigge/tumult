@@ -774,6 +774,15 @@
       "font-weight": "700",
       "display": "inline"
     },
+    "div.shell > main[main].main > div.manual > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > p[paragraph].line #5": {
+      "display": "block",
+      "margin": "6px 0px"
+    },
+    "div.shell > main[main].main > div.manual > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > p[paragraph].line #5 > span.mono": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "inline"
+    },
     "div.shell > main[main].main > div.manual > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > h3[heading] \"PARTICIPANTS\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "12px",
