@@ -67,7 +67,9 @@ design tokens in `tokens/`, in the DTCG 2025.10 format:
 `npm run build:tokens` writes `src/lib/tokens.css`, the custom properties
 the pages use (`--bg`, `--space-2`), and `src/lib/tokens.gen.ts`, the
 colours, font and sizes for the charts: ECharts draws on a canvas and
-cannot read a custom property. Both are committed. A unit test and CI fail
+cannot read a custom property. It also writes the colours of the CLI HTML
+report, `tumult-cli/src/commands/report/html/tokens.css`: light, and dark
+when the system asks for it. All are committed. A unit test and CI fail
 when they are not what the token files give, so change a token file and
 run the command, never the outputs.
 

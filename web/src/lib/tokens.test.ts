@@ -8,6 +8,8 @@ import { build, resolveTokens } from '../../scripts/build-tokens.mjs';
 
 const WEB = fileURLToPath(new URL('../..', import.meta.url));
 const TOKENS = join(WEB, 'tokens');
+/** The colour block of the CLI report, as a path under web/. */
+const REPORT = '../tumult-cli/src/commands/report/html/tokens.css';
 
 /** An srgb colour as the DTCG format writes it. */
 const colour = (hex: string) => ({
@@ -169,6 +171,25 @@ describe('build', () => {
             /"size": \{\s*"2xs": 9,\s*"xs": 10,\s*"sm": 11,\s*"md": 12,\s*"lg": 15\s*\}/,
         );
         expect(ts).toContain('"weight": 600');
+    });
+
+    it('writes the colour block of the CLI report: light first, dark when the system asks', () => {
+        const css = build(TOKENS)[REPORT];
+        const [light, dark, print] = css.split('@media ');
+
+        // A report is read on its own, so light comes first, at :root.
+        expect(light).toMatch(/\n:root \{\n {4}color-scheme: light dark;\n {4}--bg: #f4f6f8;\n/);
+        expect(light).toContain('\n    --bg-panel: #ffffff;\n');
+        expect(light).toContain('\n    --text-dim: #5b6772;\n');
+        expect(dark).toMatch(
+            /^\(prefers-color-scheme: dark\) \{\n {4}:root \{\n {8}--bg: #0b0e11;\n/,
+        );
+        expect(dark).toContain('\n        --bg-panel: #151b21;\n');
+        expect(dark).toContain('\n        --text-dim: #8b98a5;\n');
+        // Paper is white: in print the page has the colour of a light panel.
+        expect(print).toBe('print {\n    :root {\n        --bg: #ffffff;\n    }\n}\n');
+        // Only colours: the report has its own type and spacing.
+        expect(css).not.toMatch(/--(?:mono|font-|line-height|letter-spacing|space-|radius-|z-)/);
     });
 
     it('writes the committed outputs from the committed token files', () => {

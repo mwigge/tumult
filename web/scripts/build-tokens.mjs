@@ -3,11 +3,12 @@
 // hold DTCG 2025.10 JSON: tumult.resolver.json names the sets and the theme
 // modifier. For each theme this merges the sets in order, resolves every
 // alias and checks every value. It writes src/lib/tokens.css (the custom
-// properties of each theme) and src/lib/tokens.gen.ts (the same values for
-// ECharts, which cannot read CSS). Both are committed, and CI fails when
-// they are not what this writes. It reads only the part of the format that
-// Tumult uses: srgb colours with a hex, font families, dimensions in px or
-// rem, font weights and numbers as numbers, aliases, sets and one modifier.
+// properties of each theme), src/lib/tokens.gen.ts (the same values for
+// ECharts, which cannot read CSS) and the colours of the CLI HTML report.
+// All are committed, and CI fails when they are not what this writes. It
+// reads only the part of the format that Tumult uses: srgb colours with a
+// hex, font families, dimensions in px or rem, font weights and numbers as
+// numbers, aliases, sets and one modifier.
 //
 // Usage: node scripts/build-tokens.mjs
 
@@ -26,6 +27,8 @@ const PAGE_ONLY = 'page';
 const UNITS = ['px', 'rem'];
 // Charts draw on a canvas and cannot read CSS, so this group is only in the TS.
 const CANVAS_ONLY = 'chart.';
+// The colours of the HTML report of `tumult report`, as a path under web/.
+const REPORT_CSS = '../tumult-cli/src/commands/report/html/tokens.css';
 
 /** @typedef {{ value: unknown, type?: string, set: string }} Token */
 /** @typedef {{ set: string, tokens: Record<string, unknown> }} Source */
@@ -275,6 +278,51 @@ function css(fallback, themes) {
 }
 
 /**
+ * The colour roles of a theme as custom properties: name to value.
+ * @param {Map<string, Token>} tokens
+ */
+const colours = (tokens) =>
+    properties(new Map([...tokens].filter(([, token]) => token.type === 'color')));
+
+/** @type {(props: Map<string, string>, indent: string) => string[]} */
+const declarations = (props, indent) =>
+    [...props].map(([name, value]) => `${indent}${name}: ${value};`);
+
+/**
+ * The colours of the CLI report. A report is a file that a reader opens on
+ * its own, so it is light, and dark when the system asks for it, as it was
+ * before the tokens. Its type and spacing are its own.
+ * @param {Record<string, Map<string, Token>>} themes
+ */
+function reportCss(themes) {
+    const light = colours(themes.light);
+    return [
+        '/* Written by web/scripts/build-tokens.mjs from web/tokens/. Do not edit:',
+        '   change a token file and run `npm run build:tokens` in web/. */',
+        '',
+        '/* The colour roles of Krönika. color-scheme makes native widgets, such',
+        '   as scroll bars, follow the light or dark setting of the system. */',
+        ':root {',
+        '    color-scheme: light dark;',
+        ...declarations(light, '    '),
+        '}',
+        '@media (prefers-color-scheme: dark) {',
+        '    :root {',
+        ...declarations(colours(themes.dark), '        '),
+        '    }',
+        '}',
+        '',
+        '/* In print the page is white, as paper is. */',
+        '@media print {',
+        '    :root {',
+        `        --bg: ${light.get('--bg-panel')};`,
+        '    }',
+        '}',
+        '',
+    ].join('\n');
+}
+
+/**
  * A value as the TS writes it: a px dimension, a font weight and a number
  * as a number, as ECharts takes them, and anything else as CSS writes it.
  * @param {Token} token
@@ -331,7 +379,11 @@ function ts(themes) {
  */
 export function build(dir) {
     const { fallback, themes } = readThemes(dir);
-    return { 'src/lib/tokens.css': css(fallback, themes), 'src/lib/tokens.gen.ts': ts(themes) };
+    return {
+        'src/lib/tokens.css': css(fallback, themes),
+        'src/lib/tokens.gen.ts': ts(themes),
+        [REPORT_CSS]: reportCss(themes),
+    };
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
