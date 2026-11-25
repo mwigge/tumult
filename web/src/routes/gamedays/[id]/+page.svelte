@@ -114,7 +114,7 @@
     title={day ? day.title : 'GameDay'}
     back={{ href: '/gamedays', label: 'gamedays' }}
     sub={day
-        ? `${day.experiments.length} experiments · pass threshold ${day.scoring.pass_threshold} · MTTR target ${day.scoring.mttr_target_s}s`
+        ? `${day.experiments.length} experiments · pass threshold ${day.scoring.pass_threshold} · MTTR target ${day.scoring.mttr_target_s}s for a run with no RTO target`
         : undefined}
 />
 {#if error && !day}

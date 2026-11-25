@@ -90,12 +90,12 @@ describe('the DR test register', () => {
         expect(rowOf(html, 'data-target="archive/-"')).toMatch(badge('neutral', 'never tested'));
     });
 
-    it('links the last test to its run or to the manual records, with its date, origin and verdict', () => {
+    it('links the last test to its run or to its manual record, with its date, origin and verdict', () => {
         const orders = rowOf(register(), 'data-target="orders/prod"');
         expect(orders).toContain('href="/experiments/orders-dr"');
         expect(textOf(orders)).toContain(`${day(NOW_MS - 10 * DAY_MS)} automated met`);
         const catalog = rowOf(register(), 'data-target="catalog/prod"');
-        expect(catalog).toContain('href="/manual?tab=records"');
+        expect(catalog).toContain('href="/manual?tab=records&amp;record=01CAT"');
         expect(textOf(catalog)).toContain('manual met');
         expect(textOf(rowOf(register(), 'data-target="archive/-"'))).toContain('no DR test yet');
     });

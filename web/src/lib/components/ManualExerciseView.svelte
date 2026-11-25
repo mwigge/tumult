@@ -1,8 +1,8 @@
 <script lang="ts">
     // The DR detail of a stored record: the recovery against its targets,
-    // the participants and the tester, the TLPT block, the steps in order,
-    // the actions with owners, severities and retests, and the links to what
-    // was tested.
+    // the plan scenarios it tested, the participants and the tester, the
+    // TLPT block, the steps in order, the actions with owners, severities
+    // and retests, and the links to what was tested.
     import { fmtDuration, fmtTs } from '#lib/api.js';
     import { localDay, recoveryVerdict } from '#lib/manual.js';
     import type { ManualDetail } from '#lib/types.js';
@@ -15,6 +15,7 @@
     const actions = $derived(detail.actions ?? []);
     const links = $derived(detail.links ?? []);
     const people = $derived(rec.participants ?? []);
+    const scenarios = $derived(rec.scenarios ?? []);
     const older = $derived(
         Array.isArray(rec.action_items)
             ? rec.action_items.filter((s): s is string => typeof s === 'string')
@@ -82,6 +83,11 @@
         {/if}
         {#if rec.plan_id}
             <p class="line">Fulfils plan <b>{planName || rec.plan_id}</b></p>
+        {/if}
+        {#if scenarios.length > 0}
+            <p class="line">
+                Plan scenarios: <span class="mono">{scenarios.join(', ')}</span>
+            </p>
         {/if}
         <h3>Participants</h3>
         {#if people.length === 0}

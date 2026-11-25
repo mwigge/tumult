@@ -86,6 +86,19 @@ describe('the DR detail of a record', () => {
         expect(html).toContain('payments-db failover');
     });
 
+    it('names the plan scenarios the record tested, and says nothing of none', () => {
+        const tagged: ManualDetail = {
+            ...detail,
+            experiment: { ...experiment, scenarios: ['premises_loss', 'power_outage'] },
+        };
+        expect(shown(tagged)).toMatch(
+            /Plan scenarios:[^<]*<span[^>]*>premises_loss, power_outage</,
+        );
+        expect(shown(detail)).not.toContain('Plan scenarios');
+        const none = { ...detail, experiment: { ...experiment, scenarios: [] } };
+        expect(shown(none)).not.toContain('Plan scenarios');
+    });
+
     it('shows the severities, the tester, the TLPT block and what retested an action', () => {
         const tlpt: ManualDetail = {
             ...detail,

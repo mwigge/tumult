@@ -184,7 +184,19 @@ table.data td {
     border-bottom: var(--border-width-sm) solid var(--border);
     vertical-align: middle;
 }
-table.data tr:last-child td {
+/* A row header reads as a cell, not as a column header: the size, colour
+   and case of a cell, and it wraps as a cell does. */
+table.data th[scope='row'] {
+    color: var(--text);
+    font-size: var(--font-size-md);
+    text-transform: none;
+    letter-spacing: normal;
+    white-space: normal;
+    padding: 7px var(--space-2-5);
+    border-bottom: var(--border-width-sm) solid var(--border);
+}
+table.data tr:last-child td,
+table.data tr:last-child th[scope='row'] {
     border-bottom: none;
 }
 table.data tr.clickable {

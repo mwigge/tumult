@@ -731,6 +731,36 @@ test('the plan scenarios of each function show their state and their source', as
     await expect(panel).toContainText('A scenario with no test is a gap, not a pass.');
 });
 
+test('the plan scenario table of three functions fits a wide screen', async ({ page }) => {
+    const [first] = scenarioBlock.functions;
+    const functions = [
+        ['cif-0001', 'Order processing', 'critical'],
+        ['cif-0002', 'Messaging', 'important'],
+        ['cif-0003', 'Batch settlement', 'important'],
+    ].map(([entity_id, name, tier]) => ({ ...first, entity_id, name, tier }));
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await mockApi(page, [], { dora: { scenarios: { ...scenarioBlock, functions } } });
+    await page.goto('/scores?view=dora');
+    const panel = page.getByTestId('dora-scenarios');
+    await expect(panel.getByRole('columnheader', { name: /Batch settlement/ })).toBeVisible();
+    const fit = await panel.locator('.scroll').evaluate((box) => {
+        const edge = box.getBoundingClientRect();
+        return {
+            overflow: box.scrollWidth - box.clientWidth,
+            cut: [...box.querySelectorAll('th[scope="col"]')]
+                .filter((th) => {
+                    const cell = th.getBoundingClientRect();
+                    return cell.left < edge.left || cell.right > edge.right;
+                })
+                .map((th) => (th.textContent ?? '').trim()),
+        };
+    });
+    expect
+        .soft(fit.overflow, 'the table scrolls sideways by this many pixels')
+        .toBeLessThanOrEqual(0);
+    expect(fit.cut, 'column headers cut by the edge of the panel').toEqual([]);
+});
+
 test('a daemon that sends no plan scenarios shows no scenario panel', async ({ page }) => {
     await mockApi(page);
     await page.goto('/scores?view=dora');

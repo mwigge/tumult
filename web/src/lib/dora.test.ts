@@ -5,6 +5,7 @@ import {
     componentsOption,
     coverageHue,
     heatmapLegend,
+    heatmapOption,
     historyLegend,
     historyOption,
     historyStateText,
@@ -14,7 +15,7 @@ import {
     STATUS_NAMES,
 } from './dora';
 import { chartTokens } from './echarts';
-import type { MaturityHistoryPoint, MaturityReport } from './types';
+import type { DoraCell, DoraReport, MaturityHistoryPoint, MaturityReport } from './types';
 
 const point = (over: Partial<MaturityHistoryPoint>): MaturityHistoryPoint => ({
     quarter: '2026-Q2',
@@ -185,5 +186,37 @@ describe('heatmapLegend', () => {
                 { label: 'no events in window', glyph: '–' },
             ]);
         }
+    });
+});
+
+describe('heatmapOption', () => {
+    const cell = (article: string): DoraCell => ({
+        article,
+        entity_id: 'cif-0001',
+        coverage: 0.5,
+        unknown: 0,
+        state: 'known',
+        status: 'existing',
+        status_rank: 2,
+        gaps: 1,
+    });
+    const report = {
+        articles: [{ article: '11' }, { article: 'rts1774' }],
+        rows: [{ entity_id: 'cif-0001', label: 'Payments', tier: 'critical' }],
+        cells: [cell('11'), cell('rts1774')],
+    } as unknown as DoraReport;
+
+    interface Heatmap {
+        xAxis: { data: string[] };
+        tooltip: { formatter: (p: { data: unknown }) => string };
+        series: { data: (DoraCell & { row: string })[] }[];
+    }
+
+    it('names a DORA article by its number and the RTS rows by the act', () => {
+        const option = heatmapOption(report, 'coverage', 'tumult-dark') as unknown as Heatmap;
+        expect.soft(option.xAxis.data).toEqual(['Art. 11', 'RTS 2024/1774']);
+        const tips = option.series[0].data.map((data) => option.tooltip.formatter({ data }));
+        expect(tips[0]).toMatch(/^<b>Art\. 11<\/b> · Payments/);
+        expect(tips[1]).toMatch(/^<b>RTS 2024\/1774<\/b> · Payments/);
     });
 });

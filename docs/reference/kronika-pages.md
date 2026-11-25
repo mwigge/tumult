@@ -190,7 +190,7 @@ default `failover`, `drill`, `restore` and `backup`.
   drawn at the least its RTO was: the time from the outage seen to the end
   of the watch.
 - **DR tests in the period.** Newest first, 20 to a page. A run links to
-  its page, and a manual record to the records of the Manual page.
+  its page, and a manual record to that record, open on the Manual page.
 - **Filters.** A target, an environment and a period of 90 days, 1 year or
   3 years. The URL keeps them, so a link opens the same view. The period
   selects the tests. The register shows the targets as they are now.
@@ -347,13 +347,15 @@ The page has five tabs:
 - **New entry** records an exercise. See [Record a DR exercise](#record-a-dr-exercise).
 - **Plans** lists the plans with their due dates, and plans an exercise.
 - **Verification queue** lists the submitted records. Open one to sign it off.
-- **All records** lists every record. Open one to see its steps, actions,
-  evidence, sign-offs and audit trail, and to verify it.
+- **All records** lists every record. Open one to see its plan scenarios,
+  steps, actions, evidence, sign-offs and audit trail, and to verify it.
 - **Import** takes records as JSON, as drafts in one batch.
 
 **Plans**, **Verification queue** and **All records** keep to the target in
 the URL: `/manual?tab=records&target=payments-db&environment=production`.
 The Star Map drawer opens the page this way. **Show every target** clears it.
+A link can also open one record in the list: `/manual?tab=records&record=<id>`.
+The DR page links to a manual DR test this way.
 
 When the API refuses a change, the page shows the reason the API gives.
 
@@ -755,19 +757,19 @@ query is read only.
 
 ### Reports
 
-Route `/reports`. Compliance reports R1, R2 and R3 with their SHA-256, an
+Route `/reports`. Compliance reports R1 to R5 with their SHA-256, an
 HTML preview and a PDF download, and quick metric digests.
 
 ![Reports](../images/3.0/screenshots/reports.png)
 
 - **API:** `GET /api/reports/v2`, `POST /api/reports/v2/generate`,
   `GET /api/reports`, `POST /api/reports/generate`, `GET /api/experiments`,
-  `GET /api/metrics`.
+  `GET /api/metrics`, `GET /api/dr`, `GET /api/manual/experiments`.
 
-The page makes R1, R2 and R3. The two DR reports, R4 and R5, are made
-through the API or with `tumultd report`, and the list shows them as R4
-and R5. Each report states the SHA-256
-of its PDF and the time it was built.
+The page makes all five. For R4, pick a target of the DR register and a
+period of 90 days, 1 year or 3 years. For R5, pick a submitted or verified
+manual record. The API and `tumultd report` make them too. Each report
+states the SHA-256 of its PDF and the time it was built.
 
 #### DR test report (R4)
 

@@ -151,9 +151,15 @@ export function cellLines(cell: DoraCell): string[] {
     return lines;
 }
 
+/** The acts the API names by a key that is not an article number. */
+const ACTS: ReadonlyMap<string, string> = new Map([['rts1774', 'RTS 2024/1774']]);
+
+/** How an article of the API reads: `Art. 11`, or the act of the RTS rows, `RTS 2024/1774`. */
+const articleLabel = (article: string) => ACTS.get(article) ?? `Art. ${article}`;
+
 /** The heatmap tooltip of a cell. */
 function cellTooltip(cell: DoraCell & { row: string }): Tip {
-    return tip([strong(`Art. ${cell.article}`), ` · ${cell.row}`], ...cellLines(cell));
+    return tip([strong(articleLabel(cell.article)), ` · ${cell.row}`], ...cellLines(cell));
 }
 
 /** The cell of an article and a row, when that article applies to it. */
@@ -199,7 +205,7 @@ export function heatmapOption(
         xAxis: {
             type: 'category',
             position: 'top',
-            data: articles.map((a) => `Art. ${a}`),
+            data: articles.map(articleLabel),
             splitArea: { show: false },
             axisTick: { show: false },
         },

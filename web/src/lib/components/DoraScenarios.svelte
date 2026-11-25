@@ -10,6 +10,10 @@
     let { scenarios }: { scenarios: DoraScenarios } = $props();
 
     const cellOf = (f: DoraScenarioFunction, id: string) => f.scenarios.find((s) => s.id === id);
+    // The ids in words: "a", "a and b" or "a, b and c".
+    const listOf = (ids: string[]) =>
+        ids.length < 2 ? ids.join('') : `${ids.slice(0, -1).join(', ')} and ${ids.at(-1)}`;
+    const one = $derived(scenarios.rows.length === 1);
 </script>
 
 <Panel tag="section" title="Plan scenarios per function" data-testid="dora-scenarios">
@@ -18,8 +22,9 @@
         <a href={scenarios.source_url} rel="external noopener noreferrer" target="_blank"
             >{scenarios.source}</a
         >
-        that each critical or important function was tested against. Rows
-        <span class="mono">{scenarios.rows.join(', ')}</span> are scored from them.
+        that each critical or important function was tested against. {one ? 'Row' : 'Rows'}
+        <span class="mono">{listOf(scenarios.rows)}</span>
+        {one ? 'is' : 'are'} scored from them.
     </p>
     {#if scenarios.functions.length === 0}
         <State kind="empty">

@@ -29,6 +29,8 @@
     };
 
     const tab = $derived(page.url.searchParams.get('tab') ?? 'entry');
+    // The record of the URL is open in the list; the DR page links here so.
+    const record = $derived(page.url.searchParams.get('record'));
     // The target of the URL filters the records and the plans; the Star Map
     // drawer links here with the target of its system.
     const filter = $derived(targetFilterOf(page.url.searchParams));
@@ -172,6 +174,7 @@
                 {canReview}
                 canEdit={canWrite}
                 {filter}
+                {record}
                 onedit={editDraft}
             />
         {/if}
