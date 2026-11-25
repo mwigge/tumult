@@ -6,6 +6,83 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [3.0.4] - 2026-11-25
+
+This release tests disaster recovery (DR) for real, with evidence and
+reports. A DR run measures its RTO from the outage its probes saw and its
+RPO from data it wrote before the fault, and a run that does not come back
+fails. A DR exercise that people run by hand is a full record, with a plan,
+files, sign-offs and an audit trail. A new page and three reports show the
+DR tests of each target. The lake moves from schema v21 to v26 on first
+open, and a 3.0.3 build cannot open it after that. Read the
+[3.0.4 release notes](docs/releases/3.0.4.md) before you upgrade.
+
+### Added
+
+- Experiments: a `recovery` block sets how long a run watches for recovery after the method (`window_s`, default 30, at most 3600) and how often it reads the probes (`interval_s`, default 1). `tumult run --recovery-window <SECONDS>` sets the window for one run. The CLI, the daemon, MCP runs and GameDays use it. A window that is not above 0, longer than an hour or shorter than its interval is refused, and an RTO longer than the window logs `recovery.window.shorter_than_rto`. A file without the block runs as before.
+- Journals: `post_result` records `impact_observed`, `outage_started_at_ns` and `recovered_at_ns`. A verdict has `recovered` and an optional `reason`, shown in the run summary, the HTML report and the run page ("at least N s, not recovered", or the reason).
+- RPO: a run measures the seconds of committed writes it lost. A step writes markers before the fault, and a steady-state probe with the new tolerance `type: number` reads them back after the recovery and prints the seconds lost. An `rpo` objective on `probe.<name>.lost_s` judges that number, and `rpo_measured_s` is filled for the run, the lake and the reports. A sample of a `number` or `range` probe keeps the number it printed (`probe_samples.reading`).
+- Robustness: three objective metrics read the windows of an oha load. `load.p95_drift_pct` and `load.error_rate_drift` judge how far a soak drifts, and `load.spike_recovery_s` the seconds until the p95 is back within 1.2 times the p95 before a spike. A spike takes `sample_interval_s` to cut its stages into windows. Too few windows is `inconclusive`, and a p95 that is not back by the end of the load breaches.
+- Estimates: `analysis.estimate_recovery_delta_s` is the measured RTO minus `expected_recovery_s`, and `analysis.estimate_data_loss_correct` says whether `expected_data_loss` matches the measured RPO ("Data loss as expected" in the HTML report).
+- Telemetry: the root span of a run carries `resilience.outcome.impact_observed`, `rto_target_s`, `rto_state`, `recovered`, `rpo_target_s`, `rpo_measured_s` and `rpo_state` when the run has the fact. The HTML report header names the target and its environment.
+- PostgreSQL plugin: the DR steps `backup` (`pg_dump -Fc`), `restore` (drop, make again and `pg_restore` in one transaction), `stop-primary` with its rollback `start-primary`, `promote-replica` (`pg_promote`), `write-markers` and the probe `markers-lost`.
+- Manual records hold a DR exercise: the RTO and RPO planned and actual, whether the data was verified after the recovery, the participants with their roles, the steps in order, actions with owners, due dates and a severity, and links to what was tested. The new exercise types `restore` and `backup` count as DR by default (`manual_kinds`). A record names its tester and whether internal or external, and a TLPT record keeps its attestation and test summary report references.
+- Manual plans: an exercise can be planned with an owner and a due date (`/api/manual/plans`). A verified record that names a plan and tests what it planned fulfils it. A DR plan with no interval is due every 365 days, and a plan past its due date is the risk finding `manual_exercise_overdue`.
+- Manual sign-off: verifying a record is a sign-off. `manual_required_signoffs` in the `score:` section of the org file sets how many approvals, each by another user, an exercise type needs (one when not listed). The user who entered or changed a record may not sign it off, and one user signs once.
+- Manual evidence files: `POST /api/manual/experiments/{id}/attachments?name=<file name>` takes a PDF, PNG, JPEG, text, CSV or JSON file of at most 25 MB, its type read from its bytes. Tumult keeps it once, by its SHA-256, in `attachments` next to the lake database, and serves it as a download with `X-Content-Type-Options: nosniff` and `Content-Security-Policy: sandbox`. The lake export, `tumult store backup` and `tumult store restore` carry the files, hash-checked.
+- Manual audit verify: `GET /api/manual/experiments/{id}/audit/verify` and `GET /api/manual/plans/{id}/audit/verify` check the seal, the chained audit rows (`link_hash`), the sign-offs and the files, and name each problem by its table and row.
+- CLI: `tumult manual` lists and shows records, creates a draft from a TOON or JSON file, submits, signs off, attaches a file or a link, verifies the audit trail (exit 1 when it is not ok), and lists, shows, creates and cancels plans. Every read takes `--format json`.
+- MCP: `tumult_manual_list`, `tumult_manual_get`, `tumult_manual_create_draft` and `tumult_manual_plans_list`. No MCP tool submits, signs off, verifies or attaches evidence: an agent may draft, a person signs. The MCP server has 44 tools.
+- Krönika: the Manual page records a DR exercise end to end, with the plan it fulfils, the planned and actual RTO and RPO, people, steps and actions. New tabs list the Plans, overdue ones marked, and bring back the JSON Import. An open record shows its files with type, size and SHA-256, takes a file or a link, takes a sign-off and says how many are still needed, and runs the audit verify.
+- Lake: the view `dr_tests` has one row per DR test, a run of kind `dr` or a submitted or verified manual DR record, with the RTO and RPO planned and measured and a verdict (`met`, `breached`, `not_recovered`, `not_measured`). A due register gives each target its last DR test, its interval, its next due date and a state (`ok`, `due`, `overdue`, `never_tested`).
+- API: `GET /api/dr` gives the DR view of each target and its DR tests of a period, with the filters `target`, `environment`, `from` and `to` (Viewer).
+- Krönika: a Disaster recovery page (`/dr`) shows the due register of each target, a chart of its RTO and RPO over time, and its DR tests, automated and manual. The Star Map drawer of a system links to its DR page and to its manual records.
+- Reports: the DR test report (R4) of a target over a period and the DR exercise report (R5) of one manual DR record, through `POST /api/reports/v2/generate` (`dr-test`, `dr-exercise`) and `tumultd report --template`.
+- Risks: `recovery_not_measured` (a target declares an RTO and none of its DR runs of the last 30 days measured a recovery), `rpo_missed` (a run or a verified record lost more data than its RPO allows) and `dr_test_overdue` (a target past the due date of its next DR test, with no planned exercise that covers it).
+- Trend: `tumult trend` and the MCP tool `tumult_trend` take `rto_measured_s`, `rto_margin_s`, `rpo_measured_s` and `rpo_margin_s`. A run that did not recover is a point marked "not recovered", with the time it watched as a bound. `tumult trend --format json` prints the points, the summary and the counts.
+- DORA: the 13 plan scenarios of Delegated Regulation (EU) 2024/1774, such as `cyber_attack`, `backup_restore` and `power_outage`. A run names the scenarios it tests in `regulatory.scenarios`, a manual record in `scenarios`, and an unknown id is refused with the nearest one. The requirement registry (`2026.11.2`) gains `rts1774.art26` for the full framework and `rts1774.art39` for the simplified one. `GET /api/dora` and the DORA view show each scenario of each critical or important function as passed, failed, overdue or missing.
+- Examples: `postgres-restore-rpo` measures an RPO for real in the demo. It writes markers, backs up, writes markers for 4 more seconds, drops the database and restores the backup. `postgres-failover` stops the primary and promotes the new streaming standby `demo-postgres-standby`.
+- Demo: `make demo-check` runs both DR examples on a fresh Postgres pair and prints the RTO and RPO each measured, and checks the score of the demo GameDay. `scripts/dr-check.py` then asks the daemon of the demo for the DR page, a DR test report, the evidence pack and the plan scenarios.
+- Images: the `tumult` image has the PostgreSQL 16 client (`postgresql-client-16`) for the PostgreSQL plugin.
+- Docs: a guide to DR and robustness tests (`docs/guides/disaster-recovery.md`), and new pictures of the DR page, a DR run, the DR reports and the plan scenarios, made from real runs and records.
+- Tests: an examples lint refuses a steady-state probe that writes or repairs, a `kind: dr` example whose method breaks nothing, and an RTO longer than the recovery window. The shipped experiments test runs the regulatory check of `tumult validate` on every shipped file.
+
+### Changed
+
+- RTO: the clock runs from the first failing read of a steady-state probe after the method started to the first passing read after the last failure. It ran from the end of the method, so an outage inside the method measured 0 s. `post_result.recovery_time_s` keeps its meaning.
+- A run whose probes never failed saw no outage. It has no `mttr_s`, its RTO is `inconclusive` with the reason "no outage observed", and it is no evidence of recovery. The overview MTTR, the executive and GameDay reports and `metrics/mttr.yaml` leave it out. They counted it as 0 s.
+- JUnit: one test case per objective. A breached blocking objective, such as the RTO, fails its case and so the CI job. An objective the run did not measure is skipped, and a major or minor breach passes with a note. The suite has `errors` and `skipped` counts.
+- `tumult validate` refuses an objective whose kind its metric does not measure, an `rpo` objective on any metric but `probe.<name>.lost_s` or with an operator other than `lte`, and a `${...}` that nothing fills. It takes `--var KEY=VALUE` like `tumult run`, and the MCP tool `tumult_validate` runs the same check. The kind check also runs when a run starts.
+- GameDays and `tumult compliance` judge each run against its own `rto_target_s`, else the `scoring.mttr_target_s` of the GameDay or 30 s. A run that measured no recovery is left out, or is a failed recovery under `scoring.recovery_required: true`, which nothing read before. A GameDay where no run measured a recovery has no recovery score ("not measured"); it had 1.0.
+- Risks and scores: a run that did not recover raises `recovery_target_missed`, gives 0 to the recovery part of the resilience score and fails DORA Art. 12(6). A verified manual record counts against its own RTO and RPO.
+- DORA: Art. 11(6) switchover, Art. 12(2), Art. 16(1)(f) and RTS 2024/1774 Art. 40 count a run only when it ran a `backup`, `restore` or `promote-replica` step of the PostgreSQL plugin, read from its trace or else its definition. A run whose step failed is a failed test.
+- DORA: a requirement id has one form, the registry id (`dora.art24.6`). A manual record or an experiment file that names a DORA id the registry does not know is refused with the nearest id. The older forms still read.
+- Estimates: the estimate of a run is judged by the outcome it measured. A fault with no effect that was expected unaffected scores 1.0 (it scored 0.0), and a run whose method failed or that was stopped has no estimate accuracy.
+- Manual API: a field it does not know is refused with 422 on every body, and a self review answers 422 (it was 400). A draft is no longer on `GET /api/experiments`. The seal of a record also covers its id, its entry time, the reviewer, the review and the DR detail (`hash_version` 2); a record sealed before keeps version 1 until its next change.
+- Evidence pack (R2): the DORA matrix comes from the requirement registry and the DORA score (it said "Unmapped"), each test gives its kind, RTO and RPO, and "Independence verified: N of M tests name an external tester" replaces the line that independence was not verified.
+- `run_roots.recovery_time_s` of a run stored as a journal is its `mttr_s`, so a run without objectives counts in the overview MTTR.
+- Examples: `checkout-spike-oha` is `kind: robustness` and runs 2 s windows, and `checkout-soak-oha` has a p95 drift objective. `k8s-zone-failover` watches for 180 s, longer than its RTO of 120 s, reads its node from the configuration entry `zone_a_node`, and has no blocking `post-availability` objective.
+- Demo: the steady-state probes of the Krönika experiments only read, and controls or steps set the stage. Each fault is held long enough for a probe to see it.
+- Docs: `scripts/docs-shots/shoot.sh` builds its image with at most 12 GB of memory and CPUs 0 to 7 (`DOCS_SHOTS_BUILD_MEMORY`, `DOCS_SHOTS_BUILD_CPUS`).
+- Lake: schema v26 (from v21) adds the manual DR record, `probe_samples.reading`, what a DR run measured, the view `dr_tests` and the plan scenarios. A lake migrates on open, and a 3.0.3 build refuses it.
+
+### Deprecated
+
+- The Redis action `simulate-failover`. It is now `simulate-hang`, a `DEBUG SLEEP` hang. The old name still runs and writes a deprecation warning to the step.
+
+### Fixed
+
+- A DR run that never recovers breaches its RTO, with the time from the outage seen to the end of the watch as the least it was. It was inconclusive, so never recovering scored better than recovering late.
+- The DR examples tested no DR. `postgres-failover` killed idle connections and killed none, and the probes of five Krönika experiments repaired what they checked. The demo GameDay now scores `PARTIAL` with a recovery of 0.75; it scored `NON-COMPLIANT` with 0.00.
+- Demo: the old `api-worker-freeze` probe started a heartbeat worker that no step stopped. The worker now starts and stops with the run.
+- macOS: a script that timed out or was stopped could leave a child alive. Its process group now gets SIGKILL again after the shell is reaped, until no process is left (at most 100 ms).
+- `tumult trend --metric <unknown>` prints the error only, not `Loaded N journal(s)` first.
+
+### Security
+
+- `cookie` 0.18.3 for RUSTSEC-2026-0594 (private cookie nonces could repeat in a process that forks). Tumult uses no private cookies of this crate.
+- `arrow` and `parquet` 60.2.0 for RUSTSEC-2026-0595 (bloom filters written as plaintext into encrypted Parquet files). Tumult writes no encrypted Parquet.
+
 ## [3.0.3] - 2026-11-22
 
 This release makes the docs short, light and true, with a picture for each
