@@ -2,49 +2,37 @@
 // makes of them. No chart is loaded here, so that the UI and the script of
 // the CLI report each load only their own.
 
-// Chart tokens per theme, matching the variables in lib/theme.css.
+import { tokens } from './tokens.gen';
+
 export type ChartTheme = 'tumult-dark' | 'tumult-light';
 
-export const DARK = {
-    text: '#8b98a5',
-    axis: '#33404c',
-    split: '#242d36',
-    accent: '#5eb1ef',
-    ok: '#34d399',
-    warn: '#f59e0b',
-    fail: '#ef4444',
-    tooltip: {
-        backgroundColor: '#151b21',
-        borderColor: '#33404c',
-        textStyle: { color: '#d8dee4', fontSize: 12 },
-    },
-} as const;
+/**
+ * What a chart draws in, from the colour roles of a theme: the same values
+ * the pages take from tokens.css. Generic, so that DARK and LIGHT keep each
+ * colour as its type.
+ */
+function chartRoles<T extends (typeof tokens)['dark' | 'light']>(t: T) {
+    return {
+        text: t['text-dim'],
+        axis: t['border-strong'],
+        split: t.border,
+        accent: t.accent,
+        ok: t.ok,
+        warn: t.warn,
+        fail: t.fail,
+        tooltip: {
+            backgroundColor: t['bg-panel'],
+            borderColor: t['border-strong'],
+            textStyle: { color: t.text, fontSize: 12 },
+        },
+    } as const;
+}
 
-export const LIGHT = {
-    text: '#5b6772',
-    axis: '#c5ced6',
-    split: '#e3e8ed',
-    accent: '#1f6fb2',
-    ok: '#0f8a5f',
-    warn: '#b45309',
-    fail: '#c0392b',
-    tooltip: {
-        backgroundColor: '#ffffff',
-        borderColor: '#c5ced6',
-        textStyle: { color: '#1b2329', fontSize: 12 },
-    },
-} as const;
+export const DARK = chartRoles(tokens.dark);
+export const LIGHT = chartRoles(tokens.light);
 
 // Series palette (Okabe-Ito, colour-blind safe); status hues stay reserved.
-export const PALETTE = [
-    '#5eb1ef',
-    '#E69F00',
-    '#009E73',
-    '#CC79A7',
-    '#56B4E9',
-    '#D55E00',
-    '#F0E442',
-];
+export const PALETTE: string[] = [...tokens.dark.chart.series];
 
 export function themeSpec(t: typeof DARK | typeof LIGHT) {
     const axis = {
