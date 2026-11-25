@@ -77,7 +77,7 @@ hash chain. `GET /api/runs/{id}/audit/verify` checks the chain.
 
 ![The stop asks you to confirm](../images/3.0/screenshots/run-stop-confirm.png)
 
-![Run detail after a stop: timeline, rollback status, audit trail](../images/3.0/screenshots/run-stopped.png)
+![Run detail after a stop: the rollback status and the span timeline](../images/3.0/screenshots/run-stopped.png)
 
 ## Roles and sign-in
 

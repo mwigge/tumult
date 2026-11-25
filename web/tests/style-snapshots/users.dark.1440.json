@@ -570,17 +570,18 @@
       "gap": "4px"
     },
     "div.shell > main[main].main > div.panel #2 > form[form].create > label[LabelText] #3 > input[textbox] \"Password (optional) 12+ characters if se…\"": {
-      "color": "rgb(255, 255, 255)",
+      "color": "rgb(216, 222, 228)",
       "font-family": "Arial",
-      "font-size": "13.3333px",
+      "font-size": "13px",
       "line-height": "normal",
       "display": "block",
-      "background-color": "rgb(59, 59, 59)",
-      "border-top": "2px inset rgb(133, 133, 133)",
-      "border-right": "2px inset rgb(133, 133, 133)",
-      "border-bottom": "2px inset rgb(133, 133, 133)",
-      "border-left": "2px inset rgb(133, 133, 133)",
-      "padding": "1px 2px"
+      "background-color": "rgb(17, 22, 27)",
+      "border-top": "1px solid rgb(97, 109, 121)",
+      "border-right": "1px solid rgb(97, 109, 121)",
+      "border-bottom": "1px solid rgb(97, 109, 121)",
+      "border-left": "1px solid rgb(97, 109, 121)",
+      "border-radius": "6px",
+      "padding": "8px"
     },
     "div.shell > main[main].main > div.panel #2 > form[form].create > label[LabelText] #3 > span.hint": {
       "color": "rgb(127, 140, 151)",

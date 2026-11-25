@@ -144,7 +144,8 @@ for how a verdict is made.
 ### Scores
 
 Route `/scores`. The company score with a trend, a treemap of domains that
-drills down to members, and a member table.
+drills down to members, and a member table. Two tabs at the top switch
+between **Org scores** and **DORA and maturity**.
 
 ![Scores: one unit and its members](../images/3.0/screenshots/scores-teams.png)
 
@@ -875,5 +876,15 @@ Route `/login`. Sign in, and change the password at the first sign in.
   `GET /api/entities`.
 - Forecast bands of semantic metrics: `GET /api/forecast`.
 
-Charts follow the theme you pick (dark, light or auto), and tooltips escape
-every value that comes from the lake.
+## Theme and small screens
+
+The theme button at the foot of the sidebar switches between dark, light
+and auto. Auto follows your system, and dark is the default. The browser
+keeps your choice. The pages and the charts follow the theme, and tooltips
+escape every value that comes from the lake.
+
+![The Overview in the dark theme](../images/3.0/screenshots/overview-dark.png)
+
+Below 900 px wide, the sidebar folds behind the **Menu** button of a top
+bar, and a wide table scrolls inside its panel. The
+[UI standard](ui-standard.md#phone-layout) shows it.

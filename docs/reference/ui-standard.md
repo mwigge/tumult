@@ -70,6 +70,14 @@ never the only signal: a word or a mark says the same thing.
 
 `npm run build:tokens` draws the swatches from the tokens.
 
+The theme button at the foot of the sidebar switches between dark, light
+and auto, which follows the system. Dark is the default. The same page in
+each theme:
+
+![The Overview in the light theme](../images/3.0/screenshots/overview.png)
+
+![The Overview in the dark theme](../images/3.0/screenshots/overview-dark.png)
+
 Krönika meets the contrast of WCAG 2.2 AA in both themes.
 `web/src/lib/contrast.test.ts` checks it from the tokens, and names each
 pair under its bar with its ratio:
@@ -99,6 +107,10 @@ scale of today.
 - Headings go down one level at a time, from the h1 of the page.
 
 ## Components
+
+<!-- The pictures of the components, the states, the keyboard and the phone
+layout come from web/docs-shots/ui-standard.spec.ts, on the mocked pages of
+the style snapshot. To take them again, run npm run shots:ui-standard in web/. -->
 
 Each part is a component in `web/src/lib/components/`. A page uses the
 component and does not build the part by hand: scan tests fail on a badge,

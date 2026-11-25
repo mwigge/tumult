@@ -356,7 +356,8 @@ select,
 textarea,
 input[type='text'],
 input[type='search'],
-input[type='number'] {
+input[type='number'],
+input[type='password'] {
     background: var(--bg-raised);
     border: var(--border-width-sm) solid var(--border-input);
     color: var(--text);

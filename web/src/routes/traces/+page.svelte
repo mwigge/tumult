@@ -71,10 +71,12 @@
 
     const scatterOption: EChartsCoreOption = $derived.by(() => {
         if (!durations || durations.points.length === 0) return {};
+        // Each line is named at its right end. p95 and p99 are often the same,
+        // so p95 is named below its line and the others above theirs.
         const markLines = [
-            { v: durations.p50_ms, label: 'p50', color: tokens.text },
-            { v: durations.p95_ms, label: 'p95', color: tokens.warn },
-            { v: durations.p99_ms, label: 'p99', color: tokens.fail },
+            { v: durations.p50_ms, label: 'p50', color: tokens.text, side: 'insideEndTop' },
+            { v: durations.p95_ms, label: 'p95', color: tokens.warn, side: 'insideEndBottom' },
+            { v: durations.p99_ms, label: 'p99', color: tokens.fail, side: 'insideEndTop' },
         ].filter((l) => l.v !== null);
         const data: [number, number, string][] = durations.points.map((p) => [
             p.ts_ns / 1e6,
@@ -114,6 +116,7 @@
                         data: markLines.map((l) => ({
                             name: l.label,
                             yAxis: l.v,
+                            label: { position: l.side },
                             lineStyle: { color: l.color, type: 'dashed' },
                         })),
                     },
