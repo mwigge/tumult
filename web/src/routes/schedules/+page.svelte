@@ -135,7 +135,7 @@
     </span>
 </div>
 
-<div class="panel" style="margin-bottom: 14px">
+<div class="panel" style="margin-bottom: var(--space-3-5)">
     {#if error}
         <div class="state error">Failed to load schedules: {error}</div>
     {:else if !schedules}
@@ -200,7 +200,9 @@
                 {/each}
             </tbody>
         </table>
-        {#if rowError}<div class="state error" style="margin-top: 8px">{rowError}</div>{/if}
+        {#if rowError}<div class="state error" style="margin-top: var(--space-2)">
+                {rowError}
+            </div>{/if}
     {/if}
 </div>
 
@@ -268,7 +270,7 @@
                 Scheduled runs go through the normal run path — production-classified environments
                 still park for approval.
             </div>
-            {#if createError}<div class="state error" style="margin-top: 10px">
+            {#if createError}<div class="state error" style="margin-top: var(--space-2-5)">
                     {createError}
                 </div>{/if}
         {/if}
@@ -278,16 +280,16 @@
 <style>
     .actions {
         display: flex;
-        gap: 8px;
+        gap: var(--space-2);
     }
     .btn {
         background: var(--bg-hover);
-        border: 1px solid var(--border-strong);
+        border: var(--border-width-sm) solid var(--border-strong);
         color: var(--text);
-        border-radius: 6px;
-        padding: 6px 14px;
+        border-radius: var(--radius-xl);
+        padding: var(--space-1-5) var(--space-3-5);
         cursor: pointer;
-        font-size: 13px;
+        font-size: var(--font-size-md);
         white-space: nowrap;
     }
     .btn:hover {
@@ -304,19 +306,19 @@
     .create {
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-        gap: 12px 18px;
+        gap: var(--space-3) var(--space-4-5);
         align-items: end;
     }
     .create label {
         display: flex;
         flex-direction: column;
         gap: 5px;
-        font-size: 12.5px;
+        font-size: var(--font-size-sm);
         color: var(--text-dim);
     }
     .hint {
         color: var(--text-faint);
-        font-size: 12px;
-        margin-top: 10px;
+        font-size: var(--font-size-xs);
+        margin-top: var(--space-2-5);
     }
 </style>

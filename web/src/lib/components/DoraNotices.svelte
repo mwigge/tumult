@@ -107,19 +107,19 @@
 
 <style>
     .notice {
-        margin-top: 10px;
-        padding: 6px 10px;
-        border: 1px solid var(--border-strong);
+        margin-top: var(--space-2-5);
+        padding: var(--space-1-5) var(--space-2-5);
+        border: var(--border-width-sm) solid var(--border-strong);
         border-left: 3px solid var(--warn);
-        border-radius: 4px;
-        font-size: 12.5px;
+        border-radius: var(--radius-md);
+        font-size: var(--font-size-sm);
     }
     .facts {
         display: grid;
         grid-template-columns: max-content 1fr;
-        gap: 4px 16px;
-        margin: 10px 0 0;
-        font-size: 12.5px;
+        gap: var(--space-1) var(--space-4);
+        margin: var(--space-2-5) 0 0;
+        font-size: var(--font-size-sm);
     }
     .facts dt {
         color: var(--text-dim);
@@ -128,11 +128,11 @@
         margin: 0;
         display: flex;
         flex-wrap: wrap;
-        gap: 4px 12px;
+        gap: var(--space-1) var(--space-3);
         align-items: baseline;
     }
     .dim {
         color: var(--text-faint);
-        font-size: 11.5px;
+        font-size: var(--font-size-2xs);
     }
 </style>

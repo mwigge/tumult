@@ -79,7 +79,9 @@
                     />
                 </label>
                 {#if error}
-                    <div class="state error" style="padding: 4px 0; text-align: left">{error}</div>
+                    <div class="state error" style="padding: var(--space-1) 0; text-align: left">
+                        {error}
+                    </div>
                 {/if}
                 <button
                     class="primary"
@@ -125,7 +127,9 @@
                 </label>
                 <div class="hint">Minimum 12 characters.</div>
                 {#if error}
-                    <div class="state error" style="padding: 4px 0; text-align: left">{error}</div>
+                    <div class="state error" style="padding: var(--space-1) 0; text-align: left">
+                        {error}
+                    </div>
                 {/if}
                 <button
                     class="primary"
@@ -150,9 +154,9 @@
         width: 340px;
     }
     .login-panel .brand {
-        padding: 0 0 12px;
-        border-bottom: 1px solid var(--border);
-        margin-bottom: 16px;
+        padding: 0 0 var(--space-3);
+        border-bottom: var(--border-width-sm) solid var(--border);
+        margin-bottom: var(--space-4);
     }
     .login-panel .brand .name {
         font-size: 17px;
@@ -161,28 +165,28 @@
     }
     .login-panel .brand .tag {
         color: var(--text-faint);
-        font-size: 11px;
-        margin-top: 2px;
+        font-size: var(--font-size-3xs);
+        margin-top: var(--space-0-5);
     }
     form {
         display: flex;
         flex-direction: column;
-        gap: 12px;
+        gap: var(--space-3);
     }
     label {
         display: flex;
         flex-direction: column;
         gap: 5px;
-        font-size: 12.5px;
+        font-size: var(--font-size-sm);
         color: var(--text-dim);
     }
     input[type='password'] {
         background: var(--bg-raised);
-        border: 1px solid var(--border-strong);
+        border: var(--border-width-sm) solid var(--border-strong);
         color: var(--text);
-        border-radius: 5px;
-        padding: 6px 9px;
-        font-size: 13px;
+        border-radius: var(--radius-lg);
+        padding: var(--space-1-5) 9px;
+        font-size: var(--font-size-md);
         outline: none;
     }
     input[readonly] {
@@ -190,8 +194,8 @@
     }
     .hint {
         color: var(--text-faint);
-        font-size: 12px;
-        margin: 0 0 12px;
+        font-size: var(--font-size-xs);
+        margin: 0 0 var(--space-3);
     }
     form .hint {
         margin: -4px 0 0;

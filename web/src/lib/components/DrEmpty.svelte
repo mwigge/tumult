@@ -28,7 +28,7 @@
     .lead {
         color: var(--text);
         font-size: 15px;
-        font-weight: 600;
+        font-weight: var(--font-weight-strong);
         margin-top: 0;
     }
     ul {
@@ -36,6 +36,6 @@
         padding-left: 20px;
     }
     li + li {
-        margin-top: 4px;
+        margin-top: var(--space-1);
     }
 </style>

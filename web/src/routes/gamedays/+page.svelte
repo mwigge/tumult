@@ -71,7 +71,7 @@
     </span>
 </div>
 
-<div class="panel" style="margin-bottom: 14px">
+<div class="panel" style="margin-bottom: var(--space-3-5)">
     {#if error}
         <div class="state error">Failed to load gamedays: {error}</div>
     {:else if !days}
@@ -131,7 +131,7 @@
                 </button>
             </div>
         </form>
-        {#if registerError}<div class="state error" style="margin-top: 10px">
+        {#if registerError}<div class="state error" style="margin-top: var(--space-2-5)">
                 {registerError}
             </div>{/if}
     </div>
@@ -141,26 +141,26 @@
     form {
         display: flex;
         flex-direction: column;
-        gap: 12px;
+        gap: var(--space-3);
     }
     label {
         display: flex;
         flex-direction: column;
         gap: 5px;
-        font-size: 12.5px;
+        font-size: var(--font-size-sm);
         color: var(--text-dim);
     }
     textarea {
         background: var(--bg-raised);
-        border: 1px solid var(--border-strong);
+        border: var(--border-width-sm) solid var(--border-strong);
         color: var(--text);
-        border-radius: 5px;
-        padding: 8px 10px;
+        border-radius: var(--radius-lg);
+        padding: var(--space-2) var(--space-2-5);
         font-family: var(--mono, monospace);
-        font-size: 12.5px;
+        font-size: var(--font-size-sm);
         resize: vertical;
     }
     form div {
-        margin-top: 4px;
+        margin-top: var(--space-1);
     }
 </style>

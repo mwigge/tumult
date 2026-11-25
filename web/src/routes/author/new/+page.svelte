@@ -91,7 +91,7 @@
 {:else if !action}
     <div class="skeleton" style="height: 160px"></div>
 {:else}
-    <div class="panel" style="margin-bottom: 14px">
+    <div class="panel" style="margin-bottom: var(--space-3-5)">
         <h2>1 · Action</h2>
         <div class="action-line">
             <span class="mono">{action.plugin}::{action.name}</span>
@@ -100,7 +100,7 @@
         <p class="desc">{action.description}</p>
     </div>
 
-    <div class="panel" style="margin-bottom: 14px">
+    <div class="panel" style="margin-bottom: var(--space-3-5)">
         <h2>2 · Parameters</h2>
         <ActionParamForm {action} bind:form />
         {#if missingRequired}
@@ -108,7 +108,7 @@
         {/if}
     </div>
 
-    <div class="panel" style="margin-bottom: 14px">
+    <div class="panel" style="margin-bottom: var(--space-3-5)">
         <h2>3 · Experiment TOON</h2>
         <button class="primary" onclick={generate} disabled={missingRequired || scaffolding}>
             {scaffolding ? 'Generating…' : toon ? 'Regenerate TOON' : 'Generate TOON'}
@@ -123,7 +123,7 @@
             </div>
         {/if}
         {#if toon}
-            <div style="margin-top: 12px">
+            <div style="margin-top: var(--space-3)">
                 <ToonEditor bind:toon bind:result={registered} />
             </div>
         {/if}
@@ -153,16 +153,16 @@
     .action-line {
         display: flex;
         align-items: center;
-        gap: 10px;
+        gap: var(--space-2-5);
     }
     .desc {
         color: var(--text-dim);
-        font-size: 13px;
-        margin: 6px 0;
+        font-size: var(--font-size-md);
+        margin: var(--space-1-5) 0;
     }
     .hint {
         color: var(--text-dim);
-        font-size: 12.5px;
-        margin-top: 8px;
+        font-size: var(--font-size-sm);
+        margin-top: var(--space-2);
     }
 </style>

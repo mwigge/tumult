@@ -186,7 +186,7 @@
     {/if}
 </div>
 
-<div class="panel" style="margin-bottom: 14px">
+<div class="panel" style="margin-bottom: var(--space-3-5)">
     <h2>1 · Definition</h2>
     {#if listError}
         <div class="state error">Failed to load the registry: {listError}</div>
@@ -230,7 +230,7 @@
 </div>
 
 {#if selectedId}
-    <div class="panel" style="margin-bottom: 14px">
+    <div class="panel" style="margin-bottom: var(--space-3-5)">
         <h2>2 · Execution context and parameters</h2>
         <div class="params">
             <label
@@ -278,7 +278,7 @@
         {/if}
     </div>
 
-    <div class="panel" style="margin-bottom: 14px">
+    <div class="panel" style="margin-bottom: var(--space-3-5)">
         <h2>3 · Dry-run preview</h2>
         <button
             class="primary"
@@ -419,62 +419,62 @@
     .params {
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-        gap: 10px 18px;
+        gap: var(--space-2-5) var(--space-4-5);
     }
     .params label span {
         display: block;
         color: var(--text-dim);
-        font-size: 11px;
+        font-size: var(--font-size-3xs);
         text-transform: uppercase;
-        letter-spacing: 0.6px;
-        margin-bottom: 4px;
+        letter-spacing: var(--letter-spacing-md);
+        margin-bottom: var(--space-1);
     }
     .params input {
         width: 100%;
     }
     .hint {
         color: var(--text-dim);
-        font-size: 12.5px;
-        margin-top: 8px;
+        font-size: var(--font-size-sm);
+        margin-top: var(--space-2);
     }
     .plan {
-        margin-top: 12px;
+        margin-top: var(--space-3);
     }
     .plan-head {
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: var(--space-2);
         flex-wrap: wrap;
     }
     .desc {
         color: var(--text-dim);
-        font-size: 13px;
-        margin: 6px 0;
+        font-size: var(--font-size-md);
+        margin: var(--space-1-5) 0;
     }
     .estimate {
         color: var(--text-dim);
-        font-size: 12.5px;
-        margin-bottom: 8px;
+        font-size: var(--font-size-sm);
+        margin-bottom: var(--space-2);
     }
     .plan h3 {
-        font-size: 12px;
+        font-size: var(--font-size-xs);
         text-transform: uppercase;
-        letter-spacing: 0.6px;
+        letter-spacing: var(--letter-spacing-md);
         color: var(--text-dim);
-        margin: 12px 0 4px;
+        margin: var(--space-3) 0 var(--space-1);
     }
     .plan ul,
     .plan ol {
-        margin: 4px 0;
-        padding-left: 22px;
+        margin: var(--space-1) 0;
+        padding-left: var(--space-5-5);
     }
     .plan li {
-        padding: 2px 0;
-        font-size: 13px;
+        padding: var(--space-0-5) 0;
+        font-size: var(--font-size-md);
     }
     .plan li .meta {
         color: var(--text-faint);
-        font-size: 12px;
-        margin-left: 8px;
+        font-size: var(--font-size-xs);
+        margin-left: var(--space-2);
     }
 </style>

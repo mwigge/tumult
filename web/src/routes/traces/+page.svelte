@@ -264,27 +264,27 @@
     .controls {
         margin-left: auto;
         display: flex;
-        gap: 8px;
+        gap: var(--space-2);
         flex-wrap: wrap;
     }
     .facet-chips {
         display: flex;
-        gap: 8px;
-        margin: -6px 0 10px;
+        gap: var(--space-2);
+        margin: -6px 0 var(--space-2-5);
     }
     .chip {
         background: var(--bg-raised);
-        border: 1px solid var(--border-strong);
-        border-radius: 10px;
+        border: var(--border-width-sm) solid var(--border-strong);
+        border-radius: var(--radius-2xl);
         color: var(--text);
         cursor: pointer;
-        font-size: 11.5px;
+        font-size: var(--font-size-2xs);
         font-family: var(--mono, monospace);
-        padding: 2px 10px;
+        padding: var(--space-0-5) var(--space-2-5);
     }
     .chip .x {
         color: var(--text-dim);
-        margin-left: 4px;
+        margin-left: var(--space-1);
     }
     .chip:hover .x {
         color: var(--fail);
@@ -292,11 +292,11 @@
     .dur {
         display: flex;
         align-items: center;
-        gap: 10px;
+        gap: var(--space-2-5);
     }
     .bar {
         height: 6px;
-        border-radius: 3px;
+        border-radius: var(--radius-sm);
         background: var(--accent-dim);
         flex: 0 1 auto;
         min-width: 2px;

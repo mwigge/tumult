@@ -247,16 +247,16 @@
 <style>
     .actions {
         display: flex;
-        gap: 8px;
+        gap: var(--space-2);
     }
     .btn {
         background: var(--bg-hover);
-        border: 1px solid var(--border-strong);
+        border: var(--border-width-sm) solid var(--border-strong);
         color: var(--text);
-        border-radius: 6px;
-        padding: 6px 14px;
+        border-radius: var(--radius-xl);
+        padding: var(--space-1-5) var(--space-3-5);
         cursor: pointer;
-        font-size: 13px;
+        font-size: var(--font-size-md);
     }
     .btn:hover {
         border-color: var(--accent-dim);
@@ -274,17 +274,17 @@
     }
     .msg-row td {
         background: var(--bg-raised);
-        padding: 4px 12px;
+        padding: var(--space-1) var(--space-3);
         display: flex;
-        gap: 12px;
+        gap: var(--space-3);
     }
     .err-text {
         color: var(--fail);
-        font-size: 12.5px;
+        font-size: var(--font-size-sm);
     }
     .hint-text {
         color: var(--ok);
-        font-size: 12.5px;
+        font-size: var(--font-size-sm);
     }
     .detail-row td {
         background: var(--bg-raised);
@@ -292,26 +292,26 @@
     .detail {
         display: grid;
         grid-template-columns: 1fr 1fr;
-        gap: 16px;
-        padding: 8px 4px;
+        gap: var(--space-4);
+        padding: var(--space-2) var(--space-1);
     }
     .detail h3 {
-        font-size: 12px;
+        font-size: var(--font-size-xs);
         text-transform: uppercase;
-        letter-spacing: 0.5px;
+        letter-spacing: var(--letter-spacing-sm);
         color: var(--text-dim);
-        margin: 0 0 6px;
+        margin: 0 0 var(--space-1-5);
     }
     .params {
         margin: 0;
-        font-size: 12px;
+        font-size: var(--font-size-xs);
         white-space: pre-wrap;
         word-break: break-word;
         color: var(--text-dim);
     }
     .dim {
         color: var(--text-dim);
-        font-size: 12.5px;
+        font-size: var(--font-size-sm);
     }
     .hash {
         word-break: break-all;

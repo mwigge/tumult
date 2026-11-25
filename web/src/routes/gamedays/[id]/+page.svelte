@@ -137,7 +137,7 @@
         </p>
     {/if}
 
-    <div class="panel" style="margin-bottom: 14px">
+    <div class="panel" style="margin-bottom: var(--space-3-5)">
         <h2>Campaign steps</h2>
         <table class="data">
             <thead>
@@ -177,7 +177,7 @@
     </div>
 
     {#if day.regulatory}
-        <div class="panel" style="margin-bottom: 14px">
+        <div class="panel" style="margin-bottom: var(--space-3-5)">
             <h2>Regulatory mapping — {day.regulatory.frameworks.join(', ')}</h2>
             <table class="data">
                 <thead>
@@ -229,7 +229,7 @@
                     ? `The campaign runs in ${environment.trim()}.`
                     : 'Enter the environment the campaign runs in.'}
             </div>
-            {#if launchError}<div class="state error" style="margin-top: 10px">
+            {#if launchError}<div class="state error" style="margin-top: var(--space-2-5)">
                     {launchError}
                 </div>{/if}
         {/if}
@@ -239,32 +239,32 @@
 <style>
     .desc {
         color: var(--text-dim);
-        font-size: 13px;
-        margin: 0 0 10px;
+        font-size: var(--font-size-md);
+        margin: 0 0 var(--space-2-5);
     }
     .tags {
         display: flex;
-        gap: 6px;
-        margin: 0 0 14px;
+        gap: var(--space-1-5);
+        margin: 0 0 var(--space-3-5);
     }
     .campaign {
-        margin-bottom: 10px;
-        font-size: 13px;
+        margin-bottom: var(--space-2-5);
+        font-size: var(--font-size-md);
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: var(--space-2);
     }
     .params {
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-        gap: 10px 18px;
+        gap: var(--space-2-5) var(--space-4-5);
     }
     .params input {
         width: 100%;
     }
     .hint {
         color: var(--text-dim);
-        font-size: 12.5px;
-        margin-top: 8px;
+        font-size: var(--font-size-sm);
+        margin-top: var(--space-2);
     }
 </style>

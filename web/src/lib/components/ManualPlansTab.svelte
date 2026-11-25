@@ -186,7 +186,7 @@
     .plans {
         display: flex;
         flex-direction: column;
-        gap: 14px;
+        gap: var(--space-3-5);
     }
     .form-panel {
         max-width: 760px;
@@ -194,9 +194,9 @@
     .cancel,
     .plan-detail {
         display: flex;
-        gap: 12px;
+        gap: var(--space-3);
         align-items: flex-end;
-        padding: 6px 2px;
+        padding: var(--space-1-5) var(--space-0-5);
     }
     .plan-detail {
         justify-content: space-between;
@@ -205,8 +205,8 @@
     .cancel label {
         display: flex;
         flex-direction: column;
-        gap: 4px;
-        font-size: 12px;
+        gap: var(--space-1);
+        font-size: var(--font-size-xs);
         color: var(--text-dim);
     }
     .grow {
@@ -214,6 +214,6 @@
     }
     .dim {
         color: var(--text-faint);
-        font-size: 12px;
+        font-size: var(--font-size-xs);
     }
 </style>

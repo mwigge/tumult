@@ -241,7 +241,7 @@
 </div>
 
 {#if result && result.type === 'histogram'}
-    <p class="sub" style="margin-top: 8px">
+    <p class="sub" style="margin-top: var(--space-2)">
         histogram points show the bucketed average and an interpolated p95 (approximate within
         buckets, clamped at the last explicit bound).
     </p>
@@ -251,7 +251,7 @@
     .controls {
         margin-left: auto;
         display: flex;
-        gap: 8px;
+        gap: var(--space-2);
         flex-wrap: wrap;
         align-items: center;
     }

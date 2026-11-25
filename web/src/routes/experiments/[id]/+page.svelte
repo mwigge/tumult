@@ -39,7 +39,7 @@
     <div class="state error panel">{error}</div>
 {:else if !detail}
     <div class="page-head"><h1>Experiment</h1></div>
-    <div class="skeleton" style="height: 120px; margin-bottom: 14px"></div>
+    <div class="skeleton" style="height: 120px; margin-bottom: var(--space-3-5)"></div>
     <div class="skeleton" style="height: 320px"></div>
 {:else}
     {@const exp = detail.experiment}
@@ -56,7 +56,10 @@
         <span class="sub mono">{exp.id}</span>
     </div>
 
-    <div class="grid" style="grid-template-columns: repeat(4, 1fr); margin-bottom: 14px">
+    <div
+        class="grid"
+        style="grid-template-columns: repeat(4, 1fr); margin-bottom: var(--space-3-5)"
+    >
         <div class="panel meta">
             <span>Started</span><b>{fmtTs(exp.started_ns)} ({fmtAgo(exp.started_ns)})</b>
         </div>
@@ -83,7 +86,7 @@
 
     <EvidencePanels evidence={detail.evidence ?? null} />
 
-    <div class="panel" style="margin-bottom: 14px">
+    <div class="panel" style="margin-bottom: var(--space-3-5)">
         <h2>Trace waterfall — {detail.spans.length} spans</h2>
         {#if exp.journal_only}
             <div class="state" data-testid="no-trace">
@@ -150,20 +153,20 @@
     .meta span {
         display: block;
         color: var(--text-dim);
-        font-size: 11px;
+        font-size: var(--font-size-3xs);
         text-transform: uppercase;
-        letter-spacing: 0.6px;
-        margin-bottom: 4px;
+        letter-spacing: var(--letter-spacing-md);
+        margin-bottom: var(--space-1);
     }
     .meta b {
-        font-weight: 600;
-        font-size: 13.5px;
+        font-weight: var(--font-weight-strong);
+        font-size: var(--font-size-lg);
     }
     .meta small {
         display: block;
         color: var(--text-dim);
-        font-size: 11px;
-        margin-top: 2px;
+        font-size: var(--font-size-3xs);
+        margin-top: var(--space-0-5);
     }
     .logs {
         max-height: 420px;
@@ -171,10 +174,11 @@
     }
     .log {
         display: flex;
-        gap: 10px;
+        gap: var(--space-2-5);
         padding: 3px 0;
-        font-size: 12px;
-        border-bottom: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+        font-size: var(--font-size-xs);
+        border-bottom: var(--border-width-sm) solid
+            color-mix(in srgb, var(--border) 50%, transparent);
     }
     .ts {
         color: var(--text-faint);

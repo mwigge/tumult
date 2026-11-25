@@ -187,18 +187,18 @@
     .controls {
         margin-left: auto;
         display: flex;
-        gap: 8px;
+        gap: var(--space-2);
         flex-wrap: wrap;
         align-items: center;
     }
     .halt {
         background: var(--bg-hover);
-        border: 1px solid var(--border-strong);
+        border: var(--border-width-sm) solid var(--border-strong);
         color: var(--text);
-        border-radius: 6px;
-        padding: 6px 14px;
+        border-radius: var(--radius-xl);
+        padding: var(--space-1-5) var(--space-3-5);
         cursor: pointer;
-        font-size: 13px;
+        font-size: var(--font-size-md);
     }
     .halt:hover {
         border-color: var(--fail);
@@ -206,15 +206,15 @@
     .halt.danger {
         border-color: var(--fail);
         color: var(--fail);
-        font-weight: 600;
+        font-weight: var(--font-weight-strong);
     }
     .halt:disabled {
         opacity: 0.5;
         cursor: default;
     }
     .halt-note {
-        margin-bottom: 14px;
-        font-size: 13px;
+        margin-bottom: var(--space-3-5);
+        font-size: var(--font-size-md);
         color: var(--text-dim);
     }
     .err {
@@ -223,6 +223,6 @@
         text-overflow: ellipsis;
         white-space: nowrap;
         color: var(--text-dim);
-        font-size: 12px;
+        font-size: var(--font-size-xs);
     }
 </style>

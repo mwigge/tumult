@@ -62,40 +62,40 @@
 
 <style>
     .note {
-        border-left: 2px solid var(--warn);
-        padding: 2px 10px;
+        border-left: var(--border-width-md) solid var(--warn);
+        padding: var(--space-0-5) var(--space-2-5);
         color: var(--text-dim);
-        font-size: 13px;
-        margin-bottom: 8px;
+        font-size: var(--font-size-md);
+        margin-bottom: var(--space-2);
     }
     .scope ul {
-        margin: 4px 0;
-        padding-left: 22px;
+        margin: var(--space-1) 0;
+        padding-left: var(--space-5-5);
     }
     .scope li {
-        padding: 2px 0;
-        font-size: 13px;
+        padding: var(--space-0-5) 0;
+        font-size: var(--font-size-md);
     }
     .scope li .meta {
         color: var(--text-faint);
-        font-size: 12px;
-        margin-left: 8px;
+        font-size: var(--font-size-xs);
+        margin-left: var(--space-2);
     }
     .scope li .targets {
         color: var(--warn);
-        font-size: 12px;
-        margin-left: 8px;
+        font-size: var(--font-size-xs);
+        margin-left: var(--space-2);
     }
     .hint {
         color: var(--text-dim);
-        font-size: 12.5px;
-        margin-top: 6px;
+        font-size: var(--font-size-sm);
+        margin-top: var(--space-1-5);
     }
     h3 {
-        font-size: 12px;
+        font-size: var(--font-size-xs);
         text-transform: uppercase;
-        letter-spacing: 0.6px;
+        letter-spacing: var(--letter-spacing-md);
         color: var(--text-dim);
-        margin: 12px 0 4px;
+        margin: var(--space-3) 0 var(--space-1);
     }
 </style>

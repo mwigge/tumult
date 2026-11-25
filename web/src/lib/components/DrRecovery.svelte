@@ -59,17 +59,17 @@
 
 <style>
     .target + .target {
-        border-top: 1px solid var(--border);
-        margin-top: 12px;
-        padding-top: 12px;
+        border-top: var(--border-width-sm) solid var(--border);
+        margin-top: var(--space-3);
+        padding-top: var(--space-3);
     }
     h3 {
-        font-size: 13px;
-        margin-bottom: 6px;
+        font-size: var(--font-size-md);
+        margin-bottom: var(--space-1-5);
     }
     .note {
         color: var(--text-dim);
-        font-size: 12px;
-        margin: 0 0 8px;
+        font-size: var(--font-size-xs);
+        margin: 0 0 var(--space-2);
     }
 </style>

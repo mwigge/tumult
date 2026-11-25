@@ -162,15 +162,15 @@
 
 <style>
     .theme {
-        margin: 8px 18px 0;
+        margin: var(--space-2) var(--space-4-5) 0;
         align-self: flex-start;
         background: none;
-        border: 1px solid var(--border);
-        border-radius: 4px;
+        border: var(--border-width-sm) solid var(--border);
+        border-radius: var(--radius-md);
         color: var(--text-dim);
         font: inherit;
-        font-size: 11.5px;
-        padding: 2px 8px;
+        font-size: var(--font-size-2xs);
+        padding: var(--space-0-5) var(--space-2);
         cursor: pointer;
     }
     .theme:hover {
@@ -179,32 +179,32 @@
     }
     .user-chip {
         margin-top: auto;
-        padding: 12px 18px 0;
-        border-top: 1px solid var(--border);
+        padding: var(--space-3) var(--space-4-5) 0;
+        border-top: var(--border-width-sm) solid var(--border);
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 8px;
+        gap: var(--space-2);
     }
     .user-chip .who {
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: var(--space-2);
         min-width: 0;
     }
     .user-chip .username {
-        font-size: 13px;
+        font-size: var(--font-size-md);
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
     }
     .user-chip .logout {
         background: transparent;
-        border: 1px solid var(--border-strong);
+        border: var(--border-width-sm) solid var(--border-strong);
         color: var(--text-dim);
-        border-radius: 5px;
-        padding: 3px 10px;
-        font-size: 12px;
+        border-radius: var(--radius-lg);
+        padding: 3px var(--space-2-5);
+        font-size: var(--font-size-xs);
         cursor: pointer;
     }
     .user-chip .logout:hover {

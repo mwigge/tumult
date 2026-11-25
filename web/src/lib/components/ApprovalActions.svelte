@@ -87,7 +87,7 @@
 {#if approval.request}
     {@const req = approval.request}
     {@const ttl = expiry(req.expires_at_ns)}
-    <div class="panel" style="margin-bottom: 14px">
+    <div class="panel" style="margin-bottom: var(--space-3-5)">
         <h2>
             Approval chain
             <span class="badge {tierClass(req.tier)}">{req.tier}</span>
@@ -144,7 +144,7 @@
                 {/each}
             </div>
         {:else}
-            <div class="state" style="padding: 8px 0">No decisions yet.</div>
+            <div class="state" style="padding: var(--space-2) 0">No decisions yet.</div>
         {/if}
 
         {#if runState === 'pending_approval' && canDecide}
@@ -212,10 +212,11 @@
     }
     .entry {
         display: flex;
-        gap: 10px;
+        gap: var(--space-2-5);
         padding: 3px 0;
-        font-size: 12px;
-        border-bottom: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+        font-size: var(--font-size-xs);
+        border-bottom: var(--border-width-sm) solid
+            color-mix(in srgb, var(--border) 50%, transparent);
         align-items: baseline;
     }
     .ts {
@@ -239,24 +240,24 @@
     .ap-meta {
         display: grid;
         grid-template-columns: repeat(3, 1fr);
-        gap: 10px 18px;
-        margin-bottom: 12px;
+        gap: var(--space-2-5) var(--space-4-5);
+        margin-bottom: var(--space-3);
     }
     .ap-meta span {
         display: block;
         color: var(--text-dim);
-        font-size: 11px;
+        font-size: var(--font-size-3xs);
         text-transform: uppercase;
-        letter-spacing: 0.6px;
-        margin-bottom: 4px;
+        letter-spacing: var(--letter-spacing-md);
+        margin-bottom: var(--space-1);
     }
     .ap-meta b {
-        font-weight: 600;
-        font-size: 13.5px;
+        font-weight: var(--font-weight-strong);
+        font-size: var(--font-size-lg);
     }
     .decisions {
         max-height: 200px;
-        margin-bottom: 12px;
+        margin-bottom: var(--space-3);
     }
     .ok-text {
         color: var(--ok);
@@ -269,10 +270,10 @@
     }
     .ap-actions {
         display: flex;
-        gap: 8px;
+        gap: var(--space-2);
         align-items: center;
         flex-wrap: wrap;
-        margin-top: 10px;
+        margin-top: var(--space-2-5);
     }
     .ap-actions input {
         flex: 1;
@@ -280,12 +281,12 @@
     }
     .btn {
         background: var(--bg-hover);
-        border: 1px solid var(--border-strong);
+        border: var(--border-width-sm) solid var(--border-strong);
         color: var(--text);
-        border-radius: 6px;
-        padding: 6px 14px;
+        border-radius: var(--radius-xl);
+        padding: var(--space-1-5) var(--space-3-5);
         cursor: pointer;
-        font-size: 13px;
+        font-size: var(--font-size-md);
     }
     .btn:hover {
         border-color: var(--accent-dim);
@@ -303,16 +304,16 @@
         cursor: default;
     }
     .glass-form {
-        margin-top: 12px;
-        padding: 12px;
-        border: 1px solid color-mix(in srgb, var(--warn) 55%, var(--border));
-        border-radius: 6px;
+        margin-top: var(--space-3);
+        padding: var(--space-3);
+        border: var(--border-width-sm) solid color-mix(in srgb, var(--warn) 55%, var(--border));
+        border-radius: var(--radius-xl);
     }
     .warn-copy {
         color: var(--warn);
-        font-size: 12.5px;
-        line-height: 1.5;
-        margin: 0 0 10px;
+        font-size: var(--font-size-sm);
+        line-height: var(--line-height-body);
+        margin: 0 0 var(--space-2-5);
     }
     .glass-form textarea {
         width: 100%;
@@ -320,12 +321,12 @@
     }
     .err-line {
         color: var(--fail);
-        font-size: 12.5px;
-        margin-top: 8px;
+        font-size: var(--font-size-sm);
+        margin-top: var(--space-2);
     }
     .ok-line {
         color: var(--ok);
-        font-size: 12.5px;
-        margin-top: 8px;
+        font-size: var(--font-size-sm);
+        margin-top: var(--space-2);
     }
 </style>

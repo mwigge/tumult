@@ -88,22 +88,22 @@
 
 <style>
     .summary {
-        margin: 0 0 6px;
+        margin: 0 0 var(--space-1-5);
     }
     .signoffs {
-        margin: 0 0 8px;
-        padding-left: 18px;
+        margin: 0 0 var(--space-2);
+        padding-left: var(--space-4-5);
     }
     .sign {
         display: flex;
-        gap: 8px;
+        gap: var(--space-2);
         align-items: flex-end;
     }
     .sign label {
         display: flex;
         flex-direction: column;
-        gap: 4px;
-        font-size: 12px;
+        gap: var(--space-1);
+        font-size: var(--font-size-xs);
         color: var(--text-dim);
     }
     .grow {
@@ -111,6 +111,6 @@
     }
     .dim {
         color: var(--text-faint);
-        font-size: 12px;
+        font-size: var(--font-size-xs);
     }
 </style>

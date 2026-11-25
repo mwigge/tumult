@@ -68,7 +68,7 @@
         HTTP URL
     </button>
 </div>
-<div class="grid cols-2" style="margin-top: 10px">
+<div class="grid cols-2" style="margin-top: var(--space-2-5)">
     {#if form.probeKind === 'exec'}
         <label>
             <span>Probe command <i>(optional — a default health check is used)</i></span>
@@ -98,10 +98,10 @@
     label span {
         display: block;
         color: var(--text-dim);
-        font-size: 11px;
+        font-size: var(--font-size-3xs);
         text-transform: uppercase;
-        letter-spacing: 0.6px;
-        margin-bottom: 4px;
+        letter-spacing: var(--letter-spacing-md);
+        margin-bottom: var(--space-1);
     }
     label span i {
         text-transform: none;
@@ -114,10 +114,10 @@
         color: var(--warn);
     }
     h3 {
-        font-size: 12px;
+        font-size: var(--font-size-xs);
         text-transform: uppercase;
-        letter-spacing: 0.6px;
+        letter-spacing: var(--letter-spacing-md);
         color: var(--text-dim);
-        margin: 12px 0 6px;
+        margin: var(--space-3) 0 var(--space-1-5);
     }
 </style>
