@@ -45,6 +45,13 @@ jobs:
       - run: npx svelte-check --tsconfig ./tsconfig.json
       - run: npm test
       - run: npm run build
+      # The colours of Krönika are design tokens in web/tokens/. The files
+      # the generator writes from them are committed: they must be what it
+      # writes now.
+      - name: The token outputs are in sync with the token files
+        run: |
+          npm run build:tokens
+          git diff --exit-code -- src/lib/tokens.css src/lib/tokens.gen.ts
       # tumult-cli embeds the script that draws the charts of its HTML
       # report, so the built file is committed. It must be what its source
       # builds.
@@ -53,6 +60,9 @@ jobs:
           npm run build:report
           git diff --exit-code -- ../tumult-cli/src/commands/report/html/report-charts.js
       - run: npx playwright install --with-deps chromium
+      # The e2e run holds the style snapshot (tests/style-snapshot.spec.ts):
+      # a change of a computed style on any page fails here until its
+      # baseline in tests/style-snapshots/ is written again.
       - run: npm run test:e2e
 
   fmt:

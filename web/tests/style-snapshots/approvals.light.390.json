@@ -1,0 +1,559 @@
+{
+  "page": "approvals",
+  "path": "/approvals",
+  "theme": "light",
+  "width": 390,
+  "height": 844,
+  "elements": {
+    "html": {
+      "color": "rgb(27, 35, 41)",
+      "font-family": "-apple-system, \"Segoe UI\", Inter, Roboto, sans-serif",
+      "font-size": "14px",
+      "font-weight": "400",
+      "line-height": "1.5",
+      "letter-spacing": "normal",
+      "text-transform": "none",
+      "visibility": "visible",
+      "display": "block",
+      "background-color": "rgb(244, 246, 248)"
+    },
+    "body": {
+      "display": "block",
+      "background-color": "rgb(244, 246, 248)"
+    },
+    "div.shell": {
+      "display": "grid",
+      "grid-template-columns": "208px 1fr"
+    },
+    "div.shell > aside[complementary].side": {
+      "display": "flex",
+      "background-color": "rgb(255, 255, 255)",
+      "border-right": "1px solid rgb(227, 232, 237)",
+      "padding": "16px 0px"
+    },
+    "div.shell > aside[complementary].side > div.brand": {
+      "display": "block",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "0px 18px 14px",
+      "margin": "0px 0px 10px"
+    },
+    "div.shell > aside[complementary].side > div.brand > div.name": {
+      "font-size": "17px",
+      "font-weight": "700",
+      "letter-spacing": "0.4px",
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > div.brand > div.tag": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "block",
+      "margin": "2px 0px 0px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav": {
+      "display": "block",
+      "padding": "0px 0px 1px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◧ Overview\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◧ Overview\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◎ Resilience\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◎ Resilience\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◭ Performance\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◭ Performance\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"▦ Scores\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"▦ Scores\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⚖ DORA\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⚖ DORA\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⟲ Disaster recovery\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⟲ Disaster recovery\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⚗ Experiments\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⚗ Experiments\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"▶ Runs\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"▶ Runs\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✚ Author\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✚ Author\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"☷ GameDays\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"☷ GameDays\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link].active \"✓ Approvals\"": {
+      "font-size": "13.5px",
+      "display": "flex",
+      "background-color": "rgb(233, 238, 242)",
+      "border-left": "2px solid rgb(31, 111, 178)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link].active \"✓ Approvals\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✎ Manual\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✎ Manual\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"≣ Logs\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"≣ Logs\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⌁ Traces\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⌁ Traces\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"∿ Metrics\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"∿ Metrics\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✳ Star Map\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✳ Star Map\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✦ Ask\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✦ Ask\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"▤ Reports\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"▤ Reports\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◔ Events\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◔ Events\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⚿ Users\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⚿ Users\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"➤ Webhooks\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"➤ Webhooks\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"↻ Schedules\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"↻ Schedules\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > button[button].theme \"○ light\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "display": "block",
+      "border-top": "1px solid rgb(227, 232, 237)",
+      "border-right": "1px solid rgb(227, 232, 237)",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "border-left": "1px solid rgb(227, 232, 237)",
+      "border-radius": "4px",
+      "padding": "2px 8px",
+      "margin": "8px 18px 0px"
+    },
+    "div.shell > main[main].main": {
+      "display": "block",
+      "padding": "22px 26px 60px"
+    },
+    "div.shell > main[main].main > div.page-head": {
+      "display": "flex",
+      "margin": "0px 0px 18px",
+      "gap": "14px"
+    },
+    "div.shell > main[main].main > div.page-head > h1[heading] \"Approvals\"": {
+      "font-size": "19px",
+      "font-weight": "600",
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.page-head > span.sub": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "12.5px",
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.panel": {
+      "display": "block",
+      "background-color": "rgb(255, 255, 255)",
+      "border-top": "1px solid rgb(227, 232, 237)",
+      "border-right": "1px solid rgb(227, 232, 237)",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "border-left": "1px solid rgb(227, 232, 237)",
+      "border-radius": "6px",
+      "padding": "14px 16px"
+    },
+    "div.shell > main[main].main > div.panel > table[table].data": {
+      "font-size": "13px",
+      "display": "table"
+    },
+    "div.shell > main[main].main > div.panel > table[table].data > thead[rowgroup]": {
+      "display": "table-header-group"
+    },
+    "div.shell > main[main].main > div.panel > table[table].data > thead[rowgroup] > tr[row]": {
+      "display": "table-row"
+    },
+    "div.shell > main[main].main > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader]": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(197, 206, 214)",
+      "padding": "6px 10px"
+    },
+    "div.shell > main[main].main > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"DEFINITION\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(197, 206, 214)",
+      "padding": "6px 10px"
+    },
+    "div.shell > main[main].main > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"RUN\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(197, 206, 214)",
+      "padding": "6px 10px"
+    },
+    "div.shell > main[main].main > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"TIER\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(197, 206, 214)",
+      "padding": "6px 10px"
+    },
+    "div.shell > main[main].main > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"ENV\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(197, 206, 214)",
+      "padding": "6px 10px"
+    },
+    "div.shell > main[main].main > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"REQUESTED\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(197, 206, 214)",
+      "padding": "6px 10px"
+    },
+    "div.shell > main[main].main > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"EXPIRES\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(197, 206, 214)",
+      "padding": "6px 10px"
+    },
+    "div.shell > main[main].main > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"QUORUM\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(197, 206, 214)",
+      "padding": "6px 10px"
+    },
+    "div.shell > main[main].main > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"NOTE\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(197, 206, 214)",
+      "padding": "6px 10px"
+    },
+    "div.shell > main[main].main > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] #2": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(197, 206, 214)",
+      "padding": "6px 10px"
+    },
+    "div.shell > main[main].main > div.panel > table[table].data > tbody": {
+      "display": "table-row-group"
+    },
+    "div.shell > main[main].main > div.panel > table[table].data > tr[row].clickable": {
+      "display": "table-row"
+    },
+    "div.shell > main[main].main > div.panel > table[table].data > tr[row].clickable > td[cell] \"▸\"": {
+      "color": "rgb(139, 152, 165)",
+      "display": "table-cell",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > div.panel > table[table].data > tr[row].clickable > td[cell] \"pg-failover\"": {
+      "display": "table-cell",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > div.panel > table[table].data > tr[row].clickable > td[cell].mono \"run-9\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "table-cell",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > div.panel > table[table].data > tr[row].clickable > td[cell].mono \"run-9\" > a[link] \"run-9\"": {
+      "color": "rgb(31, 111, 178)",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > div.panel > table[table].data > tr[row].clickable > td[cell] \"T2\"": {
+      "display": "table-cell",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > div.panel > table[table].data > tr[row].clickable > td[cell] \"T2\" > span.badge.warn": {
+      "color": "rgb(180, 83, 9)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "letter-spacing": "0.3px",
+      "display": "inline-block",
+      "background-color": "color(srgb 0.705882 0.32549 0.0352941 / 0.14)",
+      "border-radius": "10px",
+      "padding": "1px 9px"
+    },
+    "div.shell > main[main].main > div.panel > table[table].data > tr[row].clickable > td[cell] \"production\"": {
+      "display": "table-cell",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > div.panel > table[table].data > tr[row].clickable > td[cell] \"operator · 1h ago\"": {
+      "display": "table-cell",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > div.panel > table[table].data > tr[row].clickable > td[cell].mono \"24h 0m\"": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "table-cell",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > div.panel > table[table].data > tr[row].clickable > td[cell].mono \"1/2\"": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "table-cell",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > div.panel > table[table].data > tr[row].clickable > td[cell] \"decision note…\"": {
+      "display": "table-cell",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > div.panel > table[table].data > tr[row].clickable > td[cell] \"decision note…\" > input[textbox] \"decision note…\"": {
+      "font-family": "Arial",
+      "line-height": "normal",
+      "display": "inline-block",
+      "background-color": "rgb(255, 255, 255)",
+      "border-top": "1px solid rgb(197, 206, 214)",
+      "border-right": "1px solid rgb(197, 206, 214)",
+      "border-bottom": "1px solid rgb(197, 206, 214)",
+      "border-left": "1px solid rgb(197, 206, 214)",
+      "border-radius": "5px",
+      "padding": "6px 9px"
+    },
+    "div.shell > main[main].main > div.panel > table[table].data > tr[row].clickable > td[cell].actions \"Approve Reject\"": {
+      "display": "flex",
+      "padding": "7px 10px",
+      "gap": "8px"
+    },
+    "div.shell > main[main].main > div.panel > table[table].data > tr[row].clickable > td[cell].actions \"Approve Reject\" > button[button].btn \"Approve\"": {
+      "font-family": "Arial",
+      "line-height": "normal",
+      "display": "block",
+      "background-color": "rgb(233, 238, 242)",
+      "border-top": "1px solid rgb(197, 206, 214)",
+      "border-right": "1px solid rgb(197, 206, 214)",
+      "border-bottom": "1px solid rgb(197, 206, 214)",
+      "border-left": "1px solid rgb(197, 206, 214)",
+      "border-radius": "6px",
+      "padding": "6px 14px"
+    },
+    "div.shell > main[main].main > div.panel > table[table].data > tr[row].clickable > td[cell].actions \"Approve Reject\" > button[button].btn.danger \"Reject\"": {
+      "color": "rgb(192, 57, 43)",
+      "font-family": "Arial",
+      "line-height": "normal",
+      "display": "block",
+      "background-color": "rgb(233, 238, 242)",
+      "border-top": "1px solid rgb(192, 57, 43)",
+      "border-right": "1px solid rgb(192, 57, 43)",
+      "border-bottom": "1px solid rgb(192, 57, 43)",
+      "border-left": "1px solid rgb(192, 57, 43)",
+      "border-radius": "6px",
+      "padding": "6px 14px"
+    },
+    "div": {
+      "display": "block"
+    }
+  }
+}

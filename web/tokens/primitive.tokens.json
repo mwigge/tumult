@@ -1,0 +1,283 @@
+{
+  "$description": "The primitive tier: raw colours and fonts with no role of their own. Pages and charts use the roles of the semantic tier, which name these.",
+  "grey": {
+    "$type": "color",
+    "$description": "Greys with a touch of blue. The number is the lightness (CIE L*), from 0 for black to 100 for white.",
+    "4": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.0431, 0.0549, 0.0667],
+        "hex": "#0b0e11"
+      },
+      "$description": "Almost black."
+    },
+    "7": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.0667, 0.0863, 0.1059],
+        "hex": "#11161b"
+      },
+      "$description": "Very dark grey."
+    },
+    "9": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.0824, 0.1059, 0.1294],
+        "hex": "#151b21"
+      },
+      "$description": "Very dark grey, a step lighter."
+    },
+    "13": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.1059, 0.1373, 0.1608],
+        "hex": "#1b2329"
+      },
+      "$description": "Dark grey for text on light surfaces."
+    },
+    "14": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.1098, 0.1412, 0.1725],
+        "hex": "#1c242c"
+      },
+      "$description": "Dark grey."
+    },
+    "18": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.1412, 0.1765, 0.2118],
+        "hex": "#242d36"
+      },
+      "$description": "Dark grey for thin lines on dark surfaces."
+    },
+    "26": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.2, 0.251, 0.298],
+        "hex": "#33404c"
+      },
+      "$description": "Dark grey for strong lines on dark surfaces."
+    },
+    "43": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.3569, 0.4039, 0.4471],
+        "hex": "#5b6772"
+      },
+      "$description": "Middle grey, on the dark side."
+    },
+    "62": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.5451, 0.5961, 0.6471],
+        "hex": "#8b98a5"
+      },
+      "$description": "Middle grey, on the light side."
+    },
+    "82": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.7725, 0.8078, 0.8392],
+        "hex": "#c5ced6"
+      },
+      "$description": "Light grey for strong lines on light surfaces."
+    },
+    "88": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.8471, 0.8706, 0.8941],
+        "hex": "#d8dee4"
+      },
+      "$description": "Light grey for text on dark surfaces."
+    },
+    "92": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.8902, 0.9098, 0.9294],
+        "hex": "#e3e8ed"
+      },
+      "$description": "Light grey for thin lines on light surfaces."
+    },
+    "94": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.9137, 0.9333, 0.949],
+        "hex": "#e9eef2"
+      },
+      "$description": "Very light grey."
+    },
+    "97": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.9569, 0.9647, 0.9725],
+        "hex": "#f4f6f8"
+      },
+      "$description": "Almost white."
+    },
+    "100": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [1.0, 1.0, 1.0],
+        "hex": "#ffffff"
+      },
+      "$description": "White."
+    }
+  },
+  "blue": {
+    "$type": "color",
+    "$description": "Blues, numbered by lightness like the greys.",
+    "38": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.1765, 0.3647, 0.5176],
+        "hex": "#2d5d84"
+      },
+      "$description": "Dark blue."
+    },
+    "46": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.1216, 0.4353, 0.698],
+        "hex": "#1f6fb2"
+      },
+      "$description": "Middle blue."
+    },
+    "70": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.3686, 0.6941, 0.9373],
+        "hex": "#5eb1ef"
+      },
+      "$description": "Bright blue."
+    },
+    "77": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.6118, 0.7686, 0.8941],
+        "hex": "#9cc4e4"
+      },
+      "$description": "Pale blue."
+    }
+  },
+  "green": {
+    "$type": "color",
+    "$description": "Greens, numbered by lightness like the greys.",
+    "51": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.0588, 0.5412, 0.3725],
+        "hex": "#0f8a5f"
+      },
+      "$description": "Deep green."
+    },
+    "76": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.2039, 0.8275, 0.6],
+        "hex": "#34d399"
+      },
+      "$description": "Bright green."
+    }
+  },
+  "amber": {
+    "$type": "color",
+    "$description": "Ambers, numbered by lightness like the greys.",
+    "47": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.7059, 0.3255, 0.0353],
+        "hex": "#b45309"
+      },
+      "$description": "Deep amber."
+    },
+    "72": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.9608, 0.6196, 0.0431],
+        "hex": "#f59e0b"
+      },
+      "$description": "Bright amber."
+    }
+  },
+  "red": {
+    "$type": "color",
+    "$description": "Reds, numbered by lightness like the greys.",
+    "45": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.7529, 0.2235, 0.1686],
+        "hex": "#c0392b"
+      },
+      "$description": "Deep red."
+    },
+    "55": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.9373, 0.2667, 0.2667],
+        "hex": "#ef4444"
+      },
+      "$description": "Bright red."
+    }
+  },
+  "okabe-ito": {
+    "$type": "color",
+    "$description": "The Okabe-Ito colours, which readers with colour blindness can tell apart.",
+    "orange": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.902, 0.6235, 0.0],
+        "hex": "#E69F00"
+      },
+      "$description": "Orange."
+    },
+    "sky-blue": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.3373, 0.7059, 0.9137],
+        "hex": "#56B4E9"
+      },
+      "$description": "Sky blue."
+    },
+    "bluish-green": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.0, 0.6196, 0.451],
+        "hex": "#009E73"
+      },
+      "$description": "Bluish green."
+    },
+    "yellow": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.9412, 0.8941, 0.2588],
+        "hex": "#F0E442"
+      },
+      "$description": "Yellow."
+    },
+    "vermillion": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.8353, 0.3686, 0.0],
+        "hex": "#D55E00"
+      },
+      "$description": "Vermillion."
+    },
+    "reddish-purple": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.8, 0.4745, 0.6549],
+        "hex": "#CC79A7"
+      },
+      "$description": "Reddish purple."
+    }
+  },
+  "font": {
+    "$type": "fontFamily",
+    "$description": "Font stacks.",
+    "mono": {
+      "$value": ["SF Mono", "JetBrains Mono", "ui-monospace", "Menlo", "Consolas", "monospace"],
+      "$description": "Monospace fonts, the first one the system has."
+    }
+  }
+}

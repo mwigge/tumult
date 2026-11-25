@@ -26,6 +26,7 @@ import {
 import { CanvasRenderer } from 'echarts/renderers';
 import { DARK, LIGHT, themeSpec } from './chart-theme';
 import type { ChartTheme } from './chart-theme';
+import { tokens } from './tokens.gen';
 
 echarts.use([
     LineChart,
@@ -61,7 +62,7 @@ echarts.registerTheme('tumult-light', themeSpec(LIGHT));
 /**
  * The theme in force: `data-theme` on <html> wins (`dark` | `light`);
  * `auto` or unset follows `prefers-color-scheme`, and the UI defaults to
- * dark when nothing is set (see lib/theme.css).
+ * dark when nothing is set (see lib/tokens.css).
  */
 export function chartTheme(): ChartTheme {
     if (typeof document === 'undefined') return 'tumult-dark';
@@ -73,12 +74,21 @@ export function chartTheme(): ChartTheme {
         : 'tumult-dark';
 }
 
-// The surfaces a chart of the UI draws on, per theme (lib/theme.css). They
-// are kept here, and not in chart-theme.ts, so that the script of the CLI
-// report stays the same.
+// The surfaces a chart of the UI draws on, from the colour roles of a theme
+// (lib/tokens.gen.ts). They are kept here, and not in chart-theme.ts,
+// because the script of the CLI report does not need them.
+function surfaces<T extends (typeof tokens)['dark' | 'light']>(t: T) {
+    return {
+        bg: t.bg,
+        panel: t['bg-panel'],
+        hover: t['bg-hover'],
+        accentDim: t['accent-dim'],
+    } as const;
+}
+
 const SURFACES = {
-    'tumult-dark': { bg: '#0b0e11', panel: '#151b21', hover: '#1c242c', accentDim: '#2d5d84' },
-    'tumult-light': { bg: '#f4f6f8', panel: '#ffffff', hover: '#e9eef2', accentDim: '#9cc4e4' },
+    'tumult-dark': surfaces(tokens.dark),
+    'tumult-light': surfaces(tokens.light),
 } as const;
 
 /** Colour tokens for the theme in force (for series and marks). */
