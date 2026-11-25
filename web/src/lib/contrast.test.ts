@@ -313,6 +313,33 @@ describe('the contrast of the colour roles', () => {
     }
 });
 
+/** The CIE lightness L* of a colour `#rrggbb`, from 0 for black to 100 for white. */
+function lightness(hex: string): number {
+    const y = luminance(hex);
+    return y > 216 / 24389 ? 116 * Math.cbrt(y) - 16 : (24389 / 27) * y;
+}
+
+describe('the text colours of the light theme', () => {
+    // text-faint is the lightest grey that is 4.5:1 on bg-hover, the darkest
+    // light surface. Halfway between it and text, text-dim is 16 L* from
+    // each: the most that AA leaves for both steps.
+    const STEP = 15;
+
+    it(`stand ${STEP} L* or more apart, so that each level reads as its own`, () => {
+        const role = roles('light');
+        const steps = [
+            ['text', 'text-dim'],
+            ['text-dim', 'text-faint'],
+        ].flatMap(([darker, lighter]) => {
+            const step = lightness(role[lighter]) - lightness(role[darker]);
+            return step >= STEP
+                ? []
+                : [`${darker} to ${lighter}: ${step.toFixed(1)} L*, needs ${STEP}`];
+        });
+        expect(steps).toEqual([]);
+    });
+});
+
 describe('the styles that draw on a colour role', () => {
     it('write the text on the accent fill in --on-accent', () => {
         const filled = RULES.filter((rule) =>

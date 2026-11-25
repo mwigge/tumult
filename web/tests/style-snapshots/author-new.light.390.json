@@ -64,7 +64,7 @@
       "gap": "14px"
     },
     "div.shell > main[main].main > div.page-head > a[link].back \"← catalog\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "display": "block"
     },
     "div.shell > main[main].main > div.page-head > h1[heading] \"Author an experiment\"": {
@@ -84,7 +84,7 @@
       "margin": "0px 0px 14px"
     },
     "div.shell > main[main].main > div.panel > h2[heading] \"1 · ACTION\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "font-weight": "600",
       "letter-spacing": "0.7px",
@@ -112,7 +112,7 @@
       "padding": "1px 9px"
     },
     "div.shell > main[main].main > div.panel > p[paragraph].desc": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13px",
       "display": "block",
       "margin": "6px 0px"
@@ -129,7 +129,7 @@
       "margin": "0px 0px 14px"
     },
     "div.shell > main[main].main > div.panel #2 > h2[heading] \"2 · PARAMETERS\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "font-weight": "600",
       "letter-spacing": "0.7px",
@@ -146,7 +146,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.panel #2 > div.grid.cols-2 > label[LabelText] > span.label-caps": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "letter-spacing": "0.6px",
       "text-transform": "uppercase",
@@ -175,7 +175,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.panel #2 > div.grid.cols-2 > label[LabelText] #2 > span.label-caps": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "letter-spacing": "0.6px",
       "text-transform": "uppercase",
@@ -209,7 +209,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.panel #2 > div.grid.cols-2 #2 > label[LabelText] > span.mono.label-caps": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11px",
       "letter-spacing": "0.6px",
@@ -239,7 +239,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.panel #2 > div.grid.cols-2 #2 > label[LabelText] #2 > span.mono.label-caps": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11px",
       "letter-spacing": "0.6px",
@@ -261,7 +261,7 @@
       "padding": "6px 9px"
     },
     "div.shell > main[main].main > div.panel #2 > h3[heading] \"STEADY-STATE PROBE\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "font-weight": "600",
       "letter-spacing": "0.6px",
@@ -275,7 +275,8 @@
       "border-right": "1px solid rgb(197, 206, 214)",
       "border-bottom": "1px solid rgb(197, 206, 214)",
       "border-left": "1px solid rgb(197, 206, 214)",
-      "border-radius": "5px"
+      "border-radius": "5px",
+      "gap": "normal 1px"
     },
     "div.shell > main[main].main > div.panel #2 > div[group].seg \"probe kind\" > button[button].active \"Command\"": {
       "color": "rgb(255, 255, 255)",
@@ -287,12 +288,12 @@
       "padding": "5px 12px"
     },
     "div.shell > main[main].main > div.panel #2 > div[group].seg \"probe kind\" > button[button] \"HTTP URL\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-family": "Arial",
       "font-size": "12.5px",
       "line-height": "normal",
       "display": "block",
-      "border-left": "1px solid rgb(197, 206, 214)",
+      "box-shadow": "rgb(197, 206, 214) -1px 0px 0px 0px",
       "padding": "5px 12px"
     },
     "div.shell > main[main].main > div.panel #2 > div.grid.cols-2 #3": {
@@ -305,7 +306,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.panel #2 > div.grid.cols-2 #3 > label[LabelText] > span.label-caps": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "letter-spacing": "0.6px",
       "text-transform": "uppercase",
@@ -334,7 +335,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.panel #2 > div.grid.cols-2 #3 > label[LabelText] #2 > span.label-caps": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "letter-spacing": "0.6px",
       "text-transform": "uppercase",
@@ -360,7 +361,7 @@
       "padding": "6px 9px"
     },
     "div.shell > main[main].main > div.panel #2 > div.hint": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12.5px",
       "display": "block",
       "margin": "8px 0px 0px"
@@ -377,7 +378,7 @@
       "margin": "0px 0px 14px"
     },
     "div.shell > main[main].main > div.panel #3 > h2[heading] \"3 · EXPERIMENT TOON\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "font-weight": "600",
       "letter-spacing": "0.7px",

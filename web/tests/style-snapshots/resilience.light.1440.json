@@ -58,7 +58,7 @@
       "padding": "0px 0px 1px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◧ Overview\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -80,7 +80,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◭ Performance\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -91,7 +91,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"▦ Scores\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -102,7 +102,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⚖ DORA\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -113,7 +113,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⟲ Disaster recovery\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -124,7 +124,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⚗ Experiments\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -135,7 +135,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"▶ Runs\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -146,7 +146,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✚ Author\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -157,7 +157,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"☷ GameDays\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -168,7 +168,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✓ Approvals\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -179,7 +179,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✎ Manual\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -190,7 +190,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"≣ Logs\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -201,7 +201,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⌁ Traces\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -212,7 +212,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"∿ Metrics\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -223,7 +223,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✳ Star Map\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -234,7 +234,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✦ Ask\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -245,7 +245,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"▤ Reports\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -256,7 +256,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◔ Events\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -267,7 +267,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⚿ Users\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -278,7 +278,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"➤ Webhooks\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -289,7 +289,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"↻ Schedules\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -300,7 +300,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > button[button].theme \"○ light\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "display": "block",
       "border-top": "1px solid rgb(227, 232, 237)",
@@ -326,7 +326,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.page-head > span.muted": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12.5px",
       "display": "block"
     },
@@ -346,7 +346,7 @@
       "padding": "14px 16px"
     },
     "div.shell > main[main].main > div.grid.cols-2 > section.panel > h2[heading] \"TOP RISKS\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "font-weight": "600",
       "letter-spacing": "0.7px",
@@ -380,7 +380,7 @@
       "padding": "1px 9px"
     },
     "div.shell > main[main].main > div.grid.cols-2 > section.panel > div.counts > span.badge.neutral": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
@@ -390,7 +390,7 @@
       "padding": "1px 9px"
     },
     "div.shell > main[main].main > div.grid.cols-2 > section.panel > div.state": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13px",
       "display": "block",
       "padding": "28px"
@@ -409,7 +409,7 @@
       "padding": "14px 16px"
     },
     "div.shell > main[main].main > div.grid.cols-2 > section.panel #2 > h2[heading] \"COVERAGE GAPS\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "font-weight": "600",
       "letter-spacing": "0.7px",
@@ -433,7 +433,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.grid.cols-2 > section.panel #2 > div.legend": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "display": "flex",
       "margin": "6px 0px 10px",
@@ -507,7 +507,7 @@
       "padding": "14px 16px"
     },
     "div.shell > main[main].main > div.grid.cols-2.below > section.panel > h2[heading] \"OBJECTIVES\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "font-weight": "600",
       "letter-spacing": "0.7px",
@@ -531,7 +531,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.grid.cols-2.below > section.panel > div.legend": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "display": "flex",
       "margin": "6px 0px 10px",
@@ -590,7 +590,7 @@
       "padding": "14px 16px"
     },
     "div.shell > main[main].main > div.grid.cols-2.below > section.panel #2 > h2[heading] \"COMPLIANCE SCORE, 14D\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "font-weight": "600",
       "letter-spacing": "0.7px",
@@ -599,7 +599,7 @@
       "margin": "0px 0px 10px"
     },
     "div.shell > main[main].main > div.grid.cols-2.below > section.panel #2 > p[paragraph].muted.meaning": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12.5px",
       "display": "block",
       "margin": "0px 0px 10px"
@@ -628,7 +628,7 @@
       "margin": "14px 0px 0px"
     },
     "div.shell > main[main].main > section.panel.below > h2[heading] \"TELEMETRY CONTRACT, 24H\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "font-weight": "600",
       "letter-spacing": "0.7px",
@@ -672,7 +672,7 @@
       "padding": "1px 9px"
     },
     "div.shell > main[main].main > section.panel.below > div.counts > span.muted": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12.5px",
       "display": "block"
     },
@@ -687,7 +687,7 @@
       "display": "table-row"
     },
     "div.shell > main[main].main > section.panel.below > table[table] > thead[rowgroup] > tr[row] > th[columnheader] \"SERVICE\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -697,7 +697,7 @@
       "padding": "6px 8px"
     },
     "div.shell > main[main].main > section.panel.below > table[table] > thead[rowgroup] > tr[row] > th[columnheader] \"SPANS\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -707,7 +707,7 @@
       "padding": "6px 8px"
     },
     "div.shell > main[main].main > section.panel.below > table[table] > thead[rowgroup] > tr[row] > th[columnheader] \"LEVEL\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -717,7 +717,7 @@
       "padding": "6px 8px"
     },
     "div.shell > main[main].main > section.panel.below > table[table] > thead[rowgroup] > tr[row] > th[columnheader] \"MISSING\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -762,7 +762,7 @@
       "padding": "1px 9px"
     },
     "div.shell > main[main].main > section.panel.below > table[table] > tr[row] > td[cell].mono.missing \"–\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "12px",
       "display": "table-cell",
@@ -785,7 +785,7 @@
       "padding": "1px 9px"
     },
     "div.shell > main[main].main > section.panel.below > div.malformed > span.muted": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "display": "inline"
     },
     "div.shell > main[main].main > section.panel.below > div.malformed > span.muted > span.mono": {
@@ -805,7 +805,7 @@
       "margin": "14px 0px 0px"
     },
     "div.shell > main[main].main > section.panel.score > h2[heading] \"RESILIENCE SCORE\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "font-weight": "600",
       "letter-spacing": "0.7px",
@@ -814,7 +814,7 @@
       "margin": "0px 0px 10px"
     },
     "div.shell > main[main].main > section.panel.score > p[paragraph].muted.meaning": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12.5px",
       "display": "block",
       "margin": "0px 0px 10px"

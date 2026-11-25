@@ -58,7 +58,7 @@
       "padding": "0px 0px 1px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◧ Overview\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -69,7 +69,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◎ Resilience\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -80,7 +80,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◭ Performance\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -91,7 +91,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"▦ Scores\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -102,7 +102,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⚖ DORA\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -113,7 +113,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⟲ Disaster recovery\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -124,7 +124,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⚗ Experiments\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -135,7 +135,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"▶ Runs\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -157,7 +157,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"☷ GameDays\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -168,7 +168,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✓ Approvals\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -179,7 +179,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✎ Manual\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -190,7 +190,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"≣ Logs\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -201,7 +201,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⌁ Traces\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -212,7 +212,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"∿ Metrics\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -223,7 +223,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✳ Star Map\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -234,7 +234,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✦ Ask\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -245,7 +245,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"▤ Reports\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -256,7 +256,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◔ Events\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -267,7 +267,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⚿ Users\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -278,7 +278,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"➤ Webhooks\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -289,7 +289,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"↻ Schedules\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -300,7 +300,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > button[button].theme \"○ light\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "display": "block",
       "border-top": "1px solid rgb(227, 232, 237)",
@@ -326,7 +326,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.page-head > span.sub": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12.5px",
       "display": "block"
     },
@@ -373,7 +373,7 @@
       "margin": "0px 0px 14px"
     },
     "div.shell > main[main].main > div.panel > h2[heading] \"NETWORK (2)\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "font-weight": "600",
       "letter-spacing": "0.7px",
@@ -396,7 +396,7 @@
       "display": "table-row"
     },
     "div.shell > main[main].main > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"ACTION\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -406,7 +406,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"KIND\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -416,7 +416,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"DESCRIPTION\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -426,7 +426,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader]": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -467,7 +467,7 @@
       "padding": "1px 9px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > tr[row].clickable > td[cell] \"Add latency to the traffic of an interfa…\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(227, 232, 237)",
       "padding": "7px 10px"
@@ -495,7 +495,7 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > tr[row].clickable #2 > td[cell] \"probe\" > span.badge.neutral": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
@@ -505,7 +505,7 @@
       "padding": "1px 9px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > tr[row].clickable #2 > td[cell] \"Check that a host answers\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "display": "table-cell",
       "padding": "7px 10px"
     },

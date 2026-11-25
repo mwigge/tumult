@@ -155,7 +155,7 @@ export function cellLines(cell: DoraCell): string[] {
 const ACTS: ReadonlyMap<string, string> = new Map([['rts1774', 'RTS 2024/1774']]);
 
 /** How an article of the API reads: `Art. 11`, or the act of the RTS rows, `RTS 2024/1774`. */
-const articleLabel = (article: string) => ACTS.get(article) ?? `Art. ${article}`;
+export const articleLabel = (article: string) => ACTS.get(article) ?? `Art. ${article}`;
 
 /** The heatmap tooltip of a cell. */
 function cellTooltip(cell: DoraCell & { row: string }): Tip {

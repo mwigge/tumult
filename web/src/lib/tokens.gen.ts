@@ -167,7 +167,7 @@ export const tokens = {
         "border-strong": "#c5ced6",
         "border-input": "#8d959d",
         "text": "#1b2329",
-        "text-dim": "#5b6772",
+        "text-dim": "#3b4751",
         "text-faint": "#616d79",
         "ok": "#097852",
         "warn": "#ab4d04",

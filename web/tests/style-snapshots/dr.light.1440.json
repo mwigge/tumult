@@ -58,7 +58,7 @@
       "padding": "0px 0px 1px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◧ Overview\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -69,7 +69,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◎ Resilience\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -80,7 +80,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◭ Performance\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -91,7 +91,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"▦ Scores\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -102,7 +102,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⚖ DORA\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -124,7 +124,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⚗ Experiments\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -135,7 +135,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"▶ Runs\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -146,7 +146,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✚ Author\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -157,7 +157,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"☷ GameDays\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -168,7 +168,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✓ Approvals\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -179,7 +179,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✎ Manual\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -190,7 +190,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"≣ Logs\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -201,7 +201,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⌁ Traces\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -212,7 +212,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"∿ Metrics\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -223,7 +223,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✳ Star Map\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -234,7 +234,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✦ Ask\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -245,7 +245,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"▤ Reports\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -256,7 +256,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◔ Events\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -267,7 +267,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⚿ Users\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -278,7 +278,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"➤ Webhooks\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -289,7 +289,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"↻ Schedules\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -300,7 +300,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > button[button].theme \"○ light\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "display": "block",
       "border-top": "1px solid rgb(227, 232, 237)",
@@ -326,7 +326,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.page-head > span.sub": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12.5px",
       "display": "block"
     },
@@ -373,7 +373,7 @@
       "border-radius": "5px"
     },
     "div.shell > main[main].main > div.page-head > div.controls > div.filters > div[group].seg \"Period\" > button[button] \"90 days\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-family": "Arial",
       "font-size": "12.5px",
       "line-height": "normal",
@@ -391,7 +391,7 @@
       "padding": "5px 12px"
     },
     "div.shell > main[main].main > div.page-head > div.controls > div.filters > div[group].seg \"Period\" > button[button] \"3 years\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-family": "Arial",
       "font-size": "12.5px",
       "line-height": "normal",
@@ -414,7 +414,7 @@
       "padding": "14px 16px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > h2[heading] \"DUE REGISTER\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "font-weight": "600",
       "letter-spacing": "0.7px",
@@ -423,7 +423,7 @@
       "margin": "0px 0px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > p[paragraph].summary": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12.5px",
       "display": "block",
       "margin": "-4px 0px 10px"
@@ -442,7 +442,7 @@
       "display": "table-row"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > thead[rowgroup] > tr[row] > th[columnheader] \"TARGET\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -452,7 +452,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > thead[rowgroup] > tr[row] > th[columnheader] \"STATE\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -462,7 +462,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > thead[rowgroup] > tr[row] > th[columnheader] \"LAST TEST\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -472,7 +472,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > thead[rowgroup] > tr[row] > th[columnheader] \"NEXT DUE\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -482,7 +482,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > thead[rowgroup] > tr[row] > th[columnheader] \"INTERVAL\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -492,7 +492,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > thead[rowgroup] > tr[row] > th[columnheader] \"PLAN\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -502,7 +502,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > thead[rowgroup] > tr[row] > th[columnheader] \"RTO\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -512,7 +512,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > thead[rowgroup] > tr[row] > th[columnheader] \"RPO\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -544,7 +544,7 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > tr[row] > td[cell].nowrap \"never tested\" > span.badge.neutral": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
@@ -657,7 +657,7 @@
       "display": "inline"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > tr[row] #2 > td[cell].last \"2026-04-28 automated breached\" > span.badge.neutral": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
@@ -772,7 +772,7 @@
       "display": "inline"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > tr[row] #3 > td[cell].last \"2025-11-29 manual met\" > span.badge.neutral": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
@@ -886,7 +886,7 @@
       "display": "inline"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > tr[row] #4 > td[cell].last \"2026-11-09 automated met\" > span.badge.neutral": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
@@ -1000,7 +1000,7 @@
       "display": "inline"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > tr[row] #5 > td[cell].last \"2026-11-04 automated met\" > span.badge.neutral": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
@@ -1114,7 +1114,7 @@
       "display": "inline"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > tr[row] #6 > td[cell].last \"2026-08-06 automated not recovered\" > span.badge.neutral": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
@@ -1206,7 +1206,7 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > tr[row] #7 > td[cell].nowrap \"never tested\" > span.badge.neutral": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
@@ -1283,7 +1283,7 @@
       "padding": "14px 16px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"RTO AND RPO OVER TIME\" > h2[heading] \"RTO AND RPO OVER TIME\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "font-weight": "600",
       "letter-spacing": "0.7px",
@@ -1292,7 +1292,7 @@
       "margin": "0px 0px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"RTO AND RPO OVER TIME\" > div.legend": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "display": "flex",
       "margin": "6px 0px 10px",
@@ -1348,7 +1348,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"RTO AND RPO OVER TIME\" > section[region].target \"billing · prod\" > div.grid.cols-2 > div.chart > h4[heading] \"RTO\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -1371,7 +1371,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"RTO AND RPO OVER TIME\" > section[region].target \"billing · prod\" > div.grid.cols-2 > div.chart #2 > h4[heading] \"RPO\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -1379,7 +1379,7 @@
       "margin": "0px 0px 4px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"RTO AND RPO OVER TIME\" > section[region].target \"billing · prod\" > div.grid.cols-2 > div.chart #2 > div.state": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13px",
       "display": "block",
       "padding": "20px"
@@ -1405,7 +1405,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"RTO AND RPO OVER TIME\" > section[region].target \"catalog · prod\" > div.grid.cols-2 > div.chart > h4[heading] \"RTO\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -1428,7 +1428,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"RTO AND RPO OVER TIME\" > section[region].target \"catalog · prod\" > div.grid.cols-2 > div.chart #2 > h4[heading] \"RPO\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -1468,7 +1468,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"RTO AND RPO OVER TIME\" > section[region].target \"ledger · prod\" > div.grid.cols-2 > div.chart > h4[heading] \"RTO\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -1491,7 +1491,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"RTO AND RPO OVER TIME\" > section[region].target \"ledger · prod\" > div.grid.cols-2 > div.chart #2 > h4[heading] \"RPO\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -1531,7 +1531,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"RTO AND RPO OVER TIME\" > section[region].target \"orders · prod\" > div.grid.cols-2 > div.chart > h4[heading] \"RTO\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -1554,7 +1554,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"RTO AND RPO OVER TIME\" > section[region].target \"orders · prod\" > div.grid.cols-2 > div.chart #2 > h4[heading] \"RPO\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -1562,7 +1562,7 @@
       "margin": "0px 0px 4px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"RTO AND RPO OVER TIME\" > section[region].target \"orders · prod\" > div.grid.cols-2 > div.chart #2 > div.state": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13px",
       "display": "block",
       "padding": "20px"
@@ -1588,7 +1588,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"RTO AND RPO OVER TIME\" > section[region].target \"payments-db · prod\" > div.grid.cols-2 > div.chart > h4[heading] \"RTO\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -1611,7 +1611,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"RTO AND RPO OVER TIME\" > section[region].target \"payments-db · prod\" > div.grid.cols-2 > div.chart #2 > h4[heading] \"RPO\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -1619,7 +1619,7 @@
       "margin": "0px 0px 4px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"RTO AND RPO OVER TIME\" > section[region].target \"payments-db · prod\" > div.grid.cols-2 > div.chart #2 > div.state": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13px",
       "display": "block",
       "padding": "20px"
@@ -1645,7 +1645,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"RTO AND RPO OVER TIME\" > section[region].target \"search · staging\" > div.grid.cols-2 > div.chart > h4[heading] \"RTO\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -1653,7 +1653,7 @@
       "margin": "0px 0px 4px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"RTO AND RPO OVER TIME\" > section[region].target \"search · staging\" > div.grid.cols-2 > div.chart > div.state": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13px",
       "display": "block",
       "padding": "20px"
@@ -1662,7 +1662,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"RTO AND RPO OVER TIME\" > section[region].target \"search · staging\" > div.grid.cols-2 > div.chart #2 > h4[heading] \"RPO\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -1670,7 +1670,7 @@
       "margin": "0px 0px 4px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"RTO AND RPO OVER TIME\" > section[region].target \"search · staging\" > div.grid.cols-2 > div.chart #2 > div.state": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13px",
       "display": "block",
       "padding": "20px"
@@ -1686,7 +1686,7 @@
       "padding": "14px 16px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > h2[heading] \"DR TESTS IN THE PERIOD\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "font-weight": "600",
       "letter-spacing": "0.7px",
@@ -1695,7 +1695,7 @@
       "margin": "0px 0px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > p[paragraph].summary": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12.5px",
       "display": "block",
       "margin": "-4px 0px 10px"
@@ -1714,7 +1714,7 @@
       "display": "table-row"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > thead[rowgroup] > tr[row] > th[columnheader] \"EXECUTED\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -1724,7 +1724,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > thead[rowgroup] > tr[row] > th[columnheader] \"TEST\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -1734,7 +1734,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > thead[rowgroup] > tr[row] > th[columnheader] \"ORIGIN\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -1744,7 +1744,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > thead[rowgroup] > tr[row] > th[columnheader] \"TARGET\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -1754,7 +1754,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > thead[rowgroup] > tr[row] > th[columnheader] \"VERDICT\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -1764,7 +1764,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > thead[rowgroup] > tr[row] > th[columnheader] \"RTO\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -1774,7 +1774,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > thead[rowgroup] > tr[row] > th[columnheader] \"RPO\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -1784,7 +1784,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > thead[rowgroup] > tr[row] > th[columnheader] \"DATA VERIFIED\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -1794,7 +1794,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > thead[rowgroup] > tr[row] > th[columnheader] \"REVIEWER\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -1831,7 +1831,7 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] > td[cell] \"automated\" > span.badge.neutral": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
@@ -1925,7 +1925,7 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #2 > td[cell] \"automated\" > span.badge.neutral": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
@@ -1949,7 +1949,7 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #2 > td[cell] \"not measured\" > span.badge.neutral": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
@@ -2019,7 +2019,7 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #3 > td[cell] \"automated\" > span.badge.neutral": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
@@ -2113,7 +2113,7 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #4 > td[cell] \"automated\" > span.badge.neutral": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
@@ -2207,7 +2207,7 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #5 > td[cell] \"automated\" > span.badge.neutral": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
@@ -2301,7 +2301,7 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #6 > td[cell] \"automated\" > span.badge.neutral": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
@@ -2395,7 +2395,7 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #7 > td[cell] \"automated\" > span.badge.neutral": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
@@ -2489,7 +2489,7 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #8 > td[cell] \"automated\" > span.badge.neutral": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
@@ -2583,7 +2583,7 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #9 > td[cell] \"manual drill\" > span.badge.neutral": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
@@ -2677,7 +2677,7 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #10 > td[cell] \"automated\" > span.badge.neutral": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
@@ -2771,7 +2771,7 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #11 > td[cell] \"automated\" > span.badge.neutral": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
@@ -2866,7 +2866,7 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #12 > td[cell] \"automated\" > span.badge.neutral": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
@@ -2960,7 +2960,7 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #13 > td[cell] \"automated\" > span.badge.neutral": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
@@ -3054,7 +3054,7 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #14 > td[cell] \"automated\" > span.badge.neutral": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
@@ -3148,7 +3148,7 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #15 > td[cell] \"automated\" > span.badge.neutral": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
@@ -3243,7 +3243,7 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #16 > td[cell] \"automated\" > span.badge.neutral": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
@@ -3337,7 +3337,7 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #17 > td[cell] \"automated\" > span.badge.neutral": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
@@ -3431,7 +3431,7 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #18 > td[cell] \"automated\" > span.badge.neutral": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
@@ -3526,7 +3526,7 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #19 > td[cell] \"automated\" > span.badge.neutral": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
@@ -3617,7 +3617,7 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #20 > td[cell] \"automated\" > span.badge.neutral": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
@@ -3681,7 +3681,7 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > nav[navigation].pager \"Pages of DR tests\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12.5px",
       "display": "flex",
       "margin": "10px 0px 0px",

@@ -55,7 +55,7 @@
       },
       "tumult-code-comment": {
         "$value": "{text-dim}",
-        "$description": "Comments and prompts in code: 5.3:1 on the code panel."
+        "$description": "Comments and prompts in code: 8.8:1 on the code panel."
       },
       "tumult-code-keyword": {
         "$value": {
@@ -114,7 +114,7 @@
       },
       "text-dim": {
         "$value": "{text-dim}",
-        "$description": "Text that matters less: 5.8:1 on white and 5.3:1 on a band."
+        "$description": "Text that matters less: 9.5:1 on white and 8.8:1 on a band."
       },
       "copper": {
         "$value": {

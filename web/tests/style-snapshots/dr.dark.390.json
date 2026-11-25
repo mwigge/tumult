@@ -113,7 +113,8 @@
       "border-right": "1px solid rgb(51, 64, 76)",
       "border-bottom": "1px solid rgb(51, 64, 76)",
       "border-left": "1px solid rgb(51, 64, 76)",
-      "border-radius": "5px"
+      "border-radius": "5px",
+      "gap": "normal 1px"
     },
     "div.shell > main[main].main > div.page-head > div.controls > div.filters > div[group].seg \"Period\" > button[button] \"90 days\"": {
       "color": "rgb(139, 152, 165)",
@@ -130,7 +131,7 @@
       "line-height": "normal",
       "display": "block",
       "background-color": "rgb(58, 106, 145)",
-      "border-left": "1px solid rgb(51, 64, 76)",
+      "box-shadow": "rgb(51, 64, 76) -1px 0px 0px 0px",
       "padding": "5px 12px"
     },
     "div.shell > main[main].main > div.page-head > div.controls > div.filters > div[group].seg \"Period\" > button[button] \"3 years\"": {
@@ -139,7 +140,7 @@
       "font-size": "12.5px",
       "line-height": "normal",
       "display": "block",
-      "border-left": "1px solid rgb(51, 64, 76)",
+      "box-shadow": "rgb(51, 64, 76) -1px 0px 0px 0px",
       "padding": "5px 12px"
     },
     "div.shell > main[main].main > div.sections": {

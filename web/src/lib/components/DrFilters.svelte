@@ -2,7 +2,7 @@
     // The filters of the DR page: one target, one environment and a period.
     // A target or an environment the URL names stays a choice when the
     // register does not hold it, so the page shows what the URL asks for.
-    import { PERIOD_DAYS } from '#lib/dr.js';
+    import { PERIOD_DAYS, PERIOD_LABEL } from '#lib/dr.js';
     import type { DrFilters } from '#lib/dr.js';
     import Segmented from './Segmented.svelte';
 
@@ -18,11 +18,6 @@
         onchange: (key: keyof DrFilters, value: string) => void;
     } = $props();
 
-    const PERIOD_LABEL: Record<string, string> = {
-        '90d': '90 days',
-        '1y': '1 year',
-        '3y': '3 years',
-    };
     const PERIODS = Object.keys(PERIOD_DAYS).map((value) => ({
         value,
         label: PERIOD_LABEL[value],

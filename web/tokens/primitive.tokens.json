@@ -59,13 +59,13 @@
       },
       "$description": "Dark grey for strong lines on dark surfaces."
     },
-    "43": {
+    "29": {
       "$value": {
         "colorSpace": "srgb",
-        "components": [0.3569, 0.4039, 0.4471],
-        "hex": "#5b6772"
+        "components": [0.2314, 0.2784, 0.3176],
+        "hex": "#3b4751"
       },
-      "$description": "Middle grey, on the dark side."
+      "$description": "Dark grey for dim text on light surfaces: halfway between the text and the faint text in L*."
     },
     "45": {
       "$value": {

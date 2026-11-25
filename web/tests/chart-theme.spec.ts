@@ -44,7 +44,7 @@ const COLOURS = {
     light: {
         grid: '#e3e8ed',
         axis: '#c5ced6',
-        text: '#5b6772',
+        text: '#3b4751',
         tooltip: '#ffffff',
         panel: '#ffffff',
         bg: '#f4f6f8',

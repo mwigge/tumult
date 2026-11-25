@@ -69,7 +69,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.page-head > span.sub": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12.5px",
       "display": "block"
     },
@@ -95,7 +95,7 @@
       "display": "table-row"
     },
     "div.shell > main[main].main > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader]": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -105,7 +105,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"USERNAME\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -115,7 +115,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"ROLE\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -125,7 +125,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"SCOPES\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -135,7 +135,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"STATUS\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -145,7 +145,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"CREATED\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -180,7 +180,7 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > tr[row].clickable > td[cell] \"admin\" #2 > span.badge.neutral": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
@@ -234,7 +234,7 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > tr[row].clickable #2 > td[cell] \"operator\" #2 > span.badge.neutral": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
@@ -276,7 +276,7 @@
       "padding": "14px 16px"
     },
     "div.shell > main[main].main > div.panel #2 > h2[heading] \"CREATE USER\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "font-weight": "600",
       "letter-spacing": "0.7px",
@@ -290,7 +290,7 @@
       "gap": "12px 18px"
     },
     "div.shell > main[main].main > div.panel #2 > form[form].create > label[LabelText]": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12.5px",
       "display": "flex",
       "gap": "5px"
@@ -310,7 +310,7 @@
       "padding": "6px 9px"
     },
     "div.shell > main[main].main > div.panel #2 > form[form].create > label[LabelText] #2": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12.5px",
       "display": "flex",
       "gap": "5px"
@@ -330,7 +330,7 @@
       "padding": "6px 9px"
     },
     "div.shell > main[main].main > div.panel #2 > form[form].create > label[LabelText] #3": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12.5px",
       "display": "flex",
       "gap": "5px"
@@ -355,7 +355,7 @@
       "margin": "4px 0px 0px"
     },
     "div.shell > main[main].main > div.panel #2 > form[form].create > label[LabelText] #4": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12.5px",
       "display": "flex",
       "gap": "5px"
@@ -403,7 +403,7 @@
       "padding": "14px 16px"
     },
     "div.shell > main[main].main > div.panel #3 > h2[heading] \"API TOKENS\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "font-weight": "600",
       "letter-spacing": "0.7px",
@@ -423,7 +423,7 @@
       "display": "table-row"
     },
     "div.shell > main[main].main > div.panel #3 > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"NAME\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -433,7 +433,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div.panel #3 > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"OWNER\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -443,7 +443,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div.panel #3 > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"CREATED\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -453,7 +453,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div.panel #3 > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"LAST USED\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -463,7 +463,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div.panel #3 > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"EXPIRES\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -473,7 +473,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div.panel #3 > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"STATUS\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -483,7 +483,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div.panel #3 > table[table].data > thead[rowgroup] > tr[row] > th[columnheader]": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -555,7 +555,7 @@
       "gap": "12px 18px"
     },
     "div.shell > main[main].main > div.panel #3 > form[form].create > label[LabelText]": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12.5px",
       "display": "flex",
       "gap": "5px"
@@ -575,7 +575,7 @@
       "padding": "6px 9px"
     },
     "div.shell > main[main].main > div.panel #3 > form[form].create > label[LabelText] #2": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12.5px",
       "display": "flex",
       "gap": "5px"
@@ -595,7 +595,7 @@
       "padding": "6px 9px"
     },
     "div.shell > main[main].main > div.panel #3 > form[form].create > label[LabelText] #3": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12.5px",
       "display": "flex",
       "gap": "5px"

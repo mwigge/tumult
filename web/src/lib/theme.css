@@ -307,10 +307,18 @@ table.data tr.clickable:hover {
     background: var(--accent-dim);
     color: var(--on-accent);
 }
-/* On a small screen the buttons of a long group wrap to a second row. */
+/* On a small screen the buttons of a long group wrap to a second row. The
+   line between two buttons is then a shadow in the gap before the second.
+   At the start of a row it falls outside the group, which cuts it off, so
+   a row never starts with two lines. */
 @media (max-width: 900px) {
     .seg {
         flex-wrap: wrap;
+        column-gap: var(--border-width-sm);
+    }
+    .seg button + button {
+        border-left: none;
+        box-shadow: calc(-1 * var(--border-width-sm)) 0 0 var(--border-strong);
     }
 }
 /* The small look of Segmented.svelte and Tabs.svelte: the views of the

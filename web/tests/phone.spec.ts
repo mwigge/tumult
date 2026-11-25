@@ -64,6 +64,24 @@ const outside = (page: Page) =>
             .slice(0, 10);
     });
 
+/** The colour of each pixel of row `y` of a picture, as `rgb(r, g, b)`. The browser reads the PNG. */
+const pixelRow = (page: Page, png: Buffer, y: number) =>
+    page.evaluate(
+        async ({ bytes, y }) => {
+            const blob = new Blob([new Uint8Array(bytes)], { type: 'image/png' });
+            const bitmap = await createImageBitmap(blob);
+            const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+            const context = canvas.getContext('2d') as OffscreenCanvasRenderingContext2D;
+            context.drawImage(bitmap, 0, 0);
+            const { data } = context.getImageData(0, y, bitmap.width, 1);
+            return Array.from(
+                { length: bitmap.width },
+                (_, x) => `rgb(${data[4 * x]}, ${data[4 * x + 1]}, ${data[4 * x + 2]})`,
+            );
+        },
+        { bytes: [...png], y },
+    );
+
 for (const target of [...PAGES, ...STATES]) {
     const title = target.shows ? `${target.path} with ${target.shows}` : target.path;
     test(`${title} does not scroll sideways on a phone`, async ({ page }) => {
@@ -124,6 +142,43 @@ test('choosing an entry of the menu opens its page and closes the menu', async (
     await expect(menu).toHaveAttribute('aria-expanded', 'false');
 });
 
+test.describe('on a touch screen', () => {
+    test.use({ hasTouch: true });
+
+    test('a tap outside the open menu closes it, and a tap in it does not', async ({ page }) => {
+        await open(page, pageOf('overview'));
+        const menu = page.getByRole('button', { name: 'Menu' });
+        const nav = page.getByRole('navigation');
+        const side = page.locator('#side');
+        const focusIn = (selector: string) =>
+            page.evaluate(
+                (s) => document.querySelector(s)?.contains(document.activeElement) ?? false,
+                selector,
+            );
+
+        await menu.tap();
+        await expect(nav).toBeVisible();
+        await side.tap({ position: { x: 4, y: 4 } });
+        await expect(nav).toBeVisible();
+        await expect(menu).toHaveAttribute('aria-expanded', 'true');
+
+        await nav.getByRole('link', { name: /Runs/ }).focus();
+        await page.getByRole('heading', { level: 1, name: 'Overview', exact: true }).tap();
+        await expect(nav).toBeHidden();
+        await expect(menu).toHaveAttribute('aria-expanded', 'false');
+        // The focus goes where the tap went: not into the hidden menu, and
+        // not back up to the menu button.
+        expect(await focusIn('#side')).toBe(false);
+        await expect(menu).not.toBeFocused();
+
+        // The menu button is not outside the menu: it still opens and closes it.
+        await menu.tap();
+        await expect(nav).toBeVisible();
+        await menu.tap();
+        await expect(nav).toBeHidden();
+    });
+});
+
 test('on a wide screen the side bar shows and the menu button does not', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await open(page, pageOf('overview'));
@@ -150,5 +205,48 @@ for (const name of ['runs', 'schedules']) {
         });
         expect(scrolls, 'the table is wider than its panel, and the panel scrolls').toBe(true);
         expect(await overflow(page)).toBeLessThanOrEqual(0);
+    });
+}
+
+for (const name of ['runs', 'events', 'manual']) {
+    const target = pageOf(name);
+    test(`each row of the wrapped group of ${target.path} starts with one line`, async ({
+        page,
+    }) => {
+        await open(page, target);
+        const group = page.locator('.seg').first();
+        // Each row of buttons: the middle of its height, and where its first
+        // and second buttons start, from the left edge of the group.
+        const { line, rows } = await group.evaluate((el) => {
+            const box = el.getBoundingClientRect();
+            const byRow = new Map<number, number[]>();
+            for (const button of el.querySelectorAll('button')) {
+                const at = button.getBoundingClientRect();
+                const top = Math.round(at.top - box.top);
+                byRow.set(top, [...(byRow.get(top) ?? []), at.left - box.left]);
+            }
+            const height = (el.querySelector('button') as Element).getBoundingClientRect().height;
+            return {
+                line: getComputedStyle(el).borderLeftColor,
+                rows: [...byRow].map(([top, lefts]) => ({
+                    y: Math.round(top + height / 2),
+                    second: lefts.length > 1 ? Math.round(lefts[1]) : null,
+                })),
+            };
+        });
+        expect(rows.length, 'the group wraps at phone width').toBeGreaterThan(1);
+
+        const png = await group.screenshot();
+        for (const [index, row] of rows.entries()) {
+            const pixels = await pixelRow(page, png, row.y);
+            const lines = (from: number, to: number) =>
+                pixels.slice(Math.max(0, from), to).filter((pixel) => pixel === line).length;
+            expect(lines(0, 4), `the left edge of row ${index + 1} is one line`).toBe(1);
+            if (row.second === null) continue;
+            expect(
+                lines(row.second - 3, row.second + 3),
+                `the line between the first two buttons of row ${index + 1} is one line`,
+            ).toBe(1);
+        }
     });
 }
