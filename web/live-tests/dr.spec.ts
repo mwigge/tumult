@@ -314,7 +314,7 @@ test.describe('with DR runs, exercises and a plan', () => {
         ]);
         await expect(
             table.locator(`tr[data-test="manual:${drill}"]`).getByRole('link'),
-        ).toHaveAttribute('href', '/manual?tab=records');
+        ).toHaveAttribute('href', `/manual?tab=records&record=${drill}`);
         await table
             .locator(`tr[data-test="automated:${lost.experiment_id}"]`)
             .getByRole('link')
