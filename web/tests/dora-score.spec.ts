@@ -176,7 +176,7 @@ test('the evidence of a row opens in a drawer, not as raw JSON', async ({ page }
     // Nothing in the view links to an API document.
     await expect(page.locator('[data-testid="dora-view"] a[href^="/api/"]')).toHaveCount(0);
     await table.getByRole('button', { name: 'ev-dora.art24.1' }).click();
-    const drawer = page.getByRole('dialog', { name: 'Evidence behind Art. 24(1)' });
+    const drawer = page.getByRole('dialog', { name: 'Requirement dora.art24.1' });
     await expect(drawer).toBeVisible();
     await expect(drawer).toContainText('Requirement dora.art24.1');
     await expect(drawer).toContainText('payments-api restore');
@@ -189,6 +189,27 @@ test('the evidence of a row opens in a drawer, not as raw JSON', async ({ page }
     );
     await drawer.getByRole('button', { name: 'Close' }).click();
     await expect(drawer).toHaveCount(0);
+});
+
+test('the evidence drawer opens from the keyboard, and Escape gives the focus back', async ({
+    page,
+}) => {
+    await mockApi(page);
+    await page.goto('/scores?view=dora');
+    const opener = page
+        .getByTestId('dora-expectations')
+        .getByRole('button', { name: 'ev-dora.art24.1' });
+    await opener.focus();
+    await page.keyboard.press('Enter');
+
+    // The drawer is a dialog that its requirement names, with the focus on Close.
+    const drawer = page.getByRole('dialog', { name: 'Requirement dora.art24.1' });
+    await expect(drawer).toContainText('payments-api restore');
+    await expect(drawer.getByRole('button', { name: 'Close' })).toBeFocused();
+
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('evidence-drawer')).toHaveCount(0);
+    await expect(opener).toBeFocused();
 });
 
 test('a label with markup is shown as text in the heatmap tooltip', async ({ page }) => {

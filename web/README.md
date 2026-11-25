@@ -62,7 +62,8 @@ design tokens in `tokens/`, in the DTCG 2025.10 format:
   the band and status colours and the Star Map colours.
 - `page.tokens.json`: the roles only pages use, each with its own value:
   the body font, font sizes (`font-size-sm`), weight, line height, letter
-  spacing, spacing, radii, border widths and layers (`z-overlay`).
+  spacing, spacing, radii, border widths, layers (`z-sticky`) and the
+  widths of drawers (`drawer-narrow`).
   Spacing is on a 4 px scale: `space-2` is 8 px, and the half step
   `space-1-5` is 6 px.
 - `tumult.resolver.json`: the sets and the two themes. Dark is the default.
@@ -157,6 +158,30 @@ to a tab and select it. The page keeps the tab in its URL: `?tab=` on
 the Manual page and `?view=` on the Scores page. `src/lib/segmented-scan.test.ts`
 fails on a page that draws a group of buttons itself, and on a group with
 a button that does not say whether it is pressed.
+
+## Drawers
+
+A drawer is `src/lib/components/Drawer.svelte`, on a native `<dialog>`.
+Give it the id of the heading that names it, and an `onclose` that
+removes it:
+
+```svelte
+<Drawer labelledby={title} {onclose} backdrop>
+    <div class="title" id={title}>{span.span_name}</div>
+</Drawer>
+```
+
+- A drawer is modal by default: it lies over the right edge of the
+  window, `narrow` (480 px) or `wide` (620 px). With `backdrop` it shades
+  the page, and a click on the shade closes it.
+- With `modal={false}` it is a panel in the flow of the page, such as the
+  drawer of the Star Map.
+- Escape closes it. When it opens, the focus goes to its first control,
+  or to its heading with `focus="heading"`. When it closes, the focus
+  goes back to the element that opened it.
+
+`src/lib/components/drawers.test.ts` fails on a drawer built any other
+way: a style with `position: fixed` or a dialog in another file.
 
 ## Stack
 

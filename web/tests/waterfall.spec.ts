@@ -4,6 +4,9 @@ import type { Locator, Page } from '@playwright/test';
 // The span waterfall is HTML, not a chart: its grid is asserted by the
 // geometry the browser lays out. Every grid line stands in the lane the
 // bars are drawn in, under its own tick label, and ends with the last row.
+// A row opens the span drawer: a dialog that the span names. Escape, its
+// close button and the shade beside it close it, and the focus goes back
+// to the row.
 
 const me = {
     auth_required: false,
@@ -125,4 +128,52 @@ test('the waterfall grid stays inside the lanes and ends with the last row', asy
         );
         expect(line.y + line.height, `line ${i} reaches the last row`).toBeGreaterThan(last.y);
     }
+});
+
+/** The row of the span `resilience.action`: a button that opens its drawer. */
+const actionRow = (page: Page) => page.locator('.wf .row').nth(2);
+
+test('a row opens the span drawer from the keyboard, and Escape gives the focus back', async ({
+    page,
+}) => {
+    await mock(page);
+    await page.goto('/experiments/exp-1');
+    const row = actionRow(page);
+    await row.focus();
+    await page.keyboard.press('Enter');
+
+    // The drawer is a dialog that the span names, with the focus on its close button.
+    const drawer = page.getByRole('dialog', { name: 'resilience.action' });
+    await expect(drawer).toBeVisible();
+    await expect(drawer.getByRole('button', { name: 'close' })).toBeFocused();
+
+    await page.keyboard.press('Escape');
+    await expect(page.locator('dialog')).toHaveCount(0);
+    await expect(row).toBeFocused();
+
+    // The row opens it again.
+    await page.keyboard.press('Enter');
+    await expect(drawer).toBeVisible();
+});
+
+test('the close button and the shade close the span drawer, a click in it does not', async ({
+    page,
+}) => {
+    await mock(page);
+    await page.goto('/experiments/exp-1');
+    const row = actionRow(page);
+    const drawer = page.getByRole('dialog', { name: 'resilience.action' });
+
+    await row.click();
+    await drawer.getByRole('button', { name: 'close' }).click();
+    await expect(page.locator('dialog')).toHaveCount(0);
+    await expect(row).toBeFocused();
+
+    await row.click();
+    const edge = await box(drawer);
+    await page.mouse.click(edge.x + 4, edge.y + 4);
+    await expect(drawer).toBeVisible();
+    await page.mouse.click(edge.x / 2, edge.y + edge.height / 2);
+    await expect(page.locator('dialog')).toHaveCount(0);
+    await expect(row).toBeFocused();
 });
