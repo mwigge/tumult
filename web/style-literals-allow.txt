@@ -11,6 +11,9 @@ src/lib/components/DoraEvidence.svelte colour rgb(0 0 0 / 25%)
 src/lib/components/DoraNotices.svelte border-width 3px
 src/lib/components/DoraScore.svelte spacing 3px
 src/lib/components/DoraScore.svelte spacing 3px
+src/lib/components/Drawer.svelte line-height 1
+src/lib/components/Drawer.svelte colour rgb(0 0 0 / 25%)
+src/lib/components/Drawer.svelte colour rgba(0, 0, 0, 0.45)
 src/lib/components/DrEmpty.svelte font-size 15px
 src/lib/components/DrEmpty.svelte spacing 20px
 src/lib/components/DrRecoveryChart.svelte spacing 20px

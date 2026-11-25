@@ -130,7 +130,7 @@ describe('build', () => {
         expect(css.split(":root[data-theme='light']")[1]).not.toContain('--mono');
     });
 
-    it('writes the type, spacing, radius, border and layer tokens once, at :root', () => {
+    it('writes the type, spacing, radius, border, layer and drawer tokens once, at :root', () => {
         const css = build(TOKENS)['src/lib/tokens.css'];
         const root = css.match(/^:root \{([^}]*)\}/m)?.[1] ?? '';
 
@@ -147,18 +147,19 @@ describe('build', () => {
             '--radius-lg: 5px;',
             '--border-width-sm: 1px;',
             '--z-overlay: 20;',
+            '--drawer-narrow: 480px;',
         ])
             expect(root).toContain(`\n    ${property}\n`);
         // The same in each theme, so no other block holds them.
         expect(css.split(":root[data-theme='light']")[1]).not.toMatch(
-            /--(?:font-|line-height|letter-spacing|space-|radius-|border-width|z-)/,
+            /--(?:font-|line-height|letter-spacing|space-|radius-|border-width|z-|drawer-)/,
         );
     });
 
-    it('keeps the type, spacing and layer tokens out of the TS, which the charts read', () => {
+    it('keeps the type, spacing, layer and drawer tokens out of the TS, which the charts read', () => {
         // The script of the CLI report bundles tokens.gen.ts, and it draws no page.
         expect(build(TOKENS)['src/lib/tokens.gen.ts']).not.toMatch(
-            /"(?:font-|line-height|letter-spacing|space-|radius-|border-width|z-)/,
+            /"(?:font-|line-height|letter-spacing|space-|radius-|border-width|z-|drawer-)/,
         );
     });
 

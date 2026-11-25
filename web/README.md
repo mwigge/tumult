@@ -59,7 +59,8 @@ design tokens in `tokens/`, in the DTCG 2025.10 format:
   as `mono` and the colours of chart series.
 - `page.tokens.json`: the roles only pages use, each with its own value:
   the body font, font sizes (`font-size-sm`), weight, line height, letter
-  spacing, spacing, radii, border widths and layers (`z-overlay`).
+  spacing, spacing, radii, border widths, layers (`z-overlay`) and the
+  widths of drawers (`drawer-narrow`).
   Spacing is on a 4 px scale: `space-2` is 8 px, and the half step
   `space-1-5` is 6 px.
 - `tumult.resolver.json`: the sets and the two themes. Dark is the default.

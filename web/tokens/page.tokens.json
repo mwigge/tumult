@@ -1,5 +1,5 @@
 {
-  "$description": "The roles that only pages use: the type scale, spacing, radii, border widths and layers. One tier: each token holds its value, the same in every theme, and the pages use it as a CSS custom property of the same name. The values are the ones the pages used before they had tokens. Spacing is on a 4px scale: space-2 is step 2, 8px. A half step ends in -5, as CSS allows no dot in a name: space-1-5 is step 1.5, 6px. A value the pages use fewer than 3 times, an odd spacing and a negative margin have no token yet.",
+  "$description": "The roles that only pages use: the type scale, spacing, radii, border widths, layers and the widths of drawers. One tier: each token holds its value, the same in every theme, and the pages use it as a CSS custom property of the same name. The values are the ones the pages used before they had tokens. Spacing is on a 4px scale: space-2 is step 2, 8px. A half step ends in -5, as CSS allows no dot in a name: space-1-5 is step 1.5, 6px. A value the pages use fewer than 3 times, an odd spacing and a negative margin have no token yet.",
   "font-body": {
     "$type": "fontFamily",
     "$value": ["-apple-system", "Segoe UI", "Inter", "Roboto", "sans-serif"],
@@ -184,5 +184,15 @@
     "$type": "number",
     "$value": 21,
     "$description": "21. A drawer above its own shade."
+  },
+  "drawer-narrow": {
+    "$type": "dimension",
+    "$value": { "value": 480, "unit": "px" },
+    "$description": "480px. The width of a narrow drawer, such as the span drawer."
+  },
+  "drawer-wide": {
+    "$type": "dimension",
+    "$value": { "value": 620, "unit": "px" },
+    "$description": "620px. The width of a wide drawer, such as the evidence of a DORA row."
   }
 }
