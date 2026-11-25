@@ -71,7 +71,6 @@ src/routes/performance/+page.svelte spacing 3px
 src/routes/performance/+page.svelte spacing 3px
 src/routes/performance/+page.svelte spacing 7px
 src/routes/performance/+page.svelte radius 14px
-src/routes/reports/+page.svelte colour #fff
 src/routes/resilience/+page.svelte font-size 34px
 src/routes/resilience/+page.svelte spacing 3px
 src/routes/resilience/+page.svelte spacing 9px
