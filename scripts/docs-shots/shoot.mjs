@@ -16,13 +16,16 @@
 //           signing in (the HTML report)
 //   login   false: open the page signed out
 //   height  the viewport height in CSS pixels (default 900; width is 1440)
+//   theme   dark: the page loads with the dark theme saved, as a user who
+//           picked it (default light)
 //   steps   what to do before the picture, in order; each step is one of
 //           click, fill [selector, text], scrollTo (with offset), blur,
 //           reload, waitFor (a selector that must show) and wait (ms)
 //
 // Every picture is 1440 CSS pixels wide at device scale 2, in the light
-// theme, en-GB and Europe/Stockholm. A PNG with any chunk other than IHDR,
-// IDAT and IEND fails the run, so no picture carries metadata.
+// theme unless the entry names another, en-GB and Europe/Stockholm. A PNG
+// with any chunk other than IHDR, IDAT and IEND fails the run, so no picture
+// carries metadata.
 
 import { readFileSync, mkdirSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -129,12 +132,16 @@ async function take(page, shot) {
 const { chromium } = await import(pathToFileURL(PLAYWRIGHT).href);
 mkdirSync(out, { recursive: true });
 const browser = await chromium.launch();
-try {
+
+// One signed out and one signed in page per theme, made when a shot needs
+// it. The theme is saved before any script of the page runs, the way the
+// theme button of Krönika saves it, so the page loads in that theme.
+async function pages(theme) {
   const context = () =>
     browser.newContext({
       viewport: { width: WIDTH, height: 900 },
       deviceScaleFactor: 2,
-      colorScheme: 'light',
+      colorScheme: theme,
       locale: 'en-GB',
       timezoneId: 'Europe/Stockholm',
     });
@@ -148,13 +155,13 @@ try {
       const local = url.startsWith(stack.url) || /^(file|data|blob):/.test(url);
       return local ? route.continue() : route.abort();
     });
-    await ctx.addInitScript(() => {
+    await ctx.addInitScript((saved) => {
       try {
-        localStorage.setItem('tumult.theme', 'light');
+        localStorage.setItem('tumult.theme', saved);
       } catch {
         // file:// pages have no storage; the report follows colorScheme.
       }
-    });
+    }, theme);
   }
   const signedOut = await outside.newPage();
   const page = await inside.newPage();
@@ -162,8 +169,16 @@ try {
     p.on('pageerror', (error) => process.stderr.write(`pageerror: ${error.message}\n`));
   }
   await signIn(page);
+  return { signedOut, page };
+}
+
+try {
+  const themes = new Map();
   for (const shot of shots) {
     if (only.length && !only.includes(shot.name)) continue;
+    const theme = shot.theme ?? 'light';
+    if (!themes.has(theme)) themes.set(theme, await pages(theme));
+    const { signedOut, page } = themes.get(theme);
     const signed = shot.login !== false && !shot.file;
     await take(signed ? page : signedOut, shot);
   }

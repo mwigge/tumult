@@ -9,6 +9,11 @@
   "route": "/"
  },
  {
+  "name": "overview-dark",
+  "route": "/",
+  "theme": "dark"
+ },
+ {
   "name": "posture",
   "route": "/resilience"
  },
@@ -118,7 +123,7 @@
  {
   "name": "run-detail",
   "route": "/experiments/{experiment.cpu}",
-  "height": 580
+  "height": 610
  },
  {
   "name": "experiment-evidence",

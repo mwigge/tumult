@@ -52,8 +52,9 @@ arguments to compare first.
    The tumult CLI comes out of the image and runs with a HOME and a lake
    in the work dir. It never reads or writes your own lake.
 5. Runs `shoot.mjs`, which signs in as `admin` and takes one picture per
-   entry of `shots.json`: 1440 pixels wide at scale 2, light theme. A
-   picture with metadata in it fails the run.
+   entry of `shots.json`: 1440 pixels wide at scale 2, light theme, or
+   dark for an entry with `"theme": "dark"`. A picture with metadata in
+   it fails the run.
 6. Runs `cast.py`, which records a real terminal session against the same
    daemon: a soak run, the performance verdict, a gate and a report. Each
    line of output is what the command printed; only the typing is paced.
@@ -62,12 +63,13 @@ arguments to compare first.
 
 ## Add a picture
 
-Add an entry to `shots.json`: the file name, the route, the height, and
-the steps before the picture (`click`, `fill`, `scrollTo`, `waitFor`,
-`wait`, `blur`). `{key}` in a route takes an id from the `ids.json` that
-`data.py` writes. An entry with `file` instead of `route` opens a file of the
-work dir, such as a report that `data.py` saved. Then show the picture on a page:
-`scripts/check-images.py` fails on a picture that no page names.
+Add an entry to `shots.json`: the file name, the route, the height, the
+theme when it is dark, and the steps before the picture (`click`, `fill`,
+`scrollTo`, `waitFor`, `wait`, `blur`). `{key}` in a route takes an id from
+the `ids.json` that `data.py` writes. An entry with `file` instead of
+`route` opens a file of the work dir, such as a report that `data.py` saved.
+Then show the picture on a page: `scripts/check-images.py` fails on a
+picture that no page names.
 
 ## Take one picture again
 
