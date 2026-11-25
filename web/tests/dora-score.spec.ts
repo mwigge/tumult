@@ -579,6 +579,36 @@ test('the heatmap has a complete table alternative', async ({ page }) => {
     await expect(rows.nth(1).locator('td').nth(2)).toContainText('no events in window');
 });
 
+test('the RTS rows name their act in the article list and in the heatmap table', async ({
+    page,
+}) => {
+    const report = dora(null);
+    const rts = { ...report.articles[2], article: 'rts1774', title: 'Plan scenarios' };
+    const cells = report.cells
+        .filter((cell) => cell.article === '24')
+        .map((cell) => ({ ...cell, article: 'rts1774' }));
+    await mockApi(page, [], {
+        dora: { articles: [...report.articles, rts], cells: [...report.cells, ...cells] },
+    });
+    await page.goto('/scores?view=dora');
+    const panel = page.getByTestId('dora-heatmap');
+
+    const list = panel.locator('table.articles tbody tr');
+    await expect(list).toHaveCount(4);
+    await expect(list.nth(3).locator('td').first()).toHaveText('RTS 2024/1774 Plan scenarios');
+
+    await page.getByText('Show the heatmap as a table').click();
+    const table = page.getByRole('table', { name: 'Articles by function, as a table' });
+    await expect(table.locator('thead th')).toHaveText([
+        'Function',
+        'Art. 16',
+        'Art. 19',
+        'Art. 24',
+        'RTS 2024/1774',
+    ]);
+    await expect(panel).not.toContainText('Art. rts1774');
+});
+
 test('maturity shows weighted components, gates and a greyed index when capped', async ({
     page,
 }) => {

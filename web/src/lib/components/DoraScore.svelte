@@ -10,6 +10,7 @@
     import type { ChartTheme } from '#lib/echarts.js';
     import {
         COMPONENTS,
+        articleLabel,
         capText,
         cellLines,
         cellOf,
@@ -216,7 +217,7 @@
                             <tr>
                                 <th scope="col">{report.by === 'org' ? 'Org unit' : 'Function'}</th>
                                 {#each report.articles as a (a.article)}
-                                    <th scope="col">Art. {a.article}</th>
+                                    <th scope="col">{articleLabel(a.article)}</th>
                                 {/each}
                             </tr>
                         </thead>
@@ -250,7 +251,7 @@
                 <tbody>
                     {#each report.articles as a (a.article)}
                         <tr>
-                            <td>Art. {a.article} <span class="dim">{a.title}</span></td>
+                            <td>{articleLabel(a.article)} <span class="dim">{a.title}</span></td>
                             <td data-figure>
                                 <span class="mono">{coverageText(a.coverage)}</span>
                                 <span class="unk">{unknownLabel(a.unknown)}</span>
