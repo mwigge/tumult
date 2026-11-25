@@ -5,6 +5,7 @@
     import { api, fmtAgo, fmtDuration, shortId } from '#lib/api.js';
     import { experimentDurationNs } from '#lib/duration.js';
     import type { Dimensions, ExperimentRow } from '#lib/types.js';
+    import Badge from '#lib/components/Badge.svelte';
     import StatusBadge from '#lib/components/StatusBadge.svelte';
     import RangeSwitch from '#lib/components/RangeSwitch.svelte';
     import PageHeader from '#lib/components/PageHeader.svelte';
@@ -121,11 +122,12 @@
                             <td><StatusBadge status={row.status} /></td>
                             <td>
                                 {row.name ?? '—'}
-                                <span
-                                    class="badge neutral origin"
+                                <Badge
+                                    tone="neutral"
+                                    class="origin"
                                     title="review status: {row.review_status ?? 'unknown'}"
-                                    >manual</span
-                                >
+                                    label="manual"
+                                />
                             </td>
                             <td class="mono" style="color: var(--text-dim)">{shortId(row.id)}</td>
                             <td title={new Date(row.started_ns / 1e6).toISOString()}
@@ -141,11 +143,12 @@
                             <td>
                                 {row.name ?? '—'}
                                 {#if row.journal_only}
-                                    <span
-                                        class="badge neutral origin"
+                                    <Badge
+                                        tone="neutral"
+                                        class="origin"
                                         title="This run sent no trace. The lake holds its journal."
-                                        >journal only</span
-                                    >
+                                        label="journal only"
+                                    />
                                 {/if}
                             </td>
                             <td class="mono" style="color: var(--text-dim)">{shortId(row.id)}</td>
@@ -169,9 +172,5 @@
         display: flex;
         gap: var(--space-2);
         flex-wrap: wrap;
-    }
-    .origin {
-        margin-left: var(--space-1-5);
-        font-size: 10px;
     }
 </style>

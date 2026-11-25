@@ -1,6 +1,7 @@
 <script lang="ts">
     import { page } from '$app/state';
     import { api, fmtAgo, fmtDuration, fmtTs, shortId } from '#lib/api.js';
+    import { toneOf } from '#lib/tone.js';
     import type { Span, TraceDetail } from '#lib/types.js';
     import Waterfall from '#lib/components/Waterfall.svelte';
     import SpanDrawer from '#lib/components/SpanDrawer.svelte';
@@ -42,13 +43,6 @@
             cancelled = true;
         };
     });
-
-    function sevClass(sev: string | null): string {
-        const s = (sev ?? '').toUpperCase();
-        if (s.startsWith('ERR') || s.startsWith('FATAL')) return 'fail';
-        if (s.startsWith('WARN')) return 'warn';
-        return '';
-    }
 </script>
 
 <PageHeader
@@ -103,7 +97,7 @@
                 {#each detail.logs as log, i (i)}
                     <div class="log">
                         <span class="mono ts">{fmtTs(log.ts_ns)}</span>
-                        <span class="mono sev {sevClass(log.severity_text)}"
+                        <span class="mono sev {toneOf('severity', log.severity_text)}"
                             >{log.severity_text ?? 'LOG'}</span
                         >
                         <span>{log.body}</span>

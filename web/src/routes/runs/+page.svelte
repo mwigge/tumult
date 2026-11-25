@@ -3,6 +3,7 @@
     import { goto } from '$app/navigation';
     import { ACTIVE_RUN_STATES, api, fmtAgo, fmtDuration, fmtTs, shortId } from '#lib/api.js';
     import type { MeResponse, RunRow } from '#lib/types.js';
+    import Badge from '#lib/components/Badge.svelte';
     import StatusBadge from '#lib/components/StatusBadge.svelte';
     import { runTimeNs, runWaitNs } from '#lib/duration.js';
     import PageHeader from '#lib/components/PageHeader.svelte';
@@ -165,13 +166,13 @@
                         <td class="mono">{fmtDuration(runTimeNs(row, nowNs()))}</td>
                         <td>
                             {#if row.state === 'rollback_pending'}
-                                <span class="badge warn">rollback pending</span>
+                                <Badge tone="warn" label="rollback pending" />
                             {:else if row.rollback_status && row.rollback_status !== 'not_needed'}
-                                <span
-                                    class="badge {row.rollback_status === 'failed' ? 'fail' : 'ok'}"
-                                >
-                                    rollback {row.rollback_status}
-                                </span>
+                                <Badge
+                                    kind="rollback"
+                                    value={row.rollback_status}
+                                    label="rollback {row.rollback_status}"
+                                />
                             {:else}
                                 <span style="color: var(--text-faint)">—</span>
                             {/if}

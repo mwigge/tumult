@@ -3,6 +3,7 @@
     import { onMount } from 'svelte';
     import { ACTIVE_RUN_STATES, ApiError, api } from '#lib/api.js';
     import type { GameDayDetail, MeResponse, RunRow } from '#lib/types.js';
+    import Badge from '#lib/components/Badge.svelte';
     import StatusBadge from '#lib/components/StatusBadge.svelte';
     import PageHeader from '#lib/components/PageHeader.svelte';
     import Panel from '#lib/components/Panel.svelte';
@@ -125,7 +126,7 @@
     {/if}
     {#if day.tags.length > 0}
         <p class="tags">
-            {#each day.tags as tag (tag)}<span class="badge neutral">{tag}</span>{/each}
+            {#each day.tags as tag (tag)}<Badge tone="neutral" label={tag} />{/each}
         </p>
     {/if}
 

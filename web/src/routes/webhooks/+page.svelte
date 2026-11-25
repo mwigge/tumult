@@ -2,6 +2,7 @@
     import { onMount } from 'svelte';
     import { api, fmtAgo, fmtTs } from '#lib/api.js';
     import type { MeResponse, Webhook } from '#lib/types.js';
+    import Badge from '#lib/components/Badge.svelte';
     import PageHeader from '#lib/components/PageHeader.svelte';
     import Panel from '#lib/components/Panel.svelte';
 
@@ -136,9 +137,10 @@
                             <td class="mono dim">{w.url}</td>
                             <td>{w.events.length === 0 ? 'all' : w.events.join(', ')}</td>
                             <td
-                                ><span class="badge {w.enabled ? 'ok' : 'neutral'}"
-                                    >{w.enabled ? 'enabled' : 'disabled'}</span
-                                ></td
+                                ><Badge
+                                    kind="switch"
+                                    value={w.enabled ? 'enabled' : 'disabled'}
+                                /></td
                             >
                             <td title={fmtTs(w.created_at_ns)}>{fmtAgo(w.created_at_ns)}</td>
                             <td class="actions">

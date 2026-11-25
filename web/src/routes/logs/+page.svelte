@@ -4,6 +4,7 @@
     import { onMount } from 'svelte';
     import { api, fmtAgo, fmtTs } from '#lib/api.js';
     import type { LogEntry, LogVolume } from '#lib/types.js';
+    import Badge from '#lib/components/Badge.svelte';
     import RangeSwitch from '#lib/components/RangeSwitch.svelte';
     import EChart from '#lib/components/EChart.svelte';
     import { chartTheme, chartTokens, followTheme } from '#lib/echarts.js';
@@ -80,21 +81,6 @@
     function filterOut(e: MouseEvent, k: string, v: string) {
         e.stopPropagation();
         setFilter('attr_not', `${k}=${v}`);
-    }
-
-    function sevClass(sev: string | null): 'ok' | 'warn' | 'fail' | 'neutral' {
-        switch ((sev ?? '').toUpperCase()) {
-            case 'ERROR':
-            case 'FATAL':
-                return 'fail';
-            case 'WARN':
-            case 'WARNING':
-                return 'warn';
-            case 'INFO':
-                return 'ok';
-            default:
-                return 'neutral';
-        }
     }
 
     // Pivot the (bucket, severity) rows into one stacked bar series per
@@ -224,11 +210,13 @@
                         onclick={() => (expanded = expanded === i ? null : i)}
                     >
                         <td class="mono" title={fmtTs(row.ts_ns)}>{fmtAgo(row.ts_ns)}</td>
-                        <td
-                            ><span class="badge {sevClass(row.severity_text)}"
-                                >{row.severity_text ?? '—'}</span
-                            ></td
-                        >
+                        <td>
+                            <Badge
+                                kind="severity"
+                                value={row.severity_text}
+                                label={row.severity_text ?? '—'}
+                            />
+                        </td>
                         <td class="mono">{row.service_name ?? '—'}</td>
                         <td class="body-cell">{row.body}</td>
                     </tr>

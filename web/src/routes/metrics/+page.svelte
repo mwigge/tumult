@@ -4,6 +4,7 @@
     import { onMount } from 'svelte';
     import { api } from '#lib/api.js';
     import type { ExperimentWindow, MetricCatalogEntry, MetricQueryResult } from '#lib/types.js';
+    import Badge from '#lib/components/Badge.svelte';
     import RangeSwitch from '#lib/components/RangeSwitch.svelte';
     import EChart from '#lib/components/EChart.svelte';
     import { chartTheme, chartTokens, followTheme } from '#lib/echarts.js';
@@ -177,7 +178,7 @@
 
 <PageHeader title="Metrics">
     {#if selected}
-        <span class="badge neutral">{selected.types[0]}</span>
+        <Badge tone="neutral" label={selected.types[0]} />
     {/if}
     <div class="controls">
         <select value={filters.name} onchange={(e) => setFilter('name', e.currentTarget.value)}>

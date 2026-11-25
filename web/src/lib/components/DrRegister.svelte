@@ -11,11 +11,10 @@
         rtoAlarm,
         rtoText,
         stateLabel,
-        stateTone,
         verdictLabel,
-        verdictTone,
     } from '#lib/dr.js';
     import type { DrTarget } from '#lib/types.js';
+    import Badge from './Badge.svelte';
     import DrObjectiveCell from './DrObjectiveCell.svelte';
 
     let { targets }: { targets: DrTarget[] } = $props();
@@ -53,16 +52,18 @@
                     {#if target.environment}<span class="dim">· {target.environment}</span>{/if}
                 </th>
                 <td class="nowrap">
-                    <span class="badge {stateTone(target.state)}">{stateLabel(target.state)}</span>
+                    <Badge kind="dr" value={target.state} label={stateLabel(target.state)} />
                 </td>
                 <td class="last">
                     {#if last}
                         <a class="mono" href={lastTestHref(last)}>{localDay(last.executed_at_ns)}</a
                         >
-                        <span class="badge neutral">{last.origin}</span>
-                        <span class="badge {verdictTone(last.verdict)}"
-                            >{verdictLabel(last.verdict)}</span
-                        >
+                        <Badge tone="neutral" label={last.origin} />
+                        <Badge
+                            kind="verdict"
+                            value={last.verdict}
+                            label={verdictLabel(last.verdict)}
+                        />
                     {:else}
                         <span class="dim">no DR test yet</span>
                     {/if}

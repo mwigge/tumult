@@ -6,6 +6,7 @@
     // by the proof tool are never silent.
     import { proofDaysText, snapshotSkippedText } from '#lib/dora.js';
     import type { ScoreHeader } from '#lib/types.js';
+    import Badge from './Badge.svelte';
 
     let { doc }: { doc: ScoreHeader } = $props();
 
@@ -14,12 +15,6 @@
         ok: 'the lake holds the register of the org file',
         stale: 'the org file changed and is not in the lake yet',
         invalid: 'the org file was refused',
-    };
-    const REGISTER_CLASS: Record<string, string> = {
-        none: 'neutral',
-        ok: 'ok',
-        stale: 'warn',
-        invalid: 'fail',
     };
 
     const shown = (value: unknown) => (typeof value === 'string' ? value : JSON.stringify(value));
@@ -56,18 +51,18 @@
     <dt>House parameters</dt>
     <dd data-testid="score-params">
         {#if doc.params.fallback}
-            <span class="badge fail">defaults in force</span>
+            <Badge tone="fail" label="defaults in force" />
             the <span class="mono">score:</span> section of the org file was refused: {doc.params
                 .reason ?? 'no reason given'}
         {:else}
             {#if doc.params.held}
-                <span class="badge warn">last valid file in force</span>
+                <Badge tone="warn" label="last valid file in force" />
                 the org file on disk was refused: {doc.params.reason ?? 'no reason given'}
             {/if}
             {#if doc.params.overridden.length === 0}
                 house defaults, nothing overridden
             {:else}
-                <span class="badge warn">{doc.params.overridden.length} overridden</span>
+                <Badge tone="warn" label="{doc.params.overridden.length} overridden" />
                 {#each doc.params.overridden as o (o.key)}
                     <span class="override">
                         <span class="mono">{o.key}</span> =
@@ -84,9 +79,7 @@
     {/if}
     <dt>Function register</dt>
     <dd data-testid="register-state">
-        <span class="badge {REGISTER_CLASS[doc.register_state] ?? 'neutral'}"
-            >{doc.register_state}</span
-        >
+        <Badge kind="register" value={doc.register_state} />
         {doc.register_reason ?? REGISTER_TEXT[doc.register_state] ?? ''}
     </dd>
     <dt>Feeds</dt>
@@ -94,9 +87,7 @@
         {#each doc.feeds as feed (feed.name)}
             <span class="feed">
                 <span class="mono">{feed.name}</span>
-                <span class="badge {feed.connected ? 'ok' : 'neutral'}"
-                    >{feed.connected ? 'connected' : 'not connected'}</span
-                >
+                <Badge kind="switch" value={feed.connected ? 'connected' : 'not connected'} />
                 {#if !feed.connected && feed.reason}<span class="dim">{feed.reason}</span>{/if}
             </span>
         {:else}

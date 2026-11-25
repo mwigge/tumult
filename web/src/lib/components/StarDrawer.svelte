@@ -4,7 +4,7 @@
     // lazily, from the endpoints the other pages already use. Each section
     // loads and fails on its own. Opening the drawer moves the focus to its
     // heading; Escape closes it and the page hands the focus back.
-    import { api, fmtAgo, fmtDuration, statusClass } from '#lib/api.js';
+    import { api, fmtAgo, fmtDuration } from '#lib/api.js';
     import type {
         ExperimentRow,
         GateVerdict,
@@ -18,6 +18,7 @@
     import { COMPLIANCE_SCORE, COMPLIANCE_SCORE_LINE } from '#lib/score-names.js';
     import { flagText, rollupLines } from '#lib/starmap/style.js';
     import { targetQuery } from '#lib/manual.js';
+    import Badge from './Badge.svelte';
 
     let {
         node,
@@ -144,12 +145,6 @@
         };
     });
 
-    const reviewClass = (status: string) =>
-        status === 'verified' ? 'ok' : status === 'rejected' ? 'fail' : 'neutral';
-    const verdictClass = (v: string) => (v === 'pass' ? 'ok' : v === 'warn' ? 'warn' : 'fail');
-    const coverClass = (s: string) => (s === 'covered' ? 'ok' : s === 'stale' ? 'warn' : 'neutral');
-    const severityClass = (s: string) => (s === 'critical' || s === 'high' ? 'fail' : 'warn');
-    const nfrClass = (s: string) => (s === 'met' ? 'ok' : s === 'breached' ? 'fail' : 'neutral');
     const day = (ns: number) => new Date(ns / 1_000_000).toISOString().slice(0, 10);
 </script>
 
@@ -246,9 +241,11 @@
             <h3>Coverage by discipline</h3>
             <div class="chips">
                 {#each disciplines as [discipline, status] (discipline)}
-                    <span class="badge {coverClass(status)}"
-                        >{disciplineLabel(discipline)}: {status}</span
-                    >
+                    <Badge
+                        kind="cover"
+                        value={status}
+                        label="{disciplineLabel(discipline)}: {status}"
+                    />
                 {/each}
             </div>
             {#if node.risks.recommended.length > 0}
@@ -272,7 +269,7 @@
                 <ul class="rows">
                     {#each runs.rows as r (r.id)}
                         <li>
-                            <span class="badge {statusClass(r.status)}">{r.status ?? '–'}</span>
+                            <Badge kind="status" value={r.status} label={r.status ?? '–'} />
                             <a href="/experiments/{encodeURIComponent(r.id)}">{r.name ?? r.id}</a>
                             <span class="meta">
                                 {fmtAgo(r.started_ns)} · {fmtDuration(experimentDurationNs(r))}
@@ -295,7 +292,7 @@
                 <div class="skeleton" style="height: 30px"></div>
             {:else}
                 <p>
-                    <span class="badge {verdictClass(gate.rows.verdict)}">{gate.rows.verdict}</span>
+                    <Badge kind="verdict" value={gate.rows.verdict} />
                     {COMPLIANCE_SCORE}
                     {gate.rows.score.toFixed(1)} ({gate.rows.band})
                 </p>
@@ -318,7 +315,7 @@
                 <ul class="rows">
                     {#each nfrs.rows as n (n.experiment + n.nfr_id)}
                         <li>
-                            <span class="badge {nfrClass(n.state)}">{n.state}</span>
+                            <Badge kind="verdict" value={n.state} />
                             <span>{n.nfr_id}</span>
                             <span class="meta">
                                 threshold {n.threshold} · observed {n.observed ?? '–'} · margin
@@ -342,7 +339,7 @@
                 <ul class="rows">
                     {#each manual.rows as m (m.id)}
                         <li>
-                            <span class="badge {reviewClass(m.status)}">{m.status}</span>
+                            <Badge kind="review" value={m.status} />
                             <a href={manualHref}>{m.experiment_name}</a>
                             <span class="meta">
                                 {m.outcome_status} · {fmtAgo(m.executed_at_ns)}
@@ -365,7 +362,7 @@
                 <ul class="rows">
                     {#each risks.rows as r (r.id)}
                         <li class:dim={r.suppression !== null}>
-                            <span class="badge {severityClass(r.severity)}">{r.severity}</span>
+                            <Badge kind="finding" value={r.severity} />
                             <span>{r.title}</span>
                             <span class="meta">
                                 {r.detail}

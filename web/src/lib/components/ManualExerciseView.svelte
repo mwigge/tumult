@@ -6,6 +6,7 @@
     import { fmtDuration, fmtTs } from '#lib/api.js';
     import { localDay, recoveryVerdict } from '#lib/manual.js';
     import type { ManualDetail } from '#lib/types.js';
+    import Badge from './Badge.svelte';
 
     let { detail, planName = '' }: { detail: ManualDetail; planName?: string } = $props();
 
@@ -25,14 +26,10 @@
     ]);
 
     const secs = (s: number | null) => (s === null ? '—' : `${s} s`);
-    const resultClass = (r: string | null | undefined) =>
-        r === 'done' ? 'ok' : r === 'failed' ? 'fail' : 'neutral';
     const took = (start?: number | null, end?: number | null) =>
         start && end ? fmtDuration(end - start) : '';
     const dataText = (v: boolean | null | undefined) =>
         v === true ? 'complete' : v === false ? 'loss or corruption found' : 'not checked';
-    const severityClass = (s: string | null | undefined) =>
-        s === 'critical' || s === 'high' ? 'fail' : s === 'medium' ? 'warn' : 'neutral';
     const tlpt = $derived(
         rec.tlpt_attestation_ref || rec.tlpt_attested_at_ns || rec.tlpt_summary_ref
             ? {
@@ -57,9 +54,7 @@
                         <td class="mono">{secs(r.target)}</td>
                         <td class="mono">{secs(r.actual)}</td>
                         <td>
-                            {#if verdict}<span class="badge {verdict === 'met' ? 'ok' : 'fail'}"
-                                    >{verdict}</span
-                                >{/if}
+                            {#if verdict}<Badge kind="verdict" value={verdict} />{/if}
                         </td>
                     </tr>
                 {/each}
@@ -69,9 +64,7 @@
         {#if rec.findings_severity}
             <p class="line">
                 Findings severity:
-                <span class="badge {severityClass(rec.findings_severity)}"
-                    >{rec.findings_severity}</span
-                >
+                <Badge kind="finding" value={rec.findings_severity} />
             </p>
         {/if}
         {#if rec.tester}
@@ -108,7 +101,7 @@
             <ul class="plain">
                 {#each links as l, i (i)}
                     <li>
-                        <span class="badge neutral">{l.kind}</span>
+                        <Badge tone="neutral" label={l.kind} />
                         <span class="mono">{l.linked_id}</span>
                         {#if l.label}<span class="dim">· {l.label}</span>{/if}
                     </li>
@@ -124,7 +117,7 @@
             <ol class="steps">
                 {#each steps as s, i (i)}
                     <li>
-                        <span class="badge {resultClass(s.result)}">{s.result ?? 'no result'}</span>
+                        <Badge kind="step" value={s.result} label={s.result ?? 'no result'} />
                         {s.title}
                         {#if s.actor}<span class="dim"> · {s.actor}</span>{/if}
                         <div class="dim mono">
@@ -151,10 +144,8 @@
                                 · due {localDay(a.due_at_ns)}</span
                             >{/if}
                         {#if a.ticket}<span class="dim"> · {a.ticket}</span>{/if}
-                        {#if a.severity}<span class="badge {severityClass(a.severity)}"
-                                >{a.severity}</span
-                            >{/if}
-                        {#if a.status}<span class="badge neutral">{a.status}</span>{/if}
+                        {#if a.severity}<Badge kind="finding" value={a.severity} />{/if}
+                        {#if a.status}<Badge tone="neutral" label={a.status} />{/if}
                         {#if a.retest_id}<div class="dim">
                                 retested by {a.retest_kind}
                                 <span class="mono">{a.retest_id}</span>

@@ -6,6 +6,7 @@
     import { api, fmtTs } from '#lib/api.js';
     import { errorText, fmtBytes } from '#lib/manual.js';
     import type { EvidenceAttachment } from '#lib/types.js';
+    import Badge from './Badge.svelte';
 
     let {
         experimentId,
@@ -101,7 +102,7 @@
             {#each attachments as at (at.id)}
                 <tr>
                     <td>
-                        <span class="badge neutral">{at.kind}</span>
+                        <Badge tone="neutral" label={at.kind} />
                         {#if at.kind === 'file'}
                             {at.label ?? 'attachment'}
                         {:else}

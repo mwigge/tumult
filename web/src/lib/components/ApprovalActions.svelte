@@ -5,6 +5,7 @@
     // confirm with a justification).
     import { api, fmtAgo, fmtTs } from '#lib/api.js';
     import type { RunDetail, RunExecState } from '#lib/types.js';
+    import Badge from './Badge.svelte';
     import Panel from './Panel.svelte';
 
     let {
@@ -73,8 +74,6 @@
         }
     }
 
-    const tierClass = (t: string) => (t === 'T3' ? 'fail' : t === 'T2' ? 'warn' : 'neutral');
-
     /** Remaining approval TTL; `soon` (under 1h left, or lapsed) gets warn. */
     function expiry(ns: number): { text: string; soon: boolean } {
         const ms = ns / 1_000_000 - Date.now();
@@ -91,17 +90,16 @@
     <Panel style="margin-bottom: var(--space-3-5)">
         <h2>
             Approval chain
-            <span class="badge {tierClass(req.tier)}">{req.tier}</span>
+            <Badge kind="tier" value={req.tier} />
             {#if req.break_glass}
-                <span
-                    class="badge warn"
+                <Badge
+                    tone="warn"
                     title={req.break_glass_justification ?? 'no justification recorded'}
-                >
-                    break-glass by {req.break_glass_by ?? '?'}
-                </span>
+                    label="break-glass by {req.break_glass_by ?? '?'}"
+                />
             {/if}
             {#if req.consumed_at_ns !== null}
-                <span class="badge neutral" title={fmtTs(req.consumed_at_ns)}>consumed</span>
+                <Badge tone="neutral" title={fmtTs(req.consumed_at_ns)} label="consumed" />
             {/if}
         </h2>
 
