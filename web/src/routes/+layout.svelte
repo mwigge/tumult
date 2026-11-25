@@ -10,19 +10,17 @@
 
     // Theme: dark is the default; `light` forces light, `auto` follows the
     // OS preference. Persisted per browser; applied as data-theme on <html>
-    // so lib/theme.css and the ECharts themes pick it up.
+    // so lib/theme.css and the ECharts themes pick it up. Before the first
+    // paint, static/early-theme.js puts the saved theme there: the layout
+    // starts from it.
     type Theme = 'dark' | 'light' | 'auto';
     const THEMES: Theme[] = ['dark', 'light', 'auto'];
     const THEME_GLYPH: Record<Theme, string> = { dark: '◐', light: '○', auto: '◑' };
-    let theme = $state<Theme>('dark');
-    $effect(() => {
-        try {
-            const saved = localStorage.getItem('tumult.theme');
-            if (saved === 'light' || saved === 'auto' || saved === 'dark') theme = saved;
-        } catch {
-            /* storage unavailable: stay dark */
-        }
-    });
+    let theme = $state<Theme>(startTheme());
+    function startTheme(): Theme {
+        const set = document.documentElement.dataset.theme;
+        return THEMES.find((t) => t === set) ?? 'dark';
+    }
     $effect(() => {
         document.documentElement.dataset.theme = theme;
         try {
