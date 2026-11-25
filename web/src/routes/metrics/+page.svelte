@@ -6,6 +6,7 @@
     import type { ExperimentWindow, MetricCatalogEntry, MetricQueryResult } from '#lib/types.js';
     import Badge from '#lib/components/Badge.svelte';
     import RangeSwitch from '#lib/components/RangeSwitch.svelte';
+    import Segmented from '#lib/components/Segmented.svelte';
     import EChart from '#lib/components/EChart.svelte';
     import { chartTheme, chartTokens, followTheme } from '#lib/echarts.js';
     import type { EChartsCoreOption } from '#lib/echarts.js';
@@ -193,13 +194,12 @@
                 <option value={d}>group by {d}</option>
             {/each}
         </select>
-        <div class="seg" role="group" aria-label="chart type">
-            {#each CHART_TYPES as t (t)}
-                <button class:active={filters.chart === t} onclick={() => setFilter('chart', t)}
-                    >{t}</button
-                >
-            {/each}
-        </div>
+        <Segmented
+            label="chart type"
+            options={CHART_TYPES}
+            value={filters.chart}
+            onchange={(t) => setFilter('chart', t)}
+        />
         <select
             value={filters.interval}
             onchange={(e) => setFilter('interval', e.currentTarget.value)}

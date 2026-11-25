@@ -15,6 +15,9 @@
     import ManualPlansTab from '#lib/components/ManualPlansTab.svelte';
     import ManualReviewTab from '#lib/components/ManualReviewTab.svelte';
     import PageHeader from '#lib/components/PageHeader.svelte';
+    import TabPanel from '#lib/components/TabPanel.svelte';
+    import Tabs from '#lib/components/Tabs.svelte';
+    import { withParam } from '#lib/tabs.js';
 
     const TABS = ['entry', 'plans', 'queue', 'records', 'import'] as const;
     const TAB_LABEL: Record<string, string> = {
@@ -39,6 +42,12 @@
     let actor = $state('');
     let me = $state<MeResponse | null>(null);
     let editingId = $state<string | null>(null);
+    const tabs = $derived(
+        TABS.map((t) => ({
+            value: t,
+            label: t === 'entry' ? (editingId ? 'Draft editor' : 'New entry') : TAB_LABEL[t],
+        })),
+    );
     const canWrite = $derived(
         !!me && (!me.auth_required || (me.authenticated && !!me.role && me.role !== 'viewer')),
     );
@@ -65,10 +74,7 @@
     }
 
     function setTab(t: string) {
-        // eslint-disable-next-line svelte/prefer-svelte-reactivity -- Local calculation; no retained reactive state.
-        const params = new URLSearchParams(page.url.searchParams.toString());
-        params.set('tab', t);
-        goto(`?${params}`, { replace: true, reset: false });
+        goto(withParam(page.url.searchParams, 'tab', t), { replace: true, reset: false });
     }
 
     // Entry-tab state lives here so a half-filled draft (and its result
@@ -107,57 +113,68 @@
                     oninput={(e) => setActor(e.currentTarget.value)}
                 />
             </label>
-            <div class="seg" role="group" aria-label="manual sections">
-                {#each TABS as t (t)}
-                    <button class:active={tab === t} onclick={() => setTab(t)}>
-                        {t === 'entry' ? (editingId ? 'Draft editor' : 'New entry') : TAB_LABEL[t]}
-                    </button>
-                {/each}
-            </div>
+            <Tabs
+                id="manual"
+                label="manual sections"
+                options={tabs}
+                value={tab}
+                onchange={setTab}
+            />
         </div>
     </PageHeader>
 
-    {#if filtered && listsTab}
-        <p class="target" data-testid="manual-target">
-            Records and plans of {targetLine}.
-            <a href="?tab={tab}">Show every target</a>
-        </p>
-    {/if}
+    <TabPanel id="manual" value={tab}>
+        {#if filtered && listsTab}
+            <p class="target" data-testid="manual-target">
+                Records and plans of {targetLine}.
+                <a href="?tab={tab}">Show every target</a>
+            </p>
+        {/if}
 
-    {#if entryMsg && !entryMsg.ok && (tab !== 'entry' || !canWrite)}<div class="state error">
-            {entryMsg.text}
-        </div>{/if}
+        {#if entryMsg && !entryMsg.ok && (tab !== 'entry' || !canWrite)}<div class="state error">
+                {entryMsg.text}
+            </div>{/if}
 
-    {#if tab === 'entry'}
-        {#if canWrite}
-            {#if editingId}<p>
-                    Editing draft <code>{editingId}</code>.
-                    <button
-                        class="btn"
-                        disabled={busy}
-                        onclick={() => {
-                            editingId = null;
-                            form = emptyForm();
-                            entryMsg = null;
-                        }}>New entry</button
-                    >
+        {#if tab === 'entry'}
+            {#if canWrite}
+                {#if editingId}<p>
+                        Editing draft <code>{editingId}</code>.
+                        <button
+                            class="btn"
+                            disabled={busy}
+                            onclick={() => {
+                                editingId = null;
+                                form = emptyForm();
+                                entryMsg = null;
+                            }}>New entry</button
+                        >
+                    </p>{/if}
+                <ManualEntryTab
+                    {actor}
+                    allowedEnvironments={me?.env_scopes ?? []}
+                    bind:editingId
+                    bind:form
+                    bind:entryMsg
+                    bind:busy
+                />
+            {:else}<p>
+                    Your role can read manual evidence. An operator can create or edit it.
                 </p>{/if}
-            <ManualEntryTab
+        {:else if tab === 'plans'}
+            <ManualPlansTab {actor} {canWrite} {filter} />
+        {:else if tab === 'import'}
+            <ManualImport {actor} {canWrite} />
+        {:else}
+            <ManualReviewTab
+                {tab}
                 {actor}
-                allowedEnvironments={me?.env_scopes ?? []}
-                bind:editingId
-                bind:form
-                bind:entryMsg
-                bind:busy
+                {canReview}
+                canEdit={canWrite}
+                {filter}
+                onedit={editDraft}
             />
-        {:else}<p>Your role can read manual evidence. An operator can create or edit it.</p>{/if}
-    {:else if tab === 'plans'}
-        <ManualPlansTab {actor} {canWrite} {filter} />
-    {:else if tab === 'import'}
-        <ManualImport {actor} {canWrite} />
-    {:else}
-        <ManualReviewTab {tab} {actor} {canReview} canEdit={canWrite} {filter} onedit={editDraft} />
-    {/if}
+        {/if}
+    </TabPanel>
 </div>
 
 <style>

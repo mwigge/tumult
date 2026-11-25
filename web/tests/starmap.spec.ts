@@ -967,14 +967,14 @@ test('the drawer opens the Manual page and the DR page on its system', async ({ 
     );
 
     // The plans keep to the same target, as the filter stays in the URL.
-    await page.getByRole('button', { name: 'Plans', exact: true }).click();
+    await page.getByRole('tab', { name: 'Plans', exact: true }).click();
     await expect(page).toHaveURL(/\/manual\?tab=plans&target=message-queue&environment=demo$/);
     const plans = page.locator('tr[data-plan]');
     await expect(plans).toHaveCount(1);
     await expect(plans).toHaveAttribute('data-plan', 'p-1');
 
     // Without the filter every record is listed.
-    await page.getByRole('button', { name: 'All records', exact: true }).click();
+    await page.getByRole('tab', { name: 'All records', exact: true }).click();
     await page.getByRole('link', { name: 'Show every target', exact: true }).click();
     await expect(page).toHaveURL(/\/manual\?tab=records$/);
     await expect(rows).toHaveCount(3);

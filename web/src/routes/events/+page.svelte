@@ -4,6 +4,7 @@
     import Badge from '#lib/components/Badge.svelte';
     import PageHeader from '#lib/components/PageHeader.svelte';
     import Panel from '#lib/components/Panel.svelte';
+    import Segmented from '#lib/components/Segmented.svelte';
 
     // Event-type filter: '' = everything, otherwise one audit event name.
     const FILTERS: { value: string; label: string }[] = [
@@ -50,13 +51,12 @@
 
 <PageHeader title="Events" sub={rows ? `${rows.length} recent` : 'run audit trail across all runs'}>
     <div class="controls">
-        <div class="seg">
-            {#each FILTERS as f (f.value)}
-                <button class:active={filter === f.value} onclick={() => (filter = f.value)}>
-                    {f.label}
-                </button>
-            {/each}
-        </div>
+        <Segmented
+            label="event kind"
+            options={FILTERS}
+            value={filter}
+            onchange={(f) => (filter = f)}
+        />
     </div>
 </PageHeader>
 

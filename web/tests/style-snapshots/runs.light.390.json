@@ -331,7 +331,7 @@
       "margin": "0px 0px 0px auto",
       "gap": "8px"
     },
-    "div.shell > main[main].main > div.page-head > div.controls > div.seg": {
+    "div.shell > main[main].main > div.page-head > div.controls > div[group].seg \"run state\"": {
       "display": "flex",
       "border-top": "1px solid rgb(197, 206, 214)",
       "border-right": "1px solid rgb(197, 206, 214)",
@@ -339,7 +339,7 @@
       "border-left": "1px solid rgb(197, 206, 214)",
       "border-radius": "5px"
     },
-    "div.shell > main[main].main > div.page-head > div.controls > div.seg > button[button].active \"all\"": {
+    "div.shell > main[main].main > div.page-head > div.controls > div[group].seg \"run state\" > button[button].active \"all\"": {
       "color": "rgb(255, 255, 255)",
       "font-family": "Arial",
       "font-size": "12.5px",
@@ -348,7 +348,7 @@
       "background-color": "rgb(156, 196, 228)",
       "padding": "5px 12px"
     },
-    "div.shell > main[main].main > div.page-head > div.controls > div.seg > button[button] \"active\"": {
+    "div.shell > main[main].main > div.page-head > div.controls > div[group].seg \"run state\" > button[button] \"active\"": {
       "color": "rgb(91, 103, 114)",
       "font-family": "Arial",
       "font-size": "12.5px",
@@ -357,7 +357,7 @@
       "border-left": "1px solid rgb(197, 206, 214)",
       "padding": "5px 12px"
     },
-    "div.shell > main[main].main > div.page-head > div.controls > div.seg > button[button] \"passed\"": {
+    "div.shell > main[main].main > div.page-head > div.controls > div[group].seg \"run state\" > button[button] \"passed\"": {
       "color": "rgb(91, 103, 114)",
       "font-family": "Arial",
       "font-size": "12.5px",
@@ -366,7 +366,7 @@
       "border-left": "1px solid rgb(197, 206, 214)",
       "padding": "5px 12px"
     },
-    "div.shell > main[main].main > div.page-head > div.controls > div.seg > button[button] \"deviated\"": {
+    "div.shell > main[main].main > div.page-head > div.controls > div[group].seg \"run state\" > button[button] \"deviated\"": {
       "color": "rgb(91, 103, 114)",
       "font-family": "Arial",
       "font-size": "12.5px",
@@ -375,7 +375,7 @@
       "border-left": "1px solid rgb(197, 206, 214)",
       "padding": "5px 12px"
     },
-    "div.shell > main[main].main > div.page-head > div.controls > div.seg > button[button] \"failed\"": {
+    "div.shell > main[main].main > div.page-head > div.controls > div[group].seg \"run state\" > button[button] \"failed\"": {
       "color": "rgb(91, 103, 114)",
       "font-family": "Arial",
       "font-size": "12.5px",
@@ -384,7 +384,7 @@
       "border-left": "1px solid rgb(197, 206, 214)",
       "padding": "5px 12px"
     },
-    "div.shell > main[main].main > div.page-head > div.controls > div.seg > button[button] \"aborted\"": {
+    "div.shell > main[main].main > div.page-head > div.controls > div[group].seg \"run state\" > button[button] \"aborted\"": {
       "color": "rgb(91, 103, 114)",
       "font-family": "Arial",
       "font-size": "12.5px",
@@ -393,7 +393,7 @@
       "border-left": "1px solid rgb(197, 206, 214)",
       "padding": "5px 12px"
     },
-    "div.shell > main[main].main > div.page-head > div.controls > div.seg > button[button] \"orphaned\"": {
+    "div.shell > main[main].main > div.page-head > div.controls > div[group].seg \"run state\" > button[button] \"orphaned\"": {
       "color": "rgb(91, 103, 114)",
       "font-family": "Arial",
       "font-size": "12.5px",
@@ -402,7 +402,7 @@
       "border-left": "1px solid rgb(197, 206, 214)",
       "padding": "5px 12px"
     },
-    "div.shell > main[main].main > div.page-head > div.controls > div.seg > button[button] \"rollback_pending\"": {
+    "div.shell > main[main].main > div.page-head > div.controls > div[group].seg \"run state\" > button[button] \"rollback_pending\"": {
       "color": "rgb(91, 103, 114)",
       "font-family": "Arial",
       "font-size": "12.5px",

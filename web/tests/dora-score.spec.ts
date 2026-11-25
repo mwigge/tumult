@@ -418,16 +418,16 @@ test('a quarter with no stored day is drawn as a gap and named', async ({ page }
     await expect(rows.nth(3)).toContainText('today');
 });
 
-test('the toggles say which view is on and every chart has a name', async ({ page }) => {
+test('the tabs and toggles say which view is on and every chart has a name', async ({ page }) => {
     await mockApi(page);
     await page.goto('/scores?view=dora');
     await expect(page.getByTestId('dora-view')).toBeVisible();
-    await expect(page.getByRole('button', { name: 'DORA and maturity' })).toHaveAttribute(
-        'aria-pressed',
+    await expect(page.getByRole('tab', { name: 'DORA and maturity' })).toHaveAttribute(
+        'aria-selected',
         'true',
     );
-    await expect(page.getByRole('button', { name: 'Org scores' })).toHaveAttribute(
-        'aria-pressed',
+    await expect(page.getByRole('tab', { name: 'Org scores' })).toHaveAttribute(
+        'aria-selected',
         'false',
     );
     const coverage = page.getByRole('button', { name: 'Coverage', exact: true });
@@ -790,6 +790,6 @@ test('the navigation reaches the DORA view and the org scores stay', async ({ pa
     await expect(page).toHaveURL(/view=dora/);
     await expect(page.getByTestId('dora-view')).toBeVisible();
     await expect(meaning).toHaveCount(0);
-    await page.getByRole('button', { name: 'Org scores' }).click();
+    await page.getByRole('tab', { name: 'Org scores' }).click();
     await expect(page.getByText('Score — company')).toBeVisible();
 });
