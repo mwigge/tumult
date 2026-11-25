@@ -23,8 +23,4 @@
     .audit li {
         margin-bottom: 3px;
     }
-    .dim {
-        color: var(--text-faint);
-        font-size: var(--font-size-xs);
-    }
 </style>

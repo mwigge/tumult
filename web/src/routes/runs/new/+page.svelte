@@ -262,7 +262,7 @@
             <div class="params">
                 {#each placeholders as p (p)}
                     <label>
-                        <span class="mono">{p}</span>
+                        <span class="mono label-caps">{p}</span>
                         <input
                             type="text"
                             value={vars[p] ?? ''}
@@ -421,21 +421,8 @@
         grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
         gap: var(--space-2-5) var(--space-4-5);
     }
-    .params label span {
-        display: block;
-        color: var(--text-dim);
-        font-size: var(--font-size-3xs);
-        text-transform: uppercase;
-        letter-spacing: var(--letter-spacing-md);
-        margin-bottom: var(--space-1);
-    }
     .params input {
         width: 100%;
-    }
-    .hint {
-        color: var(--text-dim);
-        font-size: var(--font-size-sm);
-        margin-top: var(--space-2);
     }
     .plan {
         margin-top: var(--space-3);

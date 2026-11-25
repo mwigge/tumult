@@ -501,6 +501,8 @@
         cursor: pointer;
         font-size: var(--font-size-xs);
         padding: var(--space-0-5) var(--space-2-5) var(--space-0-5) var(--space-1-5);
+        /* The font of a button, not the mono font of the global .chip. */
+        font-family: revert;
     }
     .chip[aria-pressed='false'] {
         opacity: 0.45;

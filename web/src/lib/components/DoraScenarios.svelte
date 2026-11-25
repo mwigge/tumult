@@ -18,7 +18,7 @@
 
 <section class="panel" data-testid="dora-scenarios">
     <h2>Plan scenarios per function</h2>
-    <p class="dim">
+    <p>
         The scenarios of
         <a href={scenarios.source_url} rel="external noopener noreferrer" target="_blank"
             >{scenarios.source}</a
@@ -39,7 +39,7 @@
                     <tr>
                         <th scope="col">Scenario</th>
                         {#each scenarios.functions as f (f.entity_id)}
-                            <th scope="col">{f.name} <span class="dim">{f.tier}</span></th>
+                            <th scope="col">{f.name} <span>{f.tier}</span></th>
                         {/each}
                     </tr>
                 </thead>
@@ -48,7 +48,7 @@
                         <tr data-scenario={s.id}>
                             <th scope="row">
                                 {s.title}
-                                <div class="dim mono">{s.id} · {s.cite}</div>
+                                <div class="mono">{s.id} · {s.cite}</div>
                             </th>
                             {#each scenarios.functions as f (f.entity_id)}
                                 {@const cell = cellOf(f, s.id)}
@@ -56,7 +56,7 @@
                                     {#if cell}
                                         <span class="badge {TONE[cell.state]}">{cell.state}</span>
                                         {#if cell.last_tested_at}
-                                            <div class="dim mono">tested {cell.last_tested_at}</div>
+                                            <div class="mono">tested {cell.last_tested_at}</div>
                                         {/if}
                                     {:else}
                                         –

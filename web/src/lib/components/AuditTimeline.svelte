@@ -39,10 +39,6 @@
             color-mix(in srgb, var(--border) 50%, transparent);
         align-items: baseline;
     }
-    .ts {
-        color: var(--text-faint);
-        flex: 0 0 128px;
-    }
     .event {
         flex: 0 0 150px;
     }

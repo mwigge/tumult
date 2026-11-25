@@ -111,16 +111,10 @@
 {/if}
 
 <style>
-    .sr-only {
-        position: absolute;
-        width: 1px;
-        height: 1px;
-        overflow: hidden;
-        clip-path: inset(50%);
-        white-space: nowrap;
-    }
+    /* Not the size of the global .dim: the size around it. */
     .dim {
         color: var(--text-faint);
+        font-size: inherit;
     }
     .nowrap {
         white-space: nowrap;

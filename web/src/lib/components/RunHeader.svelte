@@ -144,18 +144,6 @@
 </div>
 
 <style>
-    .meta span {
-        display: block;
-        color: var(--text-dim);
-        font-size: var(--font-size-3xs);
-        text-transform: uppercase;
-        letter-spacing: var(--letter-spacing-md);
-        margin-bottom: var(--space-1);
-    }
-    .meta b {
-        font-weight: var(--font-weight-strong);
-        font-size: var(--font-size-lg);
-    }
     button.estop {
         background: color-mix(in srgb, var(--fail) 16%, transparent);
         border: var(--border-width-sm) solid var(--fail);

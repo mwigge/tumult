@@ -42,6 +42,7 @@ src/lib/theme.css spacing 1px
 src/lib/theme.css spacing 26px
 src/lib/theme.css spacing 28px
 src/lib/theme.css spacing 5px
+src/lib/theme.css spacing 5px
 src/lib/theme.css spacing 60px
 src/lib/theme.css spacing 7px
 src/lib/theme.css spacing 7px
@@ -65,7 +66,6 @@ src/routes/login/+page.svelte spacing -4px
 src/routes/login/+page.svelte spacing 5px
 src/routes/login/+page.svelte spacing 9px
 src/routes/logs/+page.svelte spacing -6px
-src/routes/manual/+page.svelte spacing 5px
 src/routes/performance/+page.svelte font-size 15px
 src/routes/performance/+page.svelte spacing 3px
 src/routes/performance/+page.svelte spacing 3px

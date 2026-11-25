@@ -91,3 +91,11 @@
         <div class="state" class:error={!message.ok} role="status">{message.text}</div>
     {/if}
 </div>
+
+<style>
+    .row3 {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        gap: var(--space-2-5);
+    }
+</style>

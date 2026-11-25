@@ -1,7 +1,10 @@
 // The pages of Krönika with the API answers each one shows, for the style
-// snapshot and the smoke tests. The answers of the chart, DORA, DR, run
+// snapshot and the smoke tests, and the states of pages that a click opens. The answers of the chart, DORA, DR, run
 // evidence and Star Map specs are reused; the other pages get small ones.
 // Every time is fixed: the clock of the browser stands at NOW_MS.
+import { expect } from '@playwright/test';
+import type { Page } from '@playwright/test';
+
 import type {
     AdminUser,
     ApiToken,
@@ -10,6 +13,7 @@ import type {
     ExperimentRow,
     GameDayDetail,
     GameDayEntry,
+    LogRow,
     ReportMetaV2,
     RunEvent,
     RunRow,
@@ -20,6 +24,7 @@ import type {
 import { bodies, HOUR_NS, NOW_MS, NOW_NS } from './chart-theme-data';
 import { answerOf, fullLake } from './dr-data';
 import { dora, maturity, tree } from './dora-data';
+import { manualApi } from './manual-data';
 import { experiment as evidenceRun, FULL } from './run-evidence-data';
 import { demoStar } from './starmap-demo';
 
@@ -44,6 +49,9 @@ export interface SnapshotPage {
     heading: string | null;
     /** The answers by path, beside `/api/me`. */
     api: Record<string, Answer>;
+    /** For a state of a page: what it shows, and the clicks that open it. */
+    shows?: string;
+    open?: (page: Page) => Promise<void>;
 }
 
 const DAY_NS = 24 * HOUR_NS;
@@ -596,6 +604,188 @@ export const PAGES: SnapshotPage[] = [
         },
     },
     { name: 'login', path: '/login', heading: null, api: {} },
+];
+
+const pageOf = (name: string) => PAGES.find((target) => target.name === name) as SnapshotPage;
+
+/** A state of the page `name`: its answers and `api`, at `path`. */
+const stateOf = (
+    name: string,
+    state: Omit<SnapshotPage, 'heading' | 'api'> & { api?: Record<string, Answer> },
+): SnapshotPage => {
+    const target = pageOf(name);
+    return { ...target, ...state, api: { ...target.api, ...state.api } };
+};
+
+/** Click the first element of `selector`, then wait for `shown`. */
+const opens = (selector: string, shown: string) => async (page: Page) => {
+    await page.locator(selector).first().click();
+    await expect(page.locator(shown).first()).toBeVisible();
+};
+
+/** Verify the audit trail of the open row, and wait for the verdict. */
+const verify = async (page: Page) => {
+    await page.getByRole('button', { name: 'Verify audit trail' }).click();
+    await expect(page.locator('.verdict')).toBeVisible();
+};
+
+const logs: LogRow[] = [
+    {
+        ts_ns: NOW_NS - HOUR_NS,
+        severity_text: 'ERROR',
+        body: 'connection refused',
+        trace_id: 't-1',
+        span_id: 'action',
+        log_attrs: { svc: 'api', 'experiment.id': 'run-1' },
+    },
+    {
+        ts_ns: NOW_NS - 2 * HOUR_NS,
+        severity_text: 'INFO',
+        body: 'ready',
+        trace_id: null,
+        span_id: null,
+        log_attrs: {},
+    },
+];
+
+/**
+ * The states of pages that a click or the data opens: the Manual tabs with
+ * data, open rows, the span drawer, the approval panel and filter chips.
+ * Each has baselines of its own.
+ */
+export const STATES: SnapshotPage[] = [
+    stateOf('manual', {
+        name: 'manual-plans-open',
+        path: '/manual?tab=plans',
+        shows: 'a plan open and its audit trail verified',
+        api: manualApi,
+        open: async (page) => {
+            await page.locator('tr[data-plan="plan-1"]').click();
+            await verify(page);
+        },
+    }),
+    stateOf('manual', {
+        name: 'manual-plans-cancel',
+        path: '/manual?tab=plans',
+        shows: 'the cancel form of a plan',
+        api: manualApi,
+        open: async (page) => {
+            await page
+                .locator('tr[data-plan="plan-2"]')
+                .getByRole('button', { name: /cancel/i })
+                .click();
+            await expect(page.getByRole('button', { name: 'Keep it' })).toBeVisible();
+        },
+    }),
+    stateOf('manual', {
+        name: 'manual-queue-open',
+        path: '/manual?tab=queue',
+        shows: 'a record open and its audit trail verified',
+        api: manualApi,
+        open: async (page) => {
+            await page.locator('tr[data-record="rec-1"]').click();
+            await verify(page);
+        },
+    }),
+    stateOf('manual', {
+        name: 'manual-records',
+        path: '/manual?tab=records',
+        shows: 'three records',
+        api: manualApi,
+    }),
+    stateOf('manual', {
+        name: 'manual-import',
+        path: '/manual?tab=import',
+        shows: 'the import form',
+        api: manualApi,
+    }),
+    stateOf('manual', {
+        name: 'manual-entry-rows',
+        path: '/manual',
+        shows: 'a row in each list editor',
+        api: manualApi,
+        open: async (page) => {
+            for (const name of ['Add participant', 'Add step', 'Add action'])
+                await page.getByRole('button', { name }).click();
+            await expect(page.locator('.grid-rows').first()).toBeVisible();
+        },
+    }),
+    stateOf('run', {
+        name: 'run-approval',
+        path: '/runs/run-1',
+        shows: 'an approval, an audit trail and a failed rollback',
+        api: {
+            '/api/runs/run-1': {
+                run: { ...runs[0], state: 'pending_approval', rollback_status: 'failed' },
+                audit: [
+                    {
+                        run_id: 'run-1',
+                        at_ns: NOW_NS - HOUR_NS,
+                        event: 'queued',
+                        detail: null,
+                        actor: 'operator',
+                    },
+                    {
+                        run_id: 'run-1',
+                        at_ns: NOW_NS - HOUR_NS / 2,
+                        event: 'approval',
+                        detail: 'one of two',
+                        actor: 'bob',
+                    },
+                ],
+                approval: {
+                    request: { ...approval, run_id: 'run-1' },
+                    decisions: [
+                        {
+                            run_id: 'run-1',
+                            approver: 'bob',
+                            decision: 'approved',
+                            note: 'ok',
+                            decided_at_ns: NOW_NS - HOUR_NS / 2,
+                        },
+                    ],
+                },
+            },
+        },
+    }),
+    stateOf('trace', {
+        name: 'trace-drawer',
+        path: '/traces/t-1',
+        shows: 'the span drawer open',
+        api: {
+            '/api/traces/t-1': {
+                trace_id: 't-1',
+                spans: spans.map((s) => ({ ...s, span_attrs: { 'db.system': 'postgresql' } })),
+                logs: [],
+            },
+            ...charts('/api/experiments/windows'),
+        },
+        open: opens('button.row', '.drawer'),
+    }),
+    stateOf('logs', {
+        name: 'logs-filtered',
+        path: '/logs?attr=svc%3Dapi&attr_not=env%3Ddev',
+        shows: 'two filter chips and an open row',
+        api: { '/api/logs': { count: logs.length, logs } },
+        open: opens('tr.clickable', 'tr.detail-row'),
+    }),
+    stateOf('traces', {
+        name: 'traces-filtered',
+        path: '/traces?attr=svc%3Dapi&attr_not=env%3Ddev',
+        shows: 'two filter chips',
+    }),
+    stateOf('approvals', {
+        name: 'approvals-open',
+        path: '/approvals',
+        shows: 'an open row',
+        open: opens('tr.clickable', 'tr.detail-row'),
+    }),
+    stateOf('users', {
+        name: 'users-open',
+        path: '/users',
+        shows: 'an open row',
+        open: opens('tr.clickable', 'tr.detail-row'),
+    }),
 ];
 
 /**

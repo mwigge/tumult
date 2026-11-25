@@ -32,6 +32,14 @@ h3 {
     margin: 0;
 }
 
+/* Faint small text: a side note, or a value of less weight. It comes
+   before .mono, so that a .mono value keeps the size of .mono. */
+.dim,
+.note {
+    color: var(--text-faint);
+    font-size: var(--font-size-xs);
+}
+
 code,
 .mono {
     font-family: var(--mono);
@@ -222,6 +230,19 @@ textarea:focus,
 input:focus {
     border-color: var(--accent);
 }
+/* The date, time and file fields of the Manual forms. They come after
+   input:focus, so their edge keeps its colour on focus, as before. */
+input[type='date'],
+input[type='datetime-local'],
+input[type='file'] {
+    background: var(--bg-raised);
+    border: var(--border-width-sm) solid var(--border-strong);
+    color: var(--text);
+    border-radius: var(--radius-lg);
+    padding: 5px var(--space-2);
+    font-size: var(--font-size-md);
+    font-family: inherit;
+}
 button.primary {
     background: var(--accent-dim);
     border: var(--border-width-sm) solid var(--accent);
@@ -231,7 +252,37 @@ button.primary {
     font-size: var(--font-size-md);
     cursor: pointer;
 }
-button.primary:disabled {
+/* A plain button. */
+.btn {
+    background: var(--bg-hover);
+    border: var(--border-width-sm) solid var(--border-strong);
+    color: var(--text);
+    border-radius: var(--radius-xl);
+    padding: var(--space-1-5) var(--space-3-5);
+    cursor: pointer;
+    font-size: var(--font-size-md);
+}
+.btn:hover {
+    border-color: var(--accent-dim);
+}
+/* A primary .btn keeps the text colour and the shape of .btn, which
+   button.primary would change. */
+.btn.primary {
+    background: var(--accent-dim);
+    border-color: var(--accent-dim);
+    color: var(--text);
+    border-radius: var(--radius-xl);
+    padding: var(--space-1-5) var(--space-3-5);
+}
+.btn.danger {
+    border-color: var(--fail);
+    color: var(--fail);
+}
+.btn.add {
+    margin-top: var(--space-1);
+}
+button.primary:disabled,
+.btn:disabled {
     opacity: 0.5;
     cursor: default;
 }
@@ -300,4 +351,104 @@ button.primary:disabled {
 }
 .delta.flat {
     color: var(--text-faint);
+}
+
+/* --- shared parts ----------------------------------------------------------*/
+/* The small capital name above a value, as in the meta tiles of a run. */
+.label-caps,
+.panel.meta span {
+    display: block;
+    color: var(--text-dim);
+    font-size: var(--font-size-3xs);
+    text-transform: uppercase;
+    letter-spacing: var(--letter-spacing-md);
+    margin-bottom: var(--space-1);
+}
+.panel.meta b {
+    font-weight: var(--font-weight-strong);
+    font-size: var(--font-size-lg);
+}
+.hint {
+    color: var(--text-dim);
+    font-size: var(--font-size-sm);
+    margin-top: var(--space-2);
+}
+/* The time of a row in an audit trail. */
+.ts {
+    color: var(--text-faint);
+    flex: 0 0 128px;
+}
+.actions {
+    display: flex;
+    gap: var(--space-2);
+}
+/* An open row under the row of a table that opened it. Only its own
+   cells: a table inside it keeps its own look. */
+.detail-row > td {
+    background: var(--bg-raised);
+}
+/* A filter that is on: a click takes it off. */
+.chip {
+    background: var(--bg-raised);
+    border: var(--border-width-sm) solid var(--border-strong);
+    border-radius: var(--radius-2xl);
+    color: var(--text);
+    cursor: pointer;
+    font-size: var(--font-size-2xs);
+    font-family: var(--mono, monospace);
+    padding: var(--space-0-5) var(--space-2-5);
+}
+.chip .x {
+    color: var(--text-dim);
+    margin-left: var(--space-1);
+}
+.chip:hover .x {
+    color: var(--fail);
+}
+/* Text for a screen reader only. */
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+
+/* --- forms -----------------------------------------------------------------*/
+/* A form of fields one under the other, with rows of two. */
+.form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2-5);
+}
+.form label {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    font-size: var(--font-size-xs);
+    color: var(--text-dim);
+}
+.row2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-2-5);
+}
+/* A list editor: one grid row of fields for each entry. */
+.grid-rows {
+    display: grid;
+    gap: var(--space-1-5);
+    align-items: center;
+    margin-bottom: var(--space-1-5);
+    font-size: var(--font-size-2xs);
+    color: var(--text-dim);
+}
+.grid-rows input,
+.grid-rows select {
+    min-width: 0;
+    width: 100%;
+}
+.grid-rows .n {
+    color: var(--text-faint);
+    text-align: right;
 }

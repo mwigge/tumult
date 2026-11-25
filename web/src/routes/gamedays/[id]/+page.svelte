@@ -262,9 +262,4 @@
     .params input {
         width: 100%;
     }
-    .hint {
-        color: var(--text-dim);
-        font-size: var(--font-size-sm);
-        margin-top: var(--space-2);
-    }
 </style>

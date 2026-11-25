@@ -30,12 +30,15 @@ node stage first.
 ## Style snapshot
 
 `tests/style-snapshot.spec.ts` opens every page with a mocked API, in the
-light and the dark theme, 1440 and 390 px wide. It reads the computed
-styles of each visible element and compares them with the baseline in
-`tests/style-snapshots/`, one file per page, theme and width. It reads no
-size or position, so the fonts of a host do not change the result. A
-failing test names the element, the property and the value before and
-after.
+light and the dark theme, 1440 and 390 px wide. It also opens states that a
+click or the data shows, such as the Manual tabs with data, an open row, the
+span drawer and filter chips, 1440 px wide only (`STATES` in
+`tests/style-snapshot-pages.ts`). It reads the computed styles of each
+visible element and compares them with the baseline in
+`tests/style-snapshots/`, one file per page or state, theme and width.
+It reads no size or position, so the fonts of a host do not change the
+result. A failing test names the element, the property and the value
+before and after.
 
 A change that should look different writes the baselines again, in the
 same commit:
@@ -95,6 +98,22 @@ theme itself, so it is never lost. A user who chose light never sees the
 dark default first.
 It is a file and not inline code, so that a strict content security policy
 can allow it. `tests/first-paint.spec.ts` checks the first paint.
+
+## Shared classes
+
+`src/lib/theme.css` holds, once, the rules that many pages use:
+
+- Buttons: `.btn`, with `primary`, `danger` and `add`.
+- Text: `.dim` and `.note` (faint and small), `.hint`, `.label-caps` (the
+  small capital name above a value), `.ts` (the time of an audit row) and
+  `.sr-only` (for a screen reader only).
+- Parts: the meta tile (`.panel.meta`), filter chips (`.chip`), the open
+  row of a table (`.detail-row`) and `.actions`.
+- Forms: `.form`, `.row2` and the list editor `.grid-rows`.
+
+A page uses the class and keeps no copy of the rule in its own style
+block. `src/lib/theme-rules.test.ts` fails on a copy, and on a `:global()`
+rule in the Manual page or its components.
 
 ## Stack
 

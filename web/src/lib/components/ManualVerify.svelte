@@ -80,8 +80,4 @@
         margin: 0;
         padding-left: var(--space-4-5);
     }
-    .dim {
-        color: var(--text-faint);
-        font-size: var(--font-size-xs);
-    }
 </style>

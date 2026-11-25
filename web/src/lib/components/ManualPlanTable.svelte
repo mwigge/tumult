@@ -101,9 +101,6 @@
         gap: var(--space-1-5);
         justify-content: flex-end;
     }
-    .detail-row td {
-        background: var(--bg-raised);
-    }
     .dim {
         color: var(--text-faint);
     }

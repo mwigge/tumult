@@ -76,6 +76,7 @@
     .hint {
         color: var(--text-dim);
         font-size: var(--font-size-sm);
+        margin-top: 0;
     }
     .ok {
         color: var(--ok);
