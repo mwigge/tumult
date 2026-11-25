@@ -154,6 +154,9 @@ is the small capital name above the value. With `scroll`, a table wider
 than the panel scrolls sideways inside it, and the page does not. A panel
 that a page writes itself as `.panel` takes `data-scroll` for the same.
 
+`src/lib/components/MetaRow.svelte` holds the stat tiles at the head of a
+run, a trace or an experiment: four in a row, two on a small screen.
+
 `src/lib/components/State.svelte` is a part of a page with no data to show:
 
 - `kind="empty"`: a short message. An `action` adds a link to what the
@@ -171,6 +174,26 @@ that a page writes itself as `.panel` takes `data-scroll` for the same.
 
 `src/lib/state-scan.test.ts` fails on a `.state` or `.skeleton` written by
 hand, and on a loading block with an inline height.
+
+## Small screens
+
+Krönika works on a phone. Below 900 px the side bar folds behind the
+Menu button of a top bar, and the open menu shows under the top bar:
+
+- The button says whether the menu is open (`aria-expanded`) and names
+  it (`aria-controls`).
+- Escape closes the menu and gives the focus back to the button.
+- A link in the menu closes it.
+
+Wide tables scroll inside their panel, rows of tiles go two in a row,
+and the fields of a `.row2` go one under the other.
+
+The breakpoints have names, in one list at the top of
+`src/lib/theme.css`: `xl` 1200 px, `lg` 1100 px, `md` 900 px and `sm`
+800 px. A media query cannot read a custom property, so each query
+writes its width. `src/lib/breakpoints.test.ts` fails on a query at any
+other width. `tests/phone.spec.ts` opens every page and state of the
+style snapshot at 390 x 844 and fails when one scrolls sideways.
 
 ## Segmented controls and tabs
 

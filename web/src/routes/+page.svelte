@@ -182,10 +182,7 @@
 {#if error}
     <State kind="error" panel>Failed to load overview: {error}</State>
 {:else if !data}
-    <div
-        class="grid"
-        style="grid-template-columns: repeat(5, 1fr); margin-bottom: var(--space-3-5)"
-    >
+    <div class="grid kpis waiting">
         {#each [0, 1, 2, 3, 4] as i (i)}
             <State kind="loading" height={92} />
         {/each}
@@ -272,6 +269,9 @@
 <style>
     .kpis {
         grid-template-columns: repeat(5, 1fr);
+    }
+    .kpis.waiting {
+        margin-bottom: var(--space-3-5);
     }
     @media (max-width: 1200px) {
         .kpis {

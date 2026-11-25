@@ -6,6 +6,7 @@
     import Waterfall from '#lib/components/Waterfall.svelte';
     import SpanDrawer from '#lib/components/SpanDrawer.svelte';
     import PageHeader from '#lib/components/PageHeader.svelte';
+    import MetaRow from '#lib/components/MetaRow.svelte';
     import Panel from '#lib/components/Panel.svelte';
     import State from '#lib/components/State.svelte';
 
@@ -63,10 +64,7 @@
     <State kind="loading" height={120} style="margin-bottom: var(--space-3-5)" />
     <State kind="loading" height={320} />
 {:else}
-    <div
-        class="grid"
-        style="grid-template-columns: repeat(4, 1fr); margin-bottom: var(--space-3-5)"
-    >
+    <MetaRow>
         <Panel variant="meta" title="Started">
             <b>{fmtTs(started)} ({fmtAgo(started)})</b>
         </Panel>
@@ -77,7 +75,7 @@
         <Panel variant="meta" title="Errors">
             <b class="mono" style="color: {errors > 0 ? 'var(--fail)' : 'inherit'}">{errors}</b>
         </Panel>
-    </div>
+    </MetaRow>
 
     <Panel
         title={`Waterfall — ${detail.spans.length} spans`}

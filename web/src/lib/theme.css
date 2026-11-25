@@ -91,7 +91,8 @@ code,
     border-bottom: var(--border-width-sm) solid var(--border);
     margin-bottom: var(--space-2-5);
 }
-.brand .name {
+.brand .name,
+.topbar .name {
     font-size: 17px;
     font-weight: 700;
     letter-spacing: 0.4px;
@@ -124,6 +125,42 @@ code,
     padding: var(--space-5-5) 26px 60px;
     max-width: 1460px;
     min-width: 0;
+}
+/* Below md the side bar folds behind the menu button of a top bar. The
+   open menu shows under the top bar, in the flow of the page. Above md
+   the top bar is not shown and nothing here applies. */
+.topbar {
+    display: none;
+}
+@media (max-width: 900px) {
+    .shell {
+        display: block;
+    }
+    .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: var(--space-2) var(--space-4);
+        background: var(--bg-raised);
+        border-bottom: var(--border-width-sm) solid var(--border);
+    }
+    .side {
+        display: none;
+    }
+    .side.open {
+        display: flex;
+        position: static;
+        height: auto;
+        border-right: none;
+        border-bottom: var(--border-width-sm) solid var(--border);
+    }
+    /* The top bar names the app. */
+    .side .brand {
+        display: none;
+    }
+    .main {
+        padding-inline: var(--space-4);
+    }
 }
 .page-head {
     display: flex;
@@ -252,6 +289,12 @@ table.data tr.clickable:hover {
 .seg button.active {
     background: var(--accent-dim);
     color: #fff;
+}
+/* On a small screen the buttons of a long group wrap to a second row. */
+@media (max-width: 900px) {
+    .seg {
+        flex-wrap: wrap;
+    }
 }
 /* The small look of Segmented.svelte and Tabs.svelte: the views of the
    Scores page and the value of the DORA heatmap. */
@@ -520,6 +563,12 @@ button.primary:disabled,
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: var(--space-2-5);
+}
+/* On a small screen each field of a row has the width of the form. */
+@media (max-width: 800px) {
+    .row2 {
+        grid-template-columns: 1fr;
+    }
 }
 /* A list editor: one grid row of fields for each entry. */
 .grid-rows {

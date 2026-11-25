@@ -357,6 +357,11 @@
         gap: var(--space-3);
         margin-bottom: var(--space-3);
     }
+    @media (max-width: 800px) {
+        .cards {
+            grid-template-columns: repeat(2, 1fr);
+        }
+    }
     .card .label {
         color: var(--text-dim);
         font-size: var(--font-size-2xs);
