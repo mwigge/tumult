@@ -205,8 +205,7 @@
     .steps li {
         margin-bottom: var(--space-1);
     }
-    .dim {
-        color: var(--text-faint);
+    .dim.mono {
         font-size: var(--font-size-xs);
     }
 </style>

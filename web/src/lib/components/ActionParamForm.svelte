@@ -31,11 +31,11 @@
 
 <div class="grid cols-2">
     <label>
-        <span>Title <i>(optional)</i></span>
+        <span class="label-caps">Title <i>(optional)</i></span>
         <input type="text" placeholder="{action.name} — <target>" bind:value={form.title} />
     </label>
     <label>
-        <span>Target <b class="req">*</b></span>
+        <span class="label-caps">Target <b class="req">*</b></span>
         <input type="text" placeholder="e.g. demo-postgres" bind:value={form.target} />
     </label>
 </div>
@@ -44,7 +44,7 @@
     <div class="grid cols-2">
         {#each action.args as arg (arg.name)}
             <label>
-                <span class="mono"
+                <span class="mono label-caps"
                     >{arg.name}{#if arg.required}
                         <b class="req">*</b>{/if}</span
                 >
@@ -71,7 +71,9 @@
 <div class="grid cols-2" style="margin-top: var(--space-2-5)">
     {#if form.probeKind === 'exec'}
         <label>
-            <span>Probe command <i>(optional — a default health check is used)</i></span>
+            <span class="label-caps"
+                >Probe command <i>(optional — a default health check is used)</i></span
+            >
             <input
                 type="text"
                 placeholder="pg_isready -h demo-postgres"
@@ -80,7 +82,9 @@
         </label>
     {:else}
         <label>
-            <span>Probe URL <i>(optional — a default health check is used)</i></span>
+            <span class="label-caps"
+                >Probe URL <i>(optional — a default health check is used)</i></span
+            >
             <input
                 type="text"
                 placeholder="http://demo-app:8080/health"
@@ -89,20 +93,12 @@
         </label>
     {/if}
     <label>
-        <span>Expected output <i>(regex, optional)</i></span>
+        <span class="label-caps">Expected output <i>(regex, optional)</i></span>
         <input type="text" placeholder="accepting connections" bind:value={form.probeExpect} />
     </label>
 </div>
 
 <style>
-    label span {
-        display: block;
-        color: var(--text-dim);
-        font-size: var(--font-size-3xs);
-        text-transform: uppercase;
-        letter-spacing: var(--letter-spacing-md);
-        margin-bottom: var(--space-1);
-    }
     label span i {
         text-transform: none;
         letter-spacing: 0;

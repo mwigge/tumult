@@ -121,7 +121,7 @@
         </div>
         {#if canRun}
             {#if activeCount > 0}
-                <button class:danger={haltArmed} class="halt" onclick={halt} disabled={halting}>
+                <button class:danger={haltArmed} class="btn halt" onclick={halt} disabled={halting}>
                     {halting
                         ? 'Halting…'
                         : haltArmed
@@ -191,26 +191,11 @@
         flex-wrap: wrap;
         align-items: center;
     }
-    .halt {
-        background: var(--bg-hover);
-        border: var(--border-width-sm) solid var(--border-strong);
-        color: var(--text);
-        border-radius: var(--radius-xl);
-        padding: var(--space-1-5) var(--space-3-5);
-        cursor: pointer;
-        font-size: var(--font-size-md);
-    }
     .halt:hover {
         border-color: var(--fail);
     }
     .halt.danger {
-        border-color: var(--fail);
-        color: var(--fail);
         font-weight: var(--font-weight-strong);
-    }
-    .halt:disabled {
-        opacity: 0.5;
-        cursor: default;
     }
     .halt-note {
         margin-bottom: var(--space-3-5);

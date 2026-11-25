@@ -105,27 +105,27 @@
         </h2>
 
         <div class="ap-meta">
-            <div><span>Env</span><b>{req.env}</b></div>
-            <div><span>Target</span><b>{req.target ?? '—'}</b></div>
+            <div><span class="label-caps">Env</span><b>{req.env}</b></div>
+            <div><span class="label-caps">Target</span><b>{req.target ?? '—'}</b></div>
             <div>
-                <span>Requested by</span>
+                <span class="label-caps">Requested by</span>
                 <b title={fmtTs(req.requested_at_ns)}>
                     {req.requested_by} · {fmtAgo(req.requested_at_ns)}
                 </b>
             </div>
             <div>
-                <span>Expires</span>
+                <span class="label-caps">Expires</span>
                 <b class="mono" class:warn-text={ttl.soon} title={fmtTs(req.expires_at_ns)}>
                     {ttl.text}
                 </b>
             </div>
             <div>
-                <span>Quorum</span><b class="mono" data-testid="approval-quorum"
+                <span class="label-caps">Quorum</span><b class="mono" data-testid="approval-quorum"
                     >{req.approved_count}/{req.quorum_required}</b
                 >
             </div>
             <div>
-                <span>Pin</span>
+                <span class="label-caps">Pin</span>
                 <b class="mono" title={req.pin_hash}>{req.pin_hash.slice(0, 16)}…</b>
             </div>
         </div>
@@ -219,10 +219,6 @@
             color-mix(in srgb, var(--border) 50%, transparent);
         align-items: baseline;
     }
-    .ts {
-        color: var(--text-faint);
-        flex: 0 0 128px;
-    }
     .event {
         flex: 0 0 150px;
     }
@@ -242,14 +238,6 @@
         grid-template-columns: repeat(3, 1fr);
         gap: var(--space-2-5) var(--space-4-5);
         margin-bottom: var(--space-3);
-    }
-    .ap-meta span {
-        display: block;
-        color: var(--text-dim);
-        font-size: var(--font-size-3xs);
-        text-transform: uppercase;
-        letter-spacing: var(--letter-spacing-md);
-        margin-bottom: var(--space-1);
     }
     .ap-meta b {
         font-weight: var(--font-weight-strong);
@@ -279,29 +267,9 @@
         flex: 1;
         min-width: 220px;
     }
-    .btn {
-        background: var(--bg-hover);
-        border: var(--border-width-sm) solid var(--border-strong);
-        color: var(--text);
-        border-radius: var(--radius-xl);
-        padding: var(--space-1-5) var(--space-3-5);
-        cursor: pointer;
-        font-size: var(--font-size-md);
-    }
-    .btn:hover {
-        border-color: var(--accent-dim);
-    }
-    .btn.danger {
-        border-color: var(--fail);
-        color: var(--fail);
-    }
     .btn.glass {
         border-color: var(--warn);
         color: var(--warn);
-    }
-    .btn:disabled {
-        opacity: 0.5;
-        cursor: default;
     }
     .glass-form {
         margin-top: var(--space-3);

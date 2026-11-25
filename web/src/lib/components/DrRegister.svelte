@@ -101,14 +101,6 @@
 </table>
 
 <style>
-    .sr-only {
-        position: absolute;
-        width: 1px;
-        height: 1px;
-        overflow: hidden;
-        clip-path: inset(50%);
-        white-space: nowrap;
-    }
     /* A row header reads as a cell, not as a column header. */
     th[scope='row'] {
         color: var(--text);
@@ -122,9 +114,11 @@
     tr:last-child th[scope='row'] {
         border-bottom: none;
     }
+    /* Not the size of the global .dim: the size around it. */
     .dim {
         color: var(--text-faint);
         font-weight: 400;
+        font-size: inherit;
     }
     .line {
         display: block;

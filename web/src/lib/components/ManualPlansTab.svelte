@@ -212,8 +212,4 @@
     .grow {
         flex: 1;
     }
-    .dim {
-        color: var(--text-faint);
-        font-size: var(--font-size-xs);
-    }
 </style>

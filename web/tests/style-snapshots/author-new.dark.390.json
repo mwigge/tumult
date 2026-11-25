@@ -398,7 +398,7 @@
     "div.shell > main[main].main > div.panel #2 > div.grid.cols-2 > label[LabelText]": {
       "display": "block"
     },
-    "div.shell > main[main].main > div.panel #2 > div.grid.cols-2 > label[LabelText] > span": {
+    "div.shell > main[main].main > div.panel #2 > div.grid.cols-2 > label[LabelText] > span.label-caps": {
       "color": "rgb(139, 152, 165)",
       "font-size": "11px",
       "letter-spacing": "0.6px",
@@ -406,7 +406,7 @@
       "display": "block",
       "margin": "0px 0px 4px"
     },
-    "div.shell > main[main].main > div.panel #2 > div.grid.cols-2 > label[LabelText] > i": {
+    "div.shell > main[main].main > div.panel #2 > div.grid.cols-2 > label[LabelText] > span.label-caps > i": {
       "letter-spacing": "normal",
       "text-transform": "none",
       "display": "inline"
@@ -427,7 +427,7 @@
     "div.shell > main[main].main > div.panel #2 > div.grid.cols-2 > label[LabelText] #2": {
       "display": "block"
     },
-    "div.shell > main[main].main > div.panel #2 > div.grid.cols-2 > label[LabelText] #2 > span": {
+    "div.shell > main[main].main > div.panel #2 > div.grid.cols-2 > label[LabelText] #2 > span.label-caps": {
       "color": "rgb(139, 152, 165)",
       "font-size": "11px",
       "letter-spacing": "0.6px",
@@ -435,7 +435,7 @@
       "display": "block",
       "margin": "0px 0px 4px"
     },
-    "div.shell > main[main].main > div.panel #2 > div.grid.cols-2 > label[LabelText] #2 > b.req": {
+    "div.shell > main[main].main > div.panel #2 > div.grid.cols-2 > label[LabelText] #2 > span.label-caps > b.req": {
       "color": "rgb(245, 158, 11)",
       "font-weight": "700",
       "display": "inline"
@@ -461,7 +461,7 @@
     "div.shell > main[main].main > div.panel #2 > div.grid.cols-2 #2 > label[LabelText]": {
       "display": "block"
     },
-    "div.shell > main[main].main > div.panel #2 > div.grid.cols-2 #2 > label[LabelText] > span.mono": {
+    "div.shell > main[main].main > div.panel #2 > div.grid.cols-2 #2 > label[LabelText] > span.mono.label-caps": {
       "color": "rgb(139, 152, 165)",
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11px",
@@ -470,7 +470,7 @@
       "display": "block",
       "margin": "0px 0px 4px"
     },
-    "div.shell > main[main].main > div.panel #2 > div.grid.cols-2 #2 > label[LabelText] > span.mono > b.req": {
+    "div.shell > main[main].main > div.panel #2 > div.grid.cols-2 #2 > label[LabelText] > span.mono.label-caps > b.req": {
       "color": "rgb(245, 158, 11)",
       "font-weight": "700",
       "display": "inline"
@@ -491,7 +491,7 @@
     "div.shell > main[main].main > div.panel #2 > div.grid.cols-2 #2 > label[LabelText] #2": {
       "display": "block"
     },
-    "div.shell > main[main].main > div.panel #2 > div.grid.cols-2 #2 > label[LabelText] #2 > span.mono": {
+    "div.shell > main[main].main > div.panel #2 > div.grid.cols-2 #2 > label[LabelText] #2 > span.mono.label-caps": {
       "color": "rgb(139, 152, 165)",
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11px",
@@ -557,7 +557,7 @@
     "div.shell > main[main].main > div.panel #2 > div.grid.cols-2 #3 > label[LabelText]": {
       "display": "block"
     },
-    "div.shell > main[main].main > div.panel #2 > div.grid.cols-2 #3 > label[LabelText] > span": {
+    "div.shell > main[main].main > div.panel #2 > div.grid.cols-2 #3 > label[LabelText] > span.label-caps": {
       "color": "rgb(139, 152, 165)",
       "font-size": "11px",
       "letter-spacing": "0.6px",
@@ -565,7 +565,7 @@
       "display": "block",
       "margin": "0px 0px 4px"
     },
-    "div.shell > main[main].main > div.panel #2 > div.grid.cols-2 #3 > label[LabelText] > i": {
+    "div.shell > main[main].main > div.panel #2 > div.grid.cols-2 #3 > label[LabelText] > span.label-caps > i": {
       "letter-spacing": "normal",
       "text-transform": "none",
       "display": "inline"
@@ -586,7 +586,7 @@
     "div.shell > main[main].main > div.panel #2 > div.grid.cols-2 #3 > label[LabelText] #2": {
       "display": "block"
     },
-    "div.shell > main[main].main > div.panel #2 > div.grid.cols-2 #3 > label[LabelText] #2 > span": {
+    "div.shell > main[main].main > div.panel #2 > div.grid.cols-2 #3 > label[LabelText] #2 > span.label-caps": {
       "color": "rgb(139, 152, 165)",
       "font-size": "11px",
       "letter-spacing": "0.6px",
@@ -594,7 +594,7 @@
       "display": "block",
       "margin": "0px 0px 4px"
     },
-    "div.shell > main[main].main > div.panel #2 > div.grid.cols-2 #3 > label[LabelText] #2 > i": {
+    "div.shell > main[main].main > div.panel #2 > div.grid.cols-2 #3 > label[LabelText] #2 > span.label-caps > i": {
       "letter-spacing": "normal",
       "text-transform": "none",
       "display": "inline"

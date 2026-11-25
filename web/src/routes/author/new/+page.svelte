@@ -160,9 +160,4 @@
         font-size: var(--font-size-md);
         margin: var(--space-1-5) 0;
     }
-    .hint {
-        color: var(--text-dim);
-        font-size: var(--font-size-sm);
-        margin-top: var(--space-2);
-    }
 </style>

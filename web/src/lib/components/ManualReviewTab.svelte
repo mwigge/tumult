@@ -199,7 +199,4 @@
         justify-content: space-between;
         align-items: center;
     }
-    .detail-row td {
-        background: var(--bg-raised);
-    }
 </style>

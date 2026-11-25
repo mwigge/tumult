@@ -491,8 +491,11 @@
         padding: var(--space-1-5) 0;
         border-top: var(--border-width-sm) solid var(--border);
     }
+    /* A faded row, not the colour and size of the global .dim. */
     .rows li.dim {
         opacity: 0.55;
+        color: inherit;
+        font-size: inherit;
     }
     .meta {
         display: block;

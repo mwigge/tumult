@@ -826,18 +826,6 @@
     .alert strong {
         color: var(--fail);
     }
-    .btn {
-        background: var(--bg-hover);
-        border: var(--border-width-sm) solid var(--border-strong);
-        color: var(--text);
-        border-radius: var(--radius-xl);
-        padding: var(--space-1-5) var(--space-3-5);
-        cursor: pointer;
-        font-size: var(--font-size-md);
-    }
-    .btn:hover {
-        border-color: var(--accent-dim);
-    }
     .empty,
     .none,
     .needs {

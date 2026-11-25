@@ -181,10 +181,6 @@
     .attach .grow {
         flex: 1 1 220px;
     }
-    .dim {
-        color: var(--text-faint);
-        font-size: var(--font-size-xs);
-    }
     .nowrap {
         white-space: nowrap;
     }

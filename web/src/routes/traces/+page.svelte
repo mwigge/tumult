@@ -272,23 +272,6 @@
         gap: var(--space-2);
         margin: -6px 0 var(--space-2-5);
     }
-    .chip {
-        background: var(--bg-raised);
-        border: var(--border-width-sm) solid var(--border-strong);
-        border-radius: var(--radius-2xl);
-        color: var(--text);
-        cursor: pointer;
-        font-size: var(--font-size-2xs);
-        font-family: var(--mono, monospace);
-        padding: var(--space-0-5) var(--space-2-5);
-    }
-    .chip .x {
-        color: var(--text-dim);
-        margin-left: var(--space-1);
-    }
-    .chip:hover .x {
-        color: var(--fail);
-    }
     .dur {
         display: flex;
         align-items: center;

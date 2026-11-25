@@ -411,7 +411,7 @@
       "border-left": "1px solid rgb(197, 206, 214)",
       "padding": "5px 12px"
     },
-    "div.shell > main[main].main > div.page-head > div.controls > button[button].halt \"Halt all\"": {
+    "div.shell > main[main].main > div.page-head > div.controls > button[button].btn.halt \"Halt all\"": {
       "font-family": "Arial",
       "font-size": "13px",
       "line-height": "normal",

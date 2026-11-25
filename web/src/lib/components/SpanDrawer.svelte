@@ -261,6 +261,10 @@
     .dim {
         color: var(--text-dim);
     }
+    /* Not the size of the global .dim: the size around it, or of .mono. */
+    .dim:not(.mono) {
+        font-size: inherit;
+    }
     .facets {
         visibility: hidden;
         white-space: nowrap;

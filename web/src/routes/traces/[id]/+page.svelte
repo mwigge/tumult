@@ -118,18 +118,6 @@
 {/if}
 
 <style>
-    .meta span {
-        display: block;
-        color: var(--text-dim);
-        font-size: var(--font-size-3xs);
-        text-transform: uppercase;
-        letter-spacing: var(--letter-spacing-md);
-        margin-bottom: var(--space-1);
-    }
-    .meta b {
-        font-weight: var(--font-weight-strong);
-        font-size: var(--font-size-lg);
-    }
     .logs {
         max-height: 420px;
         overflow-y: auto;
@@ -141,10 +129,6 @@
         font-size: var(--font-size-xs);
         border-bottom: var(--border-width-sm) solid
             color-mix(in srgb, var(--border) 50%, transparent);
-    }
-    .ts {
-        color: var(--text-faint);
-        flex: 0 0 128px;
     }
     .sev {
         flex: 0 0 44px;

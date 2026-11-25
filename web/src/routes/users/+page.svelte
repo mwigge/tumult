@@ -530,9 +530,6 @@
     tr.selected td {
         background: var(--bg-hover);
     }
-    .detail-row td {
-        background: var(--bg-raised);
-    }
     .detail {
         display: grid;
         grid-template-columns: 1fr 1fr;
@@ -561,25 +558,7 @@
         min-width: 0;
     }
     .btn {
-        background: var(--bg-hover);
-        border: var(--border-width-sm) solid var(--border-strong);
-        color: var(--text);
-        border-radius: var(--radius-xl);
-        padding: var(--space-1-5) var(--space-3-5);
-        cursor: pointer;
-        font-size: var(--font-size-md);
         white-space: nowrap;
-    }
-    .btn:hover {
-        border-color: var(--accent-dim);
-    }
-    .btn.danger {
-        border-color: var(--fail);
-        color: var(--fail);
-    }
-    .btn:disabled {
-        opacity: 0.5;
-        cursor: default;
     }
     .hint {
         color: var(--text-faint);
