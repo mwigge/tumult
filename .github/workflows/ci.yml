@@ -53,6 +53,9 @@ jobs:
           npm run build:report
           git diff --exit-code -- ../tumult-cli/src/commands/report/html/report-charts.js
       - run: npx playwright install --with-deps chromium
+      # The e2e run holds the style snapshot (tests/style-snapshot.spec.ts):
+      # a change of a computed style on any page fails here until its
+      # baseline in tests/style-snapshots/ is written again.
       - run: npm run test:e2e
 
   fmt:
