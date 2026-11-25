@@ -81,6 +81,16 @@ of the theme: `followTheme` in `src/lib/echarts.ts` is the one.
 of `src/`, by kind. A unit test pins how many there are, so a new raw
 value fails it.
 
+## Theme
+
+The theme button keeps the choice (`dark`, `light` or `auto`) in
+`localStorage['tumult.theme']` and puts it on `<html data-theme>`. The app
+has no server render, so `app.html` loads `static/early-theme.js` in its
+head: it puts the saved theme there before the first paint, and the layout
+starts from it. A user who chose light never sees the dark default first.
+It is a file and not inline code, so that a strict content security policy
+can allow it. `tests/first-paint.spec.ts` checks the first paint.
+
 ## Stack
 
 | Choice                                           | Why                                                                                                                               |
