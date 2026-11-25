@@ -51,9 +51,12 @@ design tokens in `tokens/`, in the DTCG 2025.10 format:
 
 - `primitive.tokens.json`: the raw colours and fonts.
 - `dark.tokens.json` and `light.tokens.json`: the colour roles of each
-  theme, such as `bg` and `text-dim`. Each names a raw colour.
+  theme, such as `bg` and `text-dim`. Each names a raw colour. They also
+  hold the series colours of charts, each 3:1 or more on the panel of its
+  theme.
 - `semantic.tokens.json`: the roles that are the same in each theme, such
-  as `mono` and the colours of chart series.
+  as `mono`, and the chart roles: the chart font and sizes, ink on a fill,
+  the band and status colours and the Star Map colours.
 - `page.tokens.json`: the roles only pages use, each with its own value:
   the body font, font sizes (`font-size-sm`), weight, line height, letter
   spacing, spacing, radii, border widths and layers (`z-overlay`).
@@ -63,9 +66,16 @@ design tokens in `tokens/`, in the DTCG 2025.10 format:
 
 `npm run build:tokens` writes `src/lib/tokens.css`, the custom properties
 the pages use (`--bg`, `--space-2`), and `src/lib/tokens.gen.ts`, the
-colours for the charts. Both are committed. A unit test and CI fail when
-they are not what the token files give, so change a token file and run
-the command, never the outputs.
+colours, font and sizes for the charts: ECharts draws on a canvas and
+cannot read a custom property. Both are committed. A unit test and CI fail
+when they are not what the token files give, so change a token file and
+run the command, never the outputs.
+
+Chart code takes these values from `src/lib/chart-theme.ts`. The theme
+it registers sets the axis, grid, legend and tooltip colours and the
+font, so an option leaves them out. `chart-code.test.ts` fails on a hex
+colour or a font size written in script code, and on a second observer
+of the theme: `followTheme` in `src/lib/echarts.ts` is the one.
 
 `node scripts/style-literals.mjs` lists the raw values left in the styles
 of `src/`, by kind. A unit test pins how many there are, so a new raw
