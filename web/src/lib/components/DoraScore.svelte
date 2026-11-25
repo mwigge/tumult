@@ -573,24 +573,24 @@
     .head .who {
         display: flex;
         align-items: center;
-        gap: var(--space-2-5);
+        gap: var(--space-3);
         flex-wrap: wrap;
     }
     .head .lbl {
         color: var(--text-dim);
-        font-size: var(--font-size-2xs);
+        font-size: var(--font-size-3xs);
         text-transform: uppercase;
         letter-spacing: var(--letter-spacing-md);
-        margin-right: var(--space-1-5);
+        margin-right: var(--space-2);
     }
     .head select {
         background: var(--bg-raised);
         color: var(--text);
         border: var(--border-width-sm) solid var(--border-input);
         border-radius: var(--radius-md);
-        padding: 3px var(--space-1-5);
+        padding: var(--space-1) var(--space-2);
         font: inherit;
-        font-size: var(--font-size-sm);
+        font-size: var(--font-size-xs);
     }
     .head .name {
         font-weight: var(--font-weight-strong);
@@ -598,7 +598,7 @@
     .headline {
         font-size: var(--font-size-2xl);
         font-weight: var(--font-weight-strong);
-        margin-top: var(--space-2-5);
+        margin-top: var(--space-3);
     }
     .headline.capped {
         color: var(--warn);
@@ -607,11 +607,9 @@
         margin-top: var(--space-1);
         color: var(--text);
     }
-    .note,
-    .foot,
-    .dim {
+    .foot {
         color: var(--text-faint);
-        font-size: var(--font-size-2xs);
+        font-size: var(--font-size-xs);
     }
     .note,
     .foot {
@@ -648,8 +646,8 @@
         text-decoration: underline;
     }
     .alt {
-        margin: var(--space-1) 0 var(--space-2-5);
-        font-size: var(--font-size-sm);
+        margin: var(--space-1) 0 var(--space-3);
+        font-size: var(--font-size-xs);
     }
     .alt summary {
         cursor: pointer;
@@ -658,7 +656,7 @@
     .unk {
         color: var(--text-faint);
         font-size: var(--font-size-3xs);
-        margin-left: var(--space-1-5);
+        margin-left: var(--space-2);
         white-space: nowrap;
     }
     .maturity {
@@ -670,7 +668,7 @@
     }
     .reasons {
         margin: var(--space-1) 0 0;
-        padding-left: var(--space-4-5);
+        padding-left: var(--space-5);
         color: var(--text-dim);
         font-size: var(--font-size-xs);
     }
@@ -679,7 +677,7 @@
         grid-template-columns: max-content 1fr;
         gap: var(--space-1) var(--space-4);
         margin: var(--space-3) 0 0;
-        font-size: var(--font-size-sm);
+        font-size: var(--font-size-xs);
     }
     .register dt {
         color: var(--text-dim);

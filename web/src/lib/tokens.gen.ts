@@ -15,7 +15,7 @@ export const tokens = {
                     "xs": 10,
                     "sm": 11,
                     "md": 12,
-                    "lg": 15
+                    "lg": 14
                 }
             },
             "ink-on-fill": "#0b0e11",
@@ -101,7 +101,7 @@ export const tokens = {
                     "xs": 10,
                     "sm": 11,
                     "md": 12,
-                    "lg": 15
+                    "lg": 14
                 }
             },
             "ink-on-fill": "#0b0e11",

@@ -189,7 +189,7 @@
     {/if}
 </PageHeader>
 
-<Panel title="1 · Definition" style="margin-bottom: var(--space-3-5)" scroll>
+<Panel title="1 · Definition" style="margin-bottom: var(--space-4)" scroll>
     {#if listError}
         <State kind="error">Failed to load the registry: {listError}</State>
     {:else if !entries}
@@ -238,7 +238,7 @@
 </Panel>
 
 {#if selectedId}
-    <Panel title="2 · Execution context and parameters" style="margin-bottom: var(--space-3-5)">
+    <Panel title="2 · Execution context and parameters" style="margin-bottom: var(--space-4)">
         <div class="params">
             <label
                 >Environment<input
@@ -285,7 +285,7 @@
         {/if}
     </Panel>
 
-    <Panel title="3 · Dry-run preview" style="margin-bottom: var(--space-3-5)">
+    <Panel title="3 · Dry-run preview" style="margin-bottom: var(--space-4)">
         <button
             class="primary"
             onclick={runDry}
@@ -424,7 +424,7 @@
     .params {
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-        gap: var(--space-2-5) var(--space-4-5);
+        gap: var(--space-3) var(--space-5);
     }
     .params input {
         width: 100%;
@@ -441,11 +441,11 @@
     .desc {
         color: var(--text-dim);
         font-size: var(--font-size-md);
-        margin: var(--space-1-5) 0;
+        margin: var(--space-2) 0;
     }
     .estimate {
         color: var(--text-dim);
-        font-size: var(--font-size-sm);
+        font-size: var(--font-size-xs);
         margin-bottom: var(--space-2);
     }
     .plan h3 {
@@ -458,10 +458,10 @@
     .plan ul,
     .plan ol {
         margin: var(--space-1) 0;
-        padding-left: var(--space-5-5);
+        padding-left: var(--space-6);
     }
     .plan li {
-        padding: var(--space-0-5) 0;
+        padding: var(--space-1) 0;
         font-size: var(--font-size-md);
     }
     .plan li .meta {

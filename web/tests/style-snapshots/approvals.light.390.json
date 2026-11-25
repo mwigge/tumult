@@ -8,7 +8,7 @@
     "html": {
       "color": "rgb(27, 35, 41)",
       "font-family": "-apple-system, \"Segoe UI\", Inter, Roboto, sans-serif",
-      "font-size": "14px",
+      "font-size": "13px",
       "font-weight": "400",
       "line-height": "1.5",
       "letter-spacing": "normal",
@@ -36,14 +36,13 @@
       "padding": "8px 16px"
     },
     "div.shell > header[banner].topbar > span.name": {
-      "font-size": "17px",
+      "font-size": "18px",
       "font-weight": "700",
-      "letter-spacing": "0.4px",
+      "letter-spacing": "0.5px",
       "display": "block"
     },
     "div.shell > header[banner].topbar > button[button].btn \"Menu\"": {
       "font-family": "Arial",
-      "font-size": "13px",
       "line-height": "normal",
       "display": "block",
       "background-color": "rgb(233, 238, 242)",
@@ -52,25 +51,25 @@
       "border-bottom": "1px solid rgb(197, 206, 214)",
       "border-left": "1px solid rgb(197, 206, 214)",
       "border-radius": "6px",
-      "padding": "6px 14px"
+      "padding": "8px 16px"
     },
     "div.shell > main[main].main": {
       "display": "block",
-      "padding": "22px 16px 60px"
+      "padding": "24px 16px 60px"
     },
     "div.shell > main[main].main > div.page-head": {
       "display": "flex",
-      "margin": "0px 0px 18px",
-      "gap": "14px"
+      "margin": "0px 0px 20px",
+      "gap": "16px"
     },
     "div.shell > main[main].main > div.page-head > h1[heading] \"Approvals\"": {
-      "font-size": "19px",
+      "font-size": "18px",
       "font-weight": "600",
       "display": "block"
     },
     "div.shell > main[main].main > div.page-head > span.sub": {
       "color": "rgb(91, 103, 114)",
-      "font-size": "12.5px",
+      "font-size": "12px",
       "display": "block"
     },
     "div.shell > main[main].main > div.panel": {
@@ -81,10 +80,9 @@
       "border-bottom": "1px solid rgb(227, 232, 237)",
       "border-left": "1px solid rgb(227, 232, 237)",
       "border-radius": "6px",
-      "padding": "14px 16px"
+      "padding": "16px"
     },
     "div.shell > main[main].main > div.panel > table[table].data": {
-      "font-size": "13px",
       "display": "table"
     },
     "div.shell > main[main].main > div.panel > table[table].data > thead[rowgroup]": {
@@ -95,103 +93,103 @@
     },
     "div.shell > main[main].main > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader]": {
       "color": "rgb(91, 103, 114)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(197, 206, 214)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"DEFINITION\"": {
       "color": "rgb(91, 103, 114)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(197, 206, 214)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"RUN\"": {
       "color": "rgb(91, 103, 114)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(197, 206, 214)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"TIER\"": {
       "color": "rgb(91, 103, 114)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(197, 206, 214)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"ENV\"": {
       "color": "rgb(91, 103, 114)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(197, 206, 214)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"REQUESTED\"": {
       "color": "rgb(91, 103, 114)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(197, 206, 214)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"EXPIRES\"": {
       "color": "rgb(91, 103, 114)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(197, 206, 214)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"QUORUM\"": {
       "color": "rgb(91, 103, 114)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(197, 206, 214)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"NOTE\"": {
       "color": "rgb(91, 103, 114)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(197, 206, 214)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] #2": {
       "color": "rgb(91, 103, 114)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(197, 206, 214)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > tbody": {
       "display": "table-row-group"
@@ -202,11 +200,11 @@
     "div.shell > main[main].main > div.panel > table[table].data > tr[row].clickable > td[cell] \"▸\"": {
       "color": "rgb(97, 109, 121)",
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > tr[row].clickable > td[cell] \"pg-failover\"": {
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > tr[row].clickable > td[cell] \"pg-failover\" > button[button].row-button \"pg-failover\"": {
       "display": "inline-block"
@@ -216,7 +214,7 @@
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > tr[row].clickable > td[cell].mono \"run-9\" > a[link] \"run-9\"": {
       "color": "rgb(31, 111, 178)",
@@ -224,41 +222,41 @@
     },
     "div.shell > main[main].main > div.panel > table[table].data > tr[row].clickable > td[cell] \"T2\"": {
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > tr[row].clickable > td[cell] \"T2\" > span.badge.warn": {
       "color": "rgb(171, 77, 4)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.3px",
+      "letter-spacing": "0.5px",
       "display": "inline-block",
       "background-color": "color(srgb 0.953882 0.902274 0.862196)",
-      "border-radius": "10px",
-      "padding": "1px 9px"
+      "border-radius": "999px",
+      "padding": "2px 8px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > tr[row].clickable > td[cell] \"production\"": {
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > tr[row].clickable > td[cell] \"operator · 1h ago\"": {
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > tr[row].clickable > td[cell].mono \"24h 0m\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > tr[row].clickable > td[cell].mono \"1/2\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > tr[row].clickable > td[cell] \"Decision note\"": {
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > tr[row].clickable > td[cell] \"Decision note\" > input[textbox] \"Decision note\"": {
       "font-family": "Arial",
@@ -269,12 +267,12 @@
       "border-right": "1px solid rgb(141, 149, 157)",
       "border-bottom": "1px solid rgb(141, 149, 157)",
       "border-left": "1px solid rgb(141, 149, 157)",
-      "border-radius": "5px",
-      "padding": "6px 9px"
+      "border-radius": "6px",
+      "padding": "8px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > tr[row].clickable > td[cell].actions \"Approve Reject\"": {
       "display": "flex",
-      "padding": "7px 10px",
+      "padding": "8px 12px",
       "gap": "8px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > tr[row].clickable > td[cell].actions \"Approve Reject\" > button[button].btn \"Approve\"": {
@@ -287,7 +285,7 @@
       "border-bottom": "1px solid rgb(197, 206, 214)",
       "border-left": "1px solid rgb(197, 206, 214)",
       "border-radius": "6px",
-      "padding": "6px 14px"
+      "padding": "8px 16px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > tr[row].clickable > td[cell].actions \"Approve Reject\" > button[button].btn.danger \"Reject\"": {
       "color": "rgb(190, 55, 41)",
@@ -300,7 +298,7 @@
       "border-bottom": "1px solid rgb(190, 55, 41)",
       "border-left": "1px solid rgb(190, 55, 41)",
       "border-radius": "6px",
-      "padding": "6px 14px"
+      "padding": "8px 16px"
     },
     "div": {
       "display": "block"

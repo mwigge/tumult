@@ -105,7 +105,7 @@
     /* Not the size of the global .dim: the size around it. */
     .dim {
         color: var(--text-faint);
-        font-weight: 400;
+        font-weight: var(--font-weight-normal);
         font-size: inherit;
     }
     .line {

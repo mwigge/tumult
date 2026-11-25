@@ -73,7 +73,7 @@
         : 'coordinated experiment campaigns'}
 />
 
-<Panel style="margin-bottom: var(--space-3-5)" scroll>
+<Panel style="margin-bottom: var(--space-4)" scroll>
     {#if error}
         <State kind="error">Failed to load gamedays: {error}</State>
     {:else if !days}
@@ -132,7 +132,7 @@
                 </button>
             </div>
         </form>
-        {#if registerError}<State kind="error" style="margin-top: var(--space-2-5)">
+        {#if registerError}<State kind="error" style="margin-top: var(--space-3)">
                 {registerError}
             </State>{/if}
     </Panel>
@@ -147,18 +147,18 @@
     label {
         display: flex;
         flex-direction: column;
-        gap: 5px;
-        font-size: var(--font-size-sm);
+        gap: var(--space-1);
+        font-size: var(--font-size-xs);
         color: var(--text-dim);
     }
     textarea {
         background: var(--bg-raised);
         border: var(--border-width-sm) solid var(--border-input);
         color: var(--text);
-        border-radius: var(--radius-lg);
-        padding: var(--space-2) var(--space-2-5);
+        border-radius: var(--radius-xl);
+        padding: var(--space-2) var(--space-3);
         font-family: var(--mono, monospace);
-        font-size: var(--font-size-sm);
+        font-size: var(--font-size-xs);
         resize: vertical;
     }
     form div {

@@ -35,7 +35,7 @@
     {#if hasPoints(group, objective)}
         <EChart {option} height={180} {id} {label} />
     {:else}
-        <State kind="empty" style="padding: 20px"
+        <State kind="empty" style="padding: var(--space-5)"
             >No {NAME[objective]} measured in this period.</State
         >
     {/if}
@@ -44,7 +44,7 @@
 <style>
     h4 {
         margin: 0 0 var(--space-1);
-        font-size: var(--font-size-2xs);
+        font-size: var(--font-size-xs);
         font-weight: var(--font-weight-strong);
         letter-spacing: var(--letter-spacing-sm);
         color: var(--text-dim);

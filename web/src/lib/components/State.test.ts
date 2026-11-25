@@ -103,10 +103,10 @@ describe('a loading state', () => {
 
     it('keeps the style of the page after its height', () => {
         const html = render(State, {
-            props: { kind: 'loading', height: 120, style: 'margin-bottom: var(--space-3-5)' },
+            props: { kind: 'loading', height: 120, style: 'margin-bottom: var(--space-4)' },
         }).body;
 
-        expect(html).toContain('style="height: 120px; margin-bottom: var(--space-3-5)"');
+        expect(html).toContain('style="height: 120px; margin-bottom: var(--space-4)"');
     });
 
     it('is a busy line of text when it has no height', () => {

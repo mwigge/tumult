@@ -127,15 +127,15 @@
         align-items: center;
         justify-content: flex-end;
         gap: var(--space-3);
-        margin-top: var(--space-2-5);
+        margin-top: var(--space-3);
         color: var(--text-dim);
-        font-size: var(--font-size-sm);
+        font-size: var(--font-size-xs);
     }
     .pager button {
         background: transparent;
         border: var(--border-width-sm) solid var(--border-strong);
         color: var(--text-dim);
-        border-radius: var(--radius-lg);
+        border-radius: var(--radius-xl);
         padding: var(--space-1) var(--space-3);
         font: inherit;
         cursor: pointer;

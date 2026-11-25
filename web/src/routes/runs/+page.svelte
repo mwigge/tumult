@@ -206,7 +206,7 @@
         font-weight: var(--font-weight-strong);
     }
     .halt-note {
-        margin-bottom: var(--space-3-5);
+        margin-bottom: var(--space-4);
         font-size: var(--font-size-md);
         color: var(--text-dim);
     }

@@ -116,7 +116,7 @@
         </State>
     </Panel>
 {:else}
-    <Panel style="margin-bottom: var(--space-3-5)" scroll>
+    <Panel style="margin-bottom: var(--space-4)" scroll>
         {#if error}
             <State kind="error">Failed to load webhooks: {error}</State>
         {:else if !hooks}
@@ -219,7 +219,7 @@
             Payloads are signed X-Tumult-Signature (HMAC-SHA256). Deliveries are fire-and-log: a
             down receiver misses events rather than blocking runs.
         </div>
-        {#if createError}<State kind="error" style="margin-top: var(--space-2-5)">
+        {#if createError}<State kind="error" style="margin-top: var(--space-3)">
                 {createError}
             </State>{/if}
         {#if oneTime}
@@ -246,31 +246,31 @@
     .create {
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-        gap: var(--space-3) var(--space-4-5);
+        gap: var(--space-3) var(--space-5);
         align-items: end;
     }
     .create label {
         display: flex;
         flex-direction: column;
-        gap: 5px;
-        font-size: var(--font-size-sm);
+        gap: var(--space-1);
+        font-size: var(--font-size-xs);
         color: var(--text-dim);
     }
     .hint {
         color: var(--text-faint);
         font-size: var(--font-size-xs);
-        margin-top: var(--space-2-5);
+        margin-top: var(--space-3);
     }
     .onetime {
-        margin-top: var(--space-3-5);
+        margin-top: var(--space-4);
         border: var(--border-width-sm) solid var(--warn);
         border-radius: var(--radius-xl);
-        padding: var(--space-2-5) var(--space-3);
+        padding: var(--space-3);
         font-size: var(--font-size-md);
     }
     .pw {
         font-size: var(--font-size-xl);
         user-select: all;
-        margin-top: var(--space-1-5);
+        margin-top: var(--space-2);
     }
 </style>

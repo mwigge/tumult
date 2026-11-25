@@ -8,7 +8,7 @@
     "html": {
       "color": "rgb(27, 35, 41)",
       "font-family": "-apple-system, \"Segoe UI\", Inter, Roboto, sans-serif",
-      "font-size": "14px",
+      "font-size": "13px",
       "font-weight": "400",
       "line-height": "1.5",
       "letter-spacing": "normal",
@@ -36,14 +36,13 @@
       "padding": "8px 16px"
     },
     "div.shell > header[banner].topbar > span.name": {
-      "font-size": "17px",
+      "font-size": "18px",
       "font-weight": "700",
-      "letter-spacing": "0.4px",
+      "letter-spacing": "0.5px",
       "display": "block"
     },
     "div.shell > header[banner].topbar > button[button].btn \"Menu\"": {
       "font-family": "Arial",
-      "font-size": "13px",
       "line-height": "normal",
       "display": "block",
       "background-color": "rgb(233, 238, 242)",
@@ -52,25 +51,25 @@
       "border-bottom": "1px solid rgb(197, 206, 214)",
       "border-left": "1px solid rgb(197, 206, 214)",
       "border-radius": "6px",
-      "padding": "6px 14px"
+      "padding": "8px 16px"
     },
     "div.shell > main[main].main": {
       "display": "block",
-      "padding": "22px 16px 60px"
+      "padding": "24px 16px 60px"
     },
     "div.shell > main[main].main > div.page-head": {
       "display": "flex",
-      "margin": "0px 0px 18px",
-      "gap": "14px"
+      "margin": "0px 0px 20px",
+      "gap": "16px"
     },
     "div.shell > main[main].main > div.page-head > h1[heading] \"Users\"": {
-      "font-size": "19px",
+      "font-size": "18px",
       "font-weight": "600",
       "display": "block"
     },
     "div.shell > main[main].main > div.page-head > span.sub": {
       "color": "rgb(91, 103, 114)",
-      "font-size": "12.5px",
+      "font-size": "12px",
       "display": "block"
     },
     "div.shell > main[main].main > div.panel": {
@@ -81,11 +80,10 @@
       "border-bottom": "1px solid rgb(227, 232, 237)",
       "border-left": "1px solid rgb(227, 232, 237)",
       "border-radius": "6px",
-      "padding": "14px 16px",
-      "margin": "0px 0px 14px"
+      "padding": "16px",
+      "margin": "0px 0px 16px"
     },
     "div.shell > main[main].main > div.panel > table[table].data": {
-      "font-size": "13px",
       "display": "table"
     },
     "div.shell > main[main].main > div.panel > table[table].data > thead[rowgroup]": {
@@ -96,63 +94,63 @@
     },
     "div.shell > main[main].main > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader]": {
       "color": "rgb(91, 103, 114)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(197, 206, 214)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"USERNAME\"": {
       "color": "rgb(91, 103, 114)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(197, 206, 214)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"ROLE\"": {
       "color": "rgb(91, 103, 114)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(197, 206, 214)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"SCOPES\"": {
       "color": "rgb(91, 103, 114)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(197, 206, 214)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"STATUS\"": {
       "color": "rgb(91, 103, 114)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(197, 206, 214)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"CREATED\"": {
       "color": "rgb(91, 103, 114)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(197, 206, 214)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > tbody": {
       "display": "table-row-group"
@@ -164,12 +162,12 @@
       "color": "rgb(97, 109, 121)",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(227, 232, 237)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > tr[row].clickable > td[cell] \"admin\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(227, 232, 237)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > tr[row].clickable > td[cell] \"admin\" > button[button].row-button \"admin\"": {
       "display": "inline-block"
@@ -177,42 +175,42 @@
     "div.shell > main[main].main > div.panel > table[table].data > tr[row].clickable > td[cell] \"admin\" #2": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(227, 232, 237)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > tr[row].clickable > td[cell] \"admin\" #2 > span.badge.neutral": {
       "color": "rgb(91, 103, 114)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.3px",
+      "letter-spacing": "0.5px",
       "display": "inline-block",
       "background-color": "rgb(233, 238, 242)",
-      "border-radius": "10px",
-      "padding": "1px 9px"
+      "border-radius": "999px",
+      "padding": "2px 8px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > tr[row].clickable > td[cell] \"all environments\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(227, 232, 237)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > tr[row].clickable > td[cell] \"active\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(227, 232, 237)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > tr[row].clickable > td[cell] \"active\" > span.badge.ok": {
       "color": "rgb(9, 120, 82)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.3px",
+      "letter-spacing": "0.5px",
       "display": "inline-block",
       "background-color": "color(srgb 0.864941 0.925882 0.90502)",
-      "border-radius": "10px",
-      "padding": "1px 9px"
+      "border-radius": "999px",
+      "padding": "2px 8px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > tr[row].clickable > td[cell] \"30d ago\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(227, 232, 237)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > tr[row].clickable #2": {
       "display": "table-row"
@@ -220,50 +218,50 @@
     "div.shell > main[main].main > div.panel > table[table].data > tr[row].clickable #2 > td[cell] \"▸\"": {
       "color": "rgb(97, 109, 121)",
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > tr[row].clickable #2 > td[cell] \"operator\"": {
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > tr[row].clickable #2 > td[cell] \"operator\" > button[button].row-button \"operator\"": {
       "display": "inline-block"
     },
     "div.shell > main[main].main > div.panel > table[table].data > tr[row].clickable #2 > td[cell] \"operator\" #2": {
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > tr[row].clickable #2 > td[cell] \"operator\" #2 > span.badge.neutral": {
       "color": "rgb(91, 103, 114)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.3px",
+      "letter-spacing": "0.5px",
       "display": "inline-block",
       "background-color": "rgb(233, 238, 242)",
-      "border-radius": "10px",
-      "padding": "1px 9px"
+      "border-radius": "999px",
+      "padding": "2px 8px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > tr[row].clickable #2 > td[cell] \"staging\"": {
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > tr[row].clickable #2 > td[cell] \"must change password\"": {
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > tr[row].clickable #2 > td[cell] \"must change password\" > span.badge.warn": {
       "color": "rgb(171, 77, 4)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.3px",
+      "letter-spacing": "0.5px",
       "display": "inline-block",
       "background-color": "color(srgb 0.953882 0.902274 0.862196)",
-      "border-radius": "10px",
-      "padding": "1px 9px"
+      "border-radius": "999px",
+      "padding": "2px 8px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > tr[row].clickable #2 > td[cell] \"1d ago\"": {
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel #2": {
       "display": "block",
@@ -273,27 +271,27 @@
       "border-bottom": "1px solid rgb(227, 232, 237)",
       "border-left": "1px solid rgb(227, 232, 237)",
       "border-radius": "6px",
-      "padding": "14px 16px"
+      "padding": "16px"
     },
     "div.shell > main[main].main > div.panel #2 > h2[heading] \"CREATE USER\"": {
       "color": "rgb(91, 103, 114)",
       "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.7px",
+      "letter-spacing": "0.6px",
       "text-transform": "uppercase",
       "display": "block",
-      "margin": "0px 0px 10px"
+      "margin": "0px 0px 12px"
     },
     "div.shell > main[main].main > div.panel #2 > form[form].create": {
       "display": "grid",
       "grid-template-columns": "repeat(auto-fill, minmax(220px, 1fr))",
-      "gap": "12px 18px"
+      "gap": "12px 20px"
     },
     "div.shell > main[main].main > div.panel #2 > form[form].create > label[LabelText]": {
       "color": "rgb(91, 103, 114)",
-      "font-size": "12.5px",
+      "font-size": "12px",
       "display": "flex",
-      "gap": "5px"
+      "gap": "4px"
     },
     "div.shell > main[main].main > div.panel #2 > form[form].create > label[LabelText] > input[textbox] \"Username\"": {
       "color": "rgb(27, 35, 41)",
@@ -306,14 +304,14 @@
       "border-right": "1px solid rgb(141, 149, 157)",
       "border-bottom": "1px solid rgb(141, 149, 157)",
       "border-left": "1px solid rgb(141, 149, 157)",
-      "border-radius": "5px",
-      "padding": "6px 9px"
+      "border-radius": "6px",
+      "padding": "8px"
     },
     "div.shell > main[main].main > div.panel #2 > form[form].create > label[LabelText] #2": {
       "color": "rgb(91, 103, 114)",
-      "font-size": "12.5px",
+      "font-size": "12px",
       "display": "flex",
-      "gap": "5px"
+      "gap": "4px"
     },
     "div.shell > main[main].main > div.panel #2 > form[form].create > label[LabelText] #2 > select[combobox] \"Role\"": {
       "color": "rgb(27, 35, 41)",
@@ -326,14 +324,14 @@
       "border-right": "1px solid rgb(141, 149, 157)",
       "border-bottom": "1px solid rgb(141, 149, 157)",
       "border-left": "1px solid rgb(141, 149, 157)",
-      "border-radius": "5px",
-      "padding": "6px 9px"
+      "border-radius": "6px",
+      "padding": "8px"
     },
     "div.shell > main[main].main > div.panel #2 > form[form].create > label[LabelText] #3": {
       "color": "rgb(91, 103, 114)",
-      "font-size": "12.5px",
+      "font-size": "12px",
       "display": "flex",
-      "gap": "5px"
+      "gap": "4px"
     },
     "div.shell > main[main].main > div.panel #2 > form[form].create > label[LabelText] #3 > input[textbox] \"Password (optional) 12+ characters if se…\"": {
       "color": "rgb(0, 0, 0)",
@@ -350,15 +348,14 @@
     },
     "div.shell > main[main].main > div.panel #2 > form[form].create > label[LabelText] #3 > span.hint": {
       "color": "rgb(97, 109, 121)",
-      "font-size": "12px",
       "display": "block",
       "margin": "4px 0px 0px"
     },
     "div.shell > main[main].main > div.panel #2 > form[form].create > label[LabelText] #4": {
       "color": "rgb(91, 103, 114)",
-      "font-size": "12.5px",
+      "font-size": "12px",
       "display": "flex",
-      "gap": "5px"
+      "gap": "4px"
     },
     "div.shell > main[main].main > div.panel #2 > form[form].create > label[LabelText] #4 > input[textbox] \"Environment scopes (optional)\"": {
       "color": "rgb(27, 35, 41)",
@@ -371,8 +368,8 @@
       "border-right": "1px solid rgb(141, 149, 157)",
       "border-bottom": "1px solid rgb(141, 149, 157)",
       "border-left": "1px solid rgb(141, 149, 157)",
-      "border-radius": "5px",
-      "padding": "6px 9px"
+      "border-radius": "6px",
+      "padding": "8px"
     },
     "div.shell > main[main].main > div.panel #2 > form[form].create > div": {
       "display": "block"
@@ -380,7 +377,6 @@
     "div.shell > main[main].main > div.panel #2 > form[form].create > button[button].primary \"Create user\"": {
       "color": "rgb(255, 255, 255)",
       "font-family": "Arial",
-      "font-size": "13px",
       "line-height": "normal",
       "display": "inline-block",
       "opacity": "0.5",
@@ -389,8 +385,8 @@
       "border-right": "1px solid rgb(31, 111, 178)",
       "border-bottom": "1px solid rgb(31, 111, 178)",
       "border-left": "1px solid rgb(31, 111, 178)",
-      "border-radius": "5px",
-      "padding": "7px 16px"
+      "border-radius": "6px",
+      "padding": "8px 16px"
     },
     "div.shell > main[main].main > div.panel #3": {
       "display": "block",
@@ -400,21 +396,20 @@
       "border-bottom": "1px solid rgb(227, 232, 237)",
       "border-left": "1px solid rgb(227, 232, 237)",
       "border-radius": "6px",
-      "padding": "14px 16px"
+      "padding": "16px"
     },
     "div.shell > main[main].main > div.panel #3 > h2[heading] \"API TOKENS\"": {
       "color": "rgb(91, 103, 114)",
       "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.7px",
+      "letter-spacing": "0.6px",
       "text-transform": "uppercase",
       "display": "block",
-      "margin": "0px 0px 10px"
+      "margin": "0px 0px 12px"
     },
     "div.shell > main[main].main > div.panel #3 > table[table].data": {
-      "font-size": "13px",
       "display": "table",
-      "margin": "0px 0px 14px"
+      "margin": "0px 0px 16px"
     },
     "div.shell > main[main].main > div.panel #3 > table[table].data > thead[rowgroup]": {
       "display": "table-header-group"
@@ -424,73 +419,73 @@
     },
     "div.shell > main[main].main > div.panel #3 > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"NAME\"": {
       "color": "rgb(91, 103, 114)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(197, 206, 214)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel #3 > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"OWNER\"": {
       "color": "rgb(91, 103, 114)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(197, 206, 214)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel #3 > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"CREATED\"": {
       "color": "rgb(91, 103, 114)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(197, 206, 214)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel #3 > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"LAST USED\"": {
       "color": "rgb(91, 103, 114)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(197, 206, 214)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel #3 > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"EXPIRES\"": {
       "color": "rgb(91, 103, 114)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(197, 206, 214)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel #3 > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"STATUS\"": {
       "color": "rgb(91, 103, 114)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(197, 206, 214)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel #3 > table[table].data > thead[rowgroup] > tr[row] > th[columnheader]": {
       "color": "rgb(91, 103, 114)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(197, 206, 214)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel #3 > table[table].data > tbody": {
       "display": "table-row-group"
@@ -500,41 +495,41 @@
     },
     "div.shell > main[main].main > div.panel #3 > table[table].data > tr[row] > td[cell] \"ci\"": {
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel #3 > table[table].data > tr[row] > td[cell] \"admin\"": {
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel #3 > table[table].data > tr[row] > td[cell] \"7d ago\"": {
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel #3 > table[table].data > tr[row] > td[cell] \"1h ago\"": {
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel #3 > table[table].data > tr[row] > td[cell] \"never\"": {
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel #3 > table[table].data > tr[row] > td[cell] \"active\"": {
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel #3 > table[table].data > tr[row] > td[cell] \"active\" > span.badge.ok": {
       "color": "rgb(9, 120, 82)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.3px",
+      "letter-spacing": "0.5px",
       "display": "inline-block",
       "background-color": "color(srgb 0.864941 0.925882 0.90502)",
-      "border-radius": "10px",
-      "padding": "1px 9px"
+      "border-radius": "999px",
+      "padding": "2px 8px"
     },
     "div.shell > main[main].main > div.panel #3 > table[table].data > tr[row] > td[cell] \"Revoke\"": {
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel #3 > table[table].data > tr[row] > td[cell] \"Revoke\" > button[button].btn.danger \"Revoke\"": {
       "color": "rgb(190, 55, 41)",
@@ -547,18 +542,18 @@
       "border-bottom": "1px solid rgb(190, 55, 41)",
       "border-left": "1px solid rgb(190, 55, 41)",
       "border-radius": "6px",
-      "padding": "6px 14px"
+      "padding": "8px 16px"
     },
     "div.shell > main[main].main > div.panel #3 > form[form].create": {
       "display": "grid",
       "grid-template-columns": "repeat(auto-fill, minmax(220px, 1fr))",
-      "gap": "12px 18px"
+      "gap": "12px 20px"
     },
     "div.shell > main[main].main > div.panel #3 > form[form].create > label[LabelText]": {
       "color": "rgb(91, 103, 114)",
-      "font-size": "12.5px",
+      "font-size": "12px",
       "display": "flex",
-      "gap": "5px"
+      "gap": "4px"
     },
     "div.shell > main[main].main > div.panel #3 > form[form].create > label[LabelText] > input[textbox] \"Name\"": {
       "color": "rgb(27, 35, 41)",
@@ -571,14 +566,14 @@
       "border-right": "1px solid rgb(141, 149, 157)",
       "border-bottom": "1px solid rgb(141, 149, 157)",
       "border-left": "1px solid rgb(141, 149, 157)",
-      "border-radius": "5px",
-      "padding": "6px 9px"
+      "border-radius": "6px",
+      "padding": "8px"
     },
     "div.shell > main[main].main > div.panel #3 > form[form].create > label[LabelText] #2": {
       "color": "rgb(91, 103, 114)",
-      "font-size": "12.5px",
+      "font-size": "12px",
       "display": "flex",
-      "gap": "5px"
+      "gap": "4px"
     },
     "div.shell > main[main].main > div.panel #3 > form[form].create > label[LabelText] #2 > select[combobox] \"Owner\"": {
       "color": "rgb(27, 35, 41)",
@@ -591,14 +586,14 @@
       "border-right": "1px solid rgb(141, 149, 157)",
       "border-bottom": "1px solid rgb(141, 149, 157)",
       "border-left": "1px solid rgb(141, 149, 157)",
-      "border-radius": "5px",
-      "padding": "6px 9px"
+      "border-radius": "6px",
+      "padding": "8px"
     },
     "div.shell > main[main].main > div.panel #3 > form[form].create > label[LabelText] #3": {
       "color": "rgb(91, 103, 114)",
-      "font-size": "12.5px",
+      "font-size": "12px",
       "display": "flex",
-      "gap": "5px"
+      "gap": "4px"
     },
     "div.shell > main[main].main > div.panel #3 > form[form].create > label[LabelText] #3 > input[spinbutton] \"Expires in days (optional)\"": {
       "color": "rgb(27, 35, 41)",
@@ -611,8 +606,8 @@
       "border-right": "1px solid rgb(141, 149, 157)",
       "border-bottom": "1px solid rgb(141, 149, 157)",
       "border-left": "1px solid rgb(141, 149, 157)",
-      "border-radius": "5px",
-      "padding": "6px 9px"
+      "border-radius": "6px",
+      "padding": "8px"
     },
     "div.shell > main[main].main > div.panel #3 > form[form].create > div": {
       "display": "block"
@@ -620,7 +615,6 @@
     "div.shell > main[main].main > div.panel #3 > form[form].create > button[button].primary \"Mint token\"": {
       "color": "rgb(255, 255, 255)",
       "font-family": "Arial",
-      "font-size": "13px",
       "line-height": "normal",
       "display": "inline-block",
       "opacity": "0.5",
@@ -629,8 +623,8 @@
       "border-right": "1px solid rgb(31, 111, 178)",
       "border-bottom": "1px solid rgb(31, 111, 178)",
       "border-left": "1px solid rgb(31, 111, 178)",
-      "border-radius": "5px",
-      "padding": "7px 16px"
+      "border-radius": "6px",
+      "padding": "8px 16px"
     },
     "div": {
       "display": "block"

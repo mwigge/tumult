@@ -14,7 +14,7 @@
 <style>
     .grid {
         grid-template-columns: repeat(4, 1fr);
-        margin-bottom: var(--space-3-5);
+        margin-bottom: var(--space-4);
     }
     @media (max-width: 800px) {
         .grid {

@@ -179,11 +179,11 @@
     }
     .sections {
         display: grid;
-        gap: var(--space-3-5);
+        gap: var(--space-4);
     }
     .summary {
         color: var(--text-dim);
-        font-size: var(--font-size-sm);
-        margin: -4px 0 var(--space-2-5);
+        font-size: var(--font-size-xs);
+        margin: -4px 0 var(--space-3);
     }
 </style>

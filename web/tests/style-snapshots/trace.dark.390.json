@@ -8,7 +8,7 @@
     "html": {
       "color": "rgb(216, 222, 228)",
       "font-family": "-apple-system, \"Segoe UI\", Inter, Roboto, sans-serif",
-      "font-size": "14px",
+      "font-size": "13px",
       "font-weight": "400",
       "line-height": "1.5",
       "letter-spacing": "normal",
@@ -36,14 +36,13 @@
       "padding": "8px 16px"
     },
     "div.shell > header[banner].topbar > span.name": {
-      "font-size": "17px",
+      "font-size": "18px",
       "font-weight": "700",
-      "letter-spacing": "0.4px",
+      "letter-spacing": "0.5px",
       "display": "block"
     },
     "div.shell > header[banner].topbar > button[button].btn \"Menu\"": {
       "font-family": "Arial",
-      "font-size": "13px",
       "line-height": "normal",
       "display": "block",
       "background-color": "rgb(28, 36, 44)",
@@ -52,16 +51,16 @@
       "border-bottom": "1px solid rgb(51, 64, 76)",
       "border-left": "1px solid rgb(51, 64, 76)",
       "border-radius": "6px",
-      "padding": "6px 14px"
+      "padding": "8px 16px"
     },
     "div.shell > main[main].main": {
       "display": "block",
-      "padding": "22px 16px 60px"
+      "padding": "24px 16px 60px"
     },
     "div.shell > main[main].main > div.page-head": {
       "display": "flex",
-      "margin": "0px 0px 18px",
-      "gap": "14px"
+      "margin": "0px 0px 20px",
+      "gap": "16px"
     },
     "div.shell > main[main].main > div.page-head > a[link].back \"← traces\"": {
       "color": "rgb(139, 152, 165)",
@@ -69,15 +68,15 @@
     },
     "div.shell > main[main].main > div.page-head > h1[heading].mono \"t-1\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
-      "font-size": "19px",
+      "font-size": "18px",
       "font-weight": "600",
       "display": "block"
     },
     "div.shell > main[main].main > div.grid": {
       "display": "grid",
       "grid-template-columns": "repeat(2, 1fr)",
-      "margin": "0px 0px 14px",
-      "gap": "14px"
+      "margin": "0px 0px 16px",
+      "gap": "16px"
     },
     "div.shell > main[main].main > div.grid > div.panel.meta": {
       "display": "block",
@@ -87,7 +86,7 @@
       "border-bottom": "1px solid rgb(36, 45, 54)",
       "border-left": "1px solid rgb(36, 45, 54)",
       "border-radius": "6px",
-      "padding": "14px 16px"
+      "padding": "16px"
     },
     "div.shell > main[main].main > div.grid > div.panel.meta > span": {
       "color": "rgb(139, 152, 165)",
@@ -98,7 +97,7 @@
       "margin": "0px 0px 4px"
     },
     "div.shell > main[main].main > div.grid > div.panel.meta > b": {
-      "font-size": "13.5px",
+      "font-size": "14px",
       "font-weight": "600",
       "display": "inline"
     },
@@ -110,7 +109,7 @@
       "border-bottom": "1px solid rgb(36, 45, 54)",
       "border-left": "1px solid rgb(36, 45, 54)",
       "border-radius": "6px",
-      "padding": "14px 16px"
+      "padding": "16px"
     },
     "div.shell > main[main].main > div.grid > div.panel.meta #2 > span": {
       "color": "rgb(139, 152, 165)",
@@ -122,7 +121,7 @@
     },
     "div.shell > main[main].main > div.grid > div.panel.meta #2 > b.mono": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
-      "font-size": "13.5px",
+      "font-size": "14px",
       "font-weight": "600",
       "display": "inline"
     },
@@ -134,7 +133,7 @@
       "border-bottom": "1px solid rgb(36, 45, 54)",
       "border-left": "1px solid rgb(36, 45, 54)",
       "border-radius": "6px",
-      "padding": "14px 16px"
+      "padding": "16px"
     },
     "div.shell > main[main].main > div.grid > div.panel.meta #3 > span": {
       "color": "rgb(139, 152, 165)",
@@ -146,7 +145,7 @@
     },
     "div.shell > main[main].main > div.grid > div.panel.meta #3 > b.mono": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
-      "font-size": "13.5px",
+      "font-size": "14px",
       "font-weight": "600",
       "display": "inline"
     },
@@ -158,7 +157,7 @@
       "border-bottom": "1px solid rgb(36, 45, 54)",
       "border-left": "1px solid rgb(36, 45, 54)",
       "border-radius": "6px",
-      "padding": "14px 16px"
+      "padding": "16px"
     },
     "div.shell > main[main].main > div.grid > div.panel.meta #4 > span": {
       "color": "rgb(139, 152, 165)",
@@ -171,7 +170,7 @@
     "div.shell > main[main].main > div.grid > div.panel.meta #4 > b.mono": {
       "color": "rgb(251, 80, 78)",
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
-      "font-size": "13.5px",
+      "font-size": "14px",
       "font-weight": "600",
       "display": "inline"
     },
@@ -183,26 +182,26 @@
       "border-bottom": "1px solid rgb(36, 45, 54)",
       "border-left": "1px solid rgb(36, 45, 54)",
       "border-radius": "6px",
-      "padding": "14px 16px",
-      "margin": "0px 0px 14px"
+      "padding": "16px",
+      "margin": "0px 0px 16px"
     },
     "div.shell > main[main].main > div.panel > h2[heading] \"WATERFALL — 4 SPANS\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.7px",
+      "letter-spacing": "0.6px",
       "text-transform": "uppercase",
       "display": "block",
-      "margin": "0px 0px 10px"
+      "margin": "0px 0px 12px"
     },
     "div.shell > main[main].main > div.panel > div.wf": {
-      "font-size": "12.5px",
+      "font-size": "12px",
       "display": "block"
     },
     "div.shell > main[main].main > div.panel > div.wf > div.grid": {
       "display": "grid",
       "z-index": "1",
-      "gap": "14px"
+      "gap": "16px"
     },
     "div.shell > main[main].main > div.panel > div.wf > div.grid > i": {
       "display": "block",
@@ -239,12 +238,12 @@
       "background-color": "rgb(21, 27, 33)",
       "z-index": "2",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "3px 0px"
+      "padding": "4px 0px"
     },
     "div.shell > main[main].main > div.panel > div.wf > div.ruler > div.labels": {
       "color": "rgb(127, 140, 151)",
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
-      "font-size": "10.5px",
+      "font-size": "11px",
       "display": "block",
       "margin": "0px 76px 0px 250px"
     },
@@ -270,7 +269,7 @@
       "display": "grid",
       "grid-template-columns": "240px 1fr 66px",
       "border-bottom": "1px solid color(srgb 0.141176 0.176471 0.211765 / 0.55)",
-      "padding": "3px 0px",
+      "padding": "4px 0px",
       "gap": "10px"
     },
     "div.shell > main[main].main > div.panel > div.wf > button[button].row \"experiment 5.3s\" > span.name": {
@@ -292,14 +291,13 @@
     "div.shell > main[main].main > div.panel > div.wf > button[button].row \"experiment 5.3s\" > span.dur.mono": {
       "color": "rgb(139, 152, 165)",
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
-      "font-size": "11.5px",
       "display": "block"
     },
     "div.shell > main[main].main > div.panel > div.wf > button[button].row \"hypothesis.before 1ms\"": {
       "display": "grid",
       "grid-template-columns": "240px 1fr 66px",
       "border-bottom": "1px solid color(srgb 0.141176 0.176471 0.211765 / 0.55)",
-      "padding": "3px 0px",
+      "padding": "4px 0px",
       "gap": "10px"
     },
     "div.shell > main[main].main > div.panel > div.wf > button[button].row \"hypothesis.before 1ms\" > span.name": {
@@ -322,14 +320,13 @@
     "div.shell > main[main].main > div.panel > div.wf > button[button].row \"hypothesis.before 1ms\" > span.dur.mono": {
       "color": "rgb(139, 152, 165)",
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
-      "font-size": "11.5px",
       "display": "block"
     },
     "div.shell > main[main].main > div.panel > div.wf > button[button].row \"action error 3.0s\"": {
       "display": "grid",
       "grid-template-columns": "240px 1fr 66px",
       "border-bottom": "1px solid color(srgb 0.141176 0.176471 0.211765 / 0.55)",
-      "padding": "3px 0px",
+      "padding": "4px 0px",
       "gap": "10px"
     },
     "div.shell > main[main].main > div.panel > div.wf > button[button].row \"action error 3.0s\" > span.name": {
@@ -352,7 +349,6 @@
     "div.shell > main[main].main > div.panel > div.wf > button[button].row \"action error 3.0s\" > span.dur.mono": {
       "color": "rgb(139, 152, 165)",
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
-      "font-size": "11.5px",
       "display": "block"
     },
     "div.shell > main[main].main > div.panel > div.wf > button[button].row \"action error 3.0s\" > span.dur.mono > span.mark.fail": {
@@ -366,7 +362,7 @@
       "display": "grid",
       "grid-template-columns": "240px 1fr 66px",
       "border-bottom": "1px solid color(srgb 0.141176 0.176471 0.211765 / 0.55)",
-      "padding": "3px 0px",
+      "padding": "4px 0px",
       "gap": "10px"
     },
     "div.shell > main[main].main > div.panel > div.wf > button[button].row \"hypothesis.after 1ms\" > span.name": {
@@ -389,7 +385,6 @@
     "div.shell > main[main].main > div.panel > div.wf > button[button].row \"hypothesis.after 1ms\" > span.dur.mono": {
       "color": "rgb(139, 152, 165)",
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
-      "font-size": "11.5px",
       "display": "block"
     },
     "div.shell > main[main].main > div.panel #2": {
@@ -400,20 +395,19 @@
       "border-bottom": "1px solid rgb(36, 45, 54)",
       "border-left": "1px solid rgb(36, 45, 54)",
       "border-radius": "6px",
-      "padding": "14px 16px"
+      "padding": "16px"
     },
     "div.shell > main[main].main > div.panel #2 > h2[heading] \"LOGS (0)\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.7px",
+      "letter-spacing": "0.6px",
       "text-transform": "uppercase",
       "display": "block",
-      "margin": "0px 0px 10px"
+      "margin": "0px 0px 12px"
     },
     "div.shell > main[main].main > div.panel #2 > div.state": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "13px",
       "display": "block",
       "padding": "28px"
     },

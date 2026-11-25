@@ -72,7 +72,7 @@
     value={form.probeKind}
     onchange={(kind) => (form.probeKind = kind)}
 />
-<div class="grid cols-2" style="margin-top: var(--space-2-5)">
+<div class="grid cols-2" style="margin-top: var(--space-3)">
     {#if form.probeKind === 'exec'}
         <label>
             <span class="label-caps"
@@ -118,6 +118,6 @@
         text-transform: uppercase;
         letter-spacing: var(--letter-spacing-md);
         color: var(--text-dim);
-        margin: var(--space-3) 0 var(--space-1-5);
+        margin: var(--space-3) 0 var(--space-2);
     }
 </style>

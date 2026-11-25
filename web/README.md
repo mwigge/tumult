@@ -62,11 +62,23 @@ design tokens in `tokens/`, in the DTCG 2025.10 format:
   as `mono`, and the chart roles: the chart font and sizes, ink on a fill,
   the band and status colours and the Star Map colours.
 - `page.tokens.json`: the roles only pages use, each with its own value:
-  the body font, font sizes (`font-size-sm`), weight, line height, letter
-  spacing, spacing, radii, border widths, layers (`z-sticky`) and the
-  widths of drawers (`drawer-narrow`).
-  Spacing is on a 4 px scale: `space-2` is 8 px, and the half step
-  `space-1-5` is 6 px.
+  the body font, font sizes (`font-size-md`), weights, line heights,
+  letter spacing, spacing, radii, border widths, layers (`z-sticky`) and
+  the widths of drawers (`drawer-narrow`). The scales are small, and
+  `src/lib/scale.test.ts` holds them:
+    - Type: four body sizes and three display sizes. 11 px is for
+      uppercase labels and table heads, 12 px for small and meta text,
+      13 px for body text and 14 px for emphasis and values. 18, 24 and
+      32 px are for titles, scores and the one hero number of a page. A
+      chart takes the body sizes, and 9 and 10 px, which only a canvas draws.
+    - Line height: `line-height-body` (1.5) and `line-height-tight` (1).
+    - Spacing: a 4 px scale, from `space-1` (4 px) to `space-7` (28 px),
+      and `space-15` (60 px) for the room under a page. Its one half step,
+      `space-0-5` (2 px), is for the padding of badges and chips.
+    - Radius: `radius-xs` (2 px), `radius-md` (4 px), `radius-xl` (6 px), a
+      pill (`radius-pill`, 999 px) and a round (`radius-round`, 50%). The
+      format has no percent, so the round is a number, and the extension
+      `rs.tumult` gives it the unit `%`.
 - `docs.tokens.json`: the colours of the docs site and its landing page,
   under `docs`. Most name a light role; a few are their own, such as the
   copper of the logo and the darker code colours. The GameDay terminal
@@ -93,8 +105,12 @@ of the theme: `followTheme` in `src/lib/echarts.ts` is the one.
 
 `npm run lint:styles` fails on a raw colour, size or spacing in the styles
 of `src/` that `style-literals-allow.txt` does not hold; use a token instead.
-That list holds each raw value left today by file, kind and value, and the
-lint fails on a line that matches nothing, so the list only shrinks.
+That list holds the few raw values that a token cannot hold, by file, kind
+and value, each under a comment that says why. They are the size of mono
+text, which is a share of the text around it, layout tricks such as a
+negative margin, a ring of the Star Map key and the shade behind a
+drawer. The lint fails on a line that matches nothing, so the list only
+shrinks.
 
 ## Contrast
 

@@ -219,7 +219,7 @@
     sub="compliance-grade reports (PDF + print preview) and quick metric digests"
 />
 
-<Panel title="Compliance reports" style="margin-bottom: var(--space-3-5)" scroll>
+<Panel title="Compliance reports" style="margin-bottom: var(--space-4)" scroll>
     {#if me && !canGenerate}<p>Generating reports requires the operator role or above.</p>{/if}
     <div class="genbar">
         <select bind:value={template} aria-label="template">
@@ -421,30 +421,30 @@
 <style>
     .genbar {
         display: flex;
-        gap: var(--space-2-5);
+        gap: var(--space-3);
         align-items: center;
         flex-wrap: wrap;
     }
     .result {
-        margin-top: var(--space-3-5);
+        margin-top: var(--space-4);
     }
     .result-head {
         display: flex;
         justify-content: space-between;
         align-items: baseline;
         margin-bottom: var(--space-2);
-        font-size: var(--font-size-sm);
+        font-size: var(--font-size-xs);
         color: var(--text-dim);
     }
     .hash {
-        font-size: var(--font-size-2xs);
+        font-size: var(--font-size-xs);
         color: var(--text-dim);
     }
     iframe {
         width: 100%;
         height: 560px;
         border: var(--border-width-sm) solid var(--border-strong);
-        border-radius: var(--radius-lg);
+        border-radius: var(--radius-xl);
         background: var(--bg-panel);
     }
 </style>

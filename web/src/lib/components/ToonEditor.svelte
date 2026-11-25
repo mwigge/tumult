@@ -65,7 +65,7 @@
         width: 100%;
         min-height: 22rem;
         font-family: var(--mono);
-        font-size: var(--font-size-sm);
+        font-size: var(--font-size-xs);
         line-height: var(--line-height-body);
         white-space: pre;
     }
@@ -73,16 +73,16 @@
         display: flex;
         align-items: center;
         gap: var(--space-3);
-        margin: var(--space-2-5) 0;
+        margin: var(--space-3) 0;
     }
     .hint {
         color: var(--text-dim);
-        font-size: var(--font-size-sm);
+        font-size: var(--font-size-xs);
         margin-top: 0;
     }
     .ok {
         color: var(--ok);
         font-size: var(--font-size-md);
-        margin-bottom: var(--space-1-5);
+        margin-bottom: var(--space-2);
     }
 </style>

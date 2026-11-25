@@ -33,7 +33,7 @@ const BUTTON = [
     'border: var(--border-width-sm) solid var(--border-strong)',
     'color: var(--text)',
     'border-radius: var(--radius-xl)',
-    'padding: var(--space-1-5) var(--space-3-5)',
+    'padding: var(--space-2) var(--space-4)',
     'cursor: pointer',
     'font-size: var(--font-size-md)',
 ];
@@ -50,12 +50,12 @@ const LABEL = [
 const CHIP = [
     'background: var(--bg-raised)',
     'border: var(--border-width-sm) solid var(--border-strong)',
-    'border-radius: var(--radius-2xl)',
+    'border-radius: var(--radius-pill)',
     'color: var(--text)',
     'cursor: pointer',
-    'font-size: var(--font-size-2xs)',
+    'font-size: var(--font-size-xs)',
     'font-family: var(--mono, monospace)',
-    'padding: var(--space-0-5) var(--space-2-5)',
+    'padding: var(--space-0-5) var(--space-3)',
 ];
 const SR_ONLY = [
     'position: absolute',
@@ -69,8 +69,8 @@ const FIELD = [
     'background: var(--bg-raised)',
     'border: var(--border-width-sm) solid var(--border-input)',
     'color: var(--text)',
-    'border-radius: var(--radius-lg)',
-    'padding: 5px var(--space-2)',
+    'border-radius: var(--radius-xl)',
+    'padding: var(--space-1) var(--space-2)',
     'font-size: var(--font-size-md)',
     'font-family: inherit',
 ];
@@ -78,7 +78,7 @@ const ROW_HEADER = [
     'color: var(--text)',
     'font-size: var(--font-size-md)',
     'text-transform: none',
-    'padding: 7px var(--space-2-5)',
+    'padding: var(--space-2) var(--space-3)',
     'border-bottom: var(--border-width-sm) solid var(--border)',
 ];
 
@@ -105,7 +105,7 @@ const SHARED: Shared[] = [
     { selector: '.panel.meta span', body: LABEL, copies: ['.meta span'] },
     {
         selector: '.panel.meta b',
-        body: ['font-weight: var(--font-weight-strong)', 'font-size: var(--font-size-lg)'],
+        body: ['font-weight: var(--font-weight-strong)', 'font-size: var(--font-size-xl)'],
         copies: ['.meta b'],
     },
     { selector: '.chip', body: CHIP, copies: '*' },
@@ -125,7 +125,7 @@ const SHARED: Shared[] = [
         selector: '.hint',
         body: [
             'color: var(--text-dim)',
-            'font-size: var(--font-size-sm)',
+            'font-size: var(--font-size-xs)',
             'margin-top: var(--space-2)',
         ],
         copies: ['.hint'],
@@ -134,7 +134,7 @@ const SHARED: Shared[] = [
     { selector: '.actions', body: ['display: flex', 'gap: var(--space-2)'], copies: ['.actions'] },
     {
         selector: '.form',
-        body: ['display: flex', 'flex-direction: column', 'gap: var(--space-2-5)'],
+        body: ['display: flex', 'flex-direction: column', 'gap: var(--space-3)'],
         copies: ['.form'],
     },
     {
@@ -150,17 +150,17 @@ const SHARED: Shared[] = [
     },
     {
         selector: '.row2',
-        body: ['display: grid', 'grid-template-columns: 1fr 1fr', 'gap: var(--space-2-5)'],
+        body: ['display: grid', 'grid-template-columns: 1fr 1fr', 'gap: var(--space-3)'],
         copies: ['.row2'],
     },
     {
         selector: '.grid-rows',
         body: [
             'display: grid',
-            'gap: var(--space-1-5)',
+            'gap: var(--space-2)',
             'align-items: center',
-            'margin-bottom: var(--space-1-5)',
-            'font-size: var(--font-size-2xs)',
+            'margin-bottom: var(--space-2)',
+            'font-size: var(--font-size-xs)',
             'color: var(--text-dim)',
         ],
         copies: ['.grid-rows'],

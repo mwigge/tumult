@@ -37,15 +37,15 @@
     }
     .label {
         color: var(--text-dim);
-        font-size: var(--font-size-2xs);
+        font-size: var(--font-size-3xs);
         text-transform: uppercase;
         letter-spacing: var(--letter-spacing-md);
-        margin-bottom: var(--space-1-5);
+        margin-bottom: var(--space-2);
     }
     .row {
         display: flex;
         align-items: baseline;
-        gap: var(--space-2-5);
+        gap: var(--space-3);
         flex-wrap: wrap;
     }
     .value {
@@ -56,11 +56,11 @@
         color: var(--text-faint);
     }
     .unknown {
-        font-size: var(--font-size-2xs);
+        font-size: var(--font-size-xs);
         color: var(--text-faint);
         border: var(--border-width-sm) dashed var(--border-strong);
         border-radius: var(--radius-md);
-        padding: 1px var(--space-1-5);
+        padding: var(--space-0-5) var(--space-2);
         white-space: nowrap;
     }
     .unknown.some {
@@ -69,7 +69,7 @@
     }
     .hint {
         color: var(--text-faint);
-        font-size: var(--font-size-2xs);
+        font-size: var(--font-size-xs);
         margin-top: var(--space-1);
     }
 </style>

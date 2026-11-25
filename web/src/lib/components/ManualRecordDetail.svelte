@@ -92,10 +92,10 @@
         text-transform: uppercase;
         letter-spacing: var(--letter-spacing-sm);
         color: var(--text-dim);
-        margin: var(--space-2-5) 0 var(--space-1-5);
+        margin: var(--space-3) 0 var(--space-2);
     }
     .hash {
-        margin: var(--space-1-5) 0;
+        margin: var(--space-2) 0;
         font-family: var(--mono);
     }
 </style>

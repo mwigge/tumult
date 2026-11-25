@@ -136,7 +136,7 @@
     }
 </script>
 
-<Panel title="Impact" style="margin-bottom: var(--space-3-5)" data-testid="impact">
+<Panel title="Impact" style="margin-bottom: var(--space-4)" data-testid="impact">
     {#if failure}
         <State kind="error" data-testid="impact-error">
             The impact could not be loaded: {failure}
@@ -226,12 +226,12 @@
     .facts {
         display: flex;
         flex-wrap: wrap;
-        gap: var(--space-1-5) var(--space-4-5);
-        font-size: var(--font-size-sm);
+        gap: var(--space-2) var(--space-5);
+        font-size: var(--font-size-xs);
         color: var(--text-dim);
     }
     .summary {
-        margin-bottom: var(--space-2-5);
+        margin-bottom: var(--space-3);
     }
     .summary strong {
         color: var(--text);

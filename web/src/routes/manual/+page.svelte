@@ -191,13 +191,13 @@
     }
     .target {
         color: var(--text-dim);
-        font-size: var(--font-size-sm);
-        margin: 0 0 var(--space-2-5);
+        font-size: var(--font-size-xs);
+        margin: 0 0 var(--space-3);
     }
     .actor {
         display: flex;
         align-items: center;
-        gap: var(--space-1-5);
+        gap: var(--space-2);
         color: var(--text-dim);
         font-size: var(--font-size-xs);
     }

@@ -209,15 +209,15 @@
 
 <style>
     .theme {
-        margin: var(--space-2) var(--space-4-5) 0;
+        margin: var(--space-2) var(--space-5) 0;
         align-self: flex-start;
         background: none;
         border: var(--border-width-sm) solid var(--border);
         border-radius: var(--radius-md);
         color: var(--text-dim);
         font: inherit;
-        font-size: var(--font-size-2xs);
-        padding: var(--space-0-5) var(--space-2);
+        font-size: var(--font-size-xs);
+        padding: var(--space-1) var(--space-2);
         cursor: pointer;
     }
     .theme:hover {
@@ -226,7 +226,7 @@
     }
     .user-chip {
         margin-top: auto;
-        padding: var(--space-3) var(--space-4-5) 0;
+        padding: var(--space-3) var(--space-5) 0;
         border-top: var(--border-width-sm) solid var(--border);
         display: flex;
         align-items: center;
@@ -249,8 +249,8 @@
         background: transparent;
         border: var(--border-width-sm) solid var(--border-strong);
         color: var(--text-dim);
-        border-radius: var(--radius-lg);
-        padding: 3px var(--space-2-5);
+        border-radius: var(--radius-xl);
+        padding: var(--space-1) var(--space-3);
         font-size: var(--font-size-xs);
         cursor: pointer;
     }

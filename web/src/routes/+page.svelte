@@ -195,7 +195,7 @@
         {/each}
     </div>
 
-    <div class="grid cols-2" style="margin-top: var(--space-3-5)">
+    <div class="grid cols-2" style="margin-top: var(--space-4)">
         <Panel title="Runs per day">
             {#if data.experiments_per_day.length === 0}
                 <State kind="empty">No runs in this window.</State>
@@ -228,7 +228,7 @@
         </Panel>
     </div>
 
-    <Panel title="Target systems" style="margin-top: var(--space-3-5)" scroll>
+    <Panel title="Target systems" style="margin-top: var(--space-4)" scroll>
         {#if data.targets.length === 0}
             <State kind="empty">
                 No target-system metadata in this window — tumult runs don't tag target systems yet,
@@ -271,7 +271,7 @@
         grid-template-columns: repeat(5, 1fr);
     }
     .kpis.waiting {
-        margin-bottom: var(--space-3-5);
+        margin-bottom: var(--space-4);
     }
     @media (max-width: 1200px) {
         .kpis {

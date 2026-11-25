@@ -24,7 +24,7 @@ body {
     padding: 0;
     background: var(--bg);
     color: var(--text);
-    font: var(--font-size-xl) / var(--line-height-body) var(--font-body);
+    font: var(--font-size-md) / var(--line-height-body) var(--font-body);
 }
 
 a {
@@ -87,28 +87,28 @@ code,
     flex: 0 0 auto;
 }
 .brand {
-    padding: 0 var(--space-4-5) var(--space-3-5);
+    padding: 0 var(--space-5) var(--space-4);
     border-bottom: var(--border-width-sm) solid var(--border);
-    margin-bottom: var(--space-2-5);
+    margin-bottom: var(--space-3);
 }
 .brand .name,
 .topbar .name {
-    font-size: 17px;
-    font-weight: 700;
-    letter-spacing: 0.4px;
+    font-size: var(--font-size-2xl);
+    font-weight: var(--font-weight-bold);
+    letter-spacing: var(--letter-spacing-sm);
 }
 .brand .tag {
     color: var(--text-faint);
     font-size: var(--font-size-3xs);
-    margin-top: var(--space-0-5);
+    margin-top: var(--space-1);
 }
 .nav a {
     display: flex;
-    gap: 9px;
+    gap: var(--space-2);
     align-items: center;
-    padding: var(--space-2) var(--space-4-5);
+    padding: var(--space-2) var(--space-5);
     color: var(--text-dim);
-    font-size: var(--font-size-lg);
+    font-size: var(--font-size-md);
     border-left: var(--border-width-md) solid transparent;
 }
 .nav a:hover {
@@ -122,7 +122,7 @@ code,
     background: var(--bg-hover);
 }
 .main {
-    padding: var(--space-5-5) 26px 60px;
+    padding: var(--space-6) var(--space-7) var(--space-15);
     max-width: 1460px;
     min-width: 0;
 }
@@ -165,16 +165,16 @@ code,
 .page-head {
     display: flex;
     align-items: baseline;
-    gap: var(--space-3-5);
-    margin-bottom: var(--space-4-5);
+    gap: var(--space-4);
+    margin-bottom: var(--space-5);
     flex-wrap: wrap;
 }
 .page-head h1 {
-    font-size: 19px;
+    font-size: var(--font-size-2xl);
 }
 .page-head .sub {
     color: var(--text-dim);
-    font-size: var(--font-size-sm);
+    font-size: var(--font-size-xs);
 }
 /* The link back to the page above. */
 .page-head .back {
@@ -186,7 +186,7 @@ code,
     background: var(--bg-panel);
     border: var(--border-width-sm) solid var(--border);
     border-radius: var(--radius-xl);
-    padding: var(--space-3-5) var(--space-4);
+    padding: var(--space-4);
 }
 /* A panel whose table may be wider than it: the table scrolls sideways
    inside the panel, and the page does not. Panel.svelte sets it with
@@ -197,14 +197,14 @@ code,
 .panel h2 {
     font-size: var(--font-size-xs);
     text-transform: uppercase;
-    letter-spacing: 0.7px;
+    letter-spacing: var(--letter-spacing-md);
     color: var(--text-dim);
-    margin-bottom: var(--space-2-5);
+    margin-bottom: var(--space-3);
     font-weight: var(--font-weight-strong);
 }
 .grid {
     display: grid;
-    gap: var(--space-3-5);
+    gap: var(--space-4);
 }
 .grid.cols-2 {
     grid-template-columns: 1fr 1fr;
@@ -234,15 +234,15 @@ table.data th {
     text-align: left;
     color: var(--text-dim);
     font-weight: var(--font-weight-strong);
-    font-size: var(--font-size-2xs);
+    font-size: var(--font-size-3xs);
     text-transform: uppercase;
     letter-spacing: var(--letter-spacing-sm);
-    padding: var(--space-1-5) var(--space-2-5);
+    padding: var(--space-2) var(--space-3);
     border-bottom: var(--border-width-sm) solid var(--border-strong);
     white-space: nowrap;
 }
 table.data td {
-    padding: 7px var(--space-2-5);
+    padding: var(--space-2) var(--space-3);
     border-bottom: var(--border-width-sm) solid var(--border);
     vertical-align: middle;
 }
@@ -254,7 +254,7 @@ table.data th[scope='row'] {
     text-transform: none;
     letter-spacing: normal;
     white-space: normal;
-    padding: 7px var(--space-2-5);
+    padding: var(--space-2) var(--space-3);
     border-bottom: var(--border-width-sm) solid var(--border);
 }
 table.data tr:last-child td,
@@ -289,15 +289,15 @@ table.data tr.clickable:hover {
 .seg {
     display: inline-flex;
     border: var(--border-width-sm) solid var(--border-strong);
-    border-radius: var(--radius-lg);
+    border-radius: var(--radius-xl);
     overflow: hidden;
 }
 .seg button {
     background: transparent;
     border: none;
     color: var(--text-dim);
-    padding: 5px var(--space-3);
-    font-size: var(--font-size-sm);
+    padding: var(--space-1) var(--space-3);
+    font-size: var(--font-size-xs);
     cursor: pointer;
 }
 .seg button + button {
@@ -324,7 +324,7 @@ table.data tr.clickable:hover {
     background: var(--bg-raised);
     color: var(--text-dim);
     border: var(--border-width-sm) solid var(--border-strong);
-    padding: 3px var(--space-2-5);
+    padding: var(--space-1) var(--space-3);
     font: inherit;
     font-size: var(--font-size-xs);
     cursor: pointer;
@@ -352,8 +352,8 @@ input[type='number'] {
     background: var(--bg-raised);
     border: var(--border-width-sm) solid var(--border-input);
     color: var(--text);
-    border-radius: var(--radius-lg);
-    padding: var(--space-1-5) 9px;
+    border-radius: var(--radius-xl);
+    padding: var(--space-2);
     font-size: var(--font-size-md);
 }
 select:focus,
@@ -379,8 +379,8 @@ input[type='file'] {
     background: var(--bg-raised);
     border: var(--border-width-sm) solid var(--border-input);
     color: var(--text);
-    border-radius: var(--radius-lg);
-    padding: 5px var(--space-2);
+    border-radius: var(--radius-xl);
+    padding: var(--space-1) var(--space-2);
     font-size: var(--font-size-md);
     font-family: inherit;
 }
@@ -388,8 +388,8 @@ button.primary {
     background: var(--accent-dim);
     border: var(--border-width-sm) solid var(--accent);
     color: var(--on-accent);
-    border-radius: var(--radius-lg);
-    padding: 7px var(--space-4);
+    border-radius: var(--radius-xl);
+    padding: var(--space-2) var(--space-4);
     font-size: var(--font-size-md);
     cursor: pointer;
 }
@@ -399,7 +399,7 @@ button.primary {
     border: var(--border-width-sm) solid var(--border-strong);
     color: var(--text);
     border-radius: var(--radius-xl);
-    padding: var(--space-1-5) var(--space-3-5);
+    padding: var(--space-2) var(--space-4);
     cursor: pointer;
     font-size: var(--font-size-md);
 }
@@ -413,7 +413,7 @@ button.primary {
     border-color: var(--accent-dim);
     color: var(--on-accent);
     border-radius: var(--radius-xl);
-    padding: var(--space-1-5) var(--space-3-5);
+    padding: var(--space-2) var(--space-4);
 }
 .btn.danger {
     border-color: var(--fail);
@@ -436,11 +436,11 @@ button.primary:disabled,
     display: inline-block;
     /* A part that wants a gap before its badges sets --badge-gap. */
     margin-left: var(--badge-gap, 0);
-    padding: 1px 9px;
-    border-radius: var(--radius-2xl);
-    font-size: var(--font-size-2xs);
+    padding: var(--space-0-5) var(--space-2);
+    border-radius: var(--radius-pill);
+    font-size: var(--font-size-xs);
     font-weight: var(--font-weight-strong);
-    letter-spacing: 0.3px;
+    letter-spacing: var(--letter-spacing-sm);
 }
 .badge.ok {
     color: var(--ok);
@@ -460,20 +460,20 @@ button.primary:disabled,
 }
 /* The large badge of a headline, as the verdict of the Performance page. */
 .badge.big {
-    font-size: 15px;
-    padding: 3px var(--space-3-5);
-    border-radius: 14px;
+    font-size: var(--font-size-xl);
+    padding: var(--space-1) var(--space-4);
+    border-radius: var(--radius-pill);
     border: var(--border-width-sm) solid currentColor;
 }
 /* A small badge after the name of a row, as the origin of an experiment. */
 .badge.origin {
-    margin-left: var(--space-1-5);
-    font-size: 10px;
+    margin-left: var(--space-2);
+    font-size: var(--font-size-3xs);
 }
 
 /* --- states ----------------------------------------------------------------*/
 .state {
-    padding: 28px;
+    padding: var(--space-7);
     text-align: center;
     color: var(--text-dim);
     font-size: var(--font-size-md);
@@ -524,11 +524,11 @@ button.primary:disabled,
 }
 .panel.meta b {
     font-weight: var(--font-weight-strong);
-    font-size: var(--font-size-lg);
+    font-size: var(--font-size-xl);
 }
 .hint {
     color: var(--text-dim);
-    font-size: var(--font-size-sm);
+    font-size: var(--font-size-xs);
     margin-top: var(--space-2);
 }
 /* The time of a row in an audit trail. */
@@ -549,12 +549,12 @@ button.primary:disabled,
 .chip {
     background: var(--bg-raised);
     border: var(--border-width-sm) solid var(--border-strong);
-    border-radius: var(--radius-2xl);
+    border-radius: var(--radius-pill);
     color: var(--text);
     cursor: pointer;
-    font-size: var(--font-size-2xs);
+    font-size: var(--font-size-xs);
     font-family: var(--mono, monospace);
-    padding: var(--space-0-5) var(--space-2-5);
+    padding: var(--space-0-5) var(--space-3);
 }
 .chip .x {
     color: var(--text-dim);
@@ -581,10 +581,10 @@ button.primary:disabled,
     width: auto;
     height: auto;
     clip-path: none;
-    padding: var(--space-1-5) var(--space-3);
+    padding: var(--space-2) var(--space-3);
     background: var(--bg-raised);
     border: var(--border-width-sm) solid var(--border-strong);
-    border-radius: var(--radius-lg);
+    border-radius: var(--radius-xl);
 }
 /* The main content takes the focus from the skip link. It is not a
    control, so it draws no ring. */
@@ -597,7 +597,7 @@ button.primary:disabled,
 .form {
     display: flex;
     flex-direction: column;
-    gap: var(--space-2-5);
+    gap: var(--space-3);
 }
 .form label {
     display: flex;
@@ -609,7 +609,7 @@ button.primary:disabled,
 .row2 {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: var(--space-2-5);
+    gap: var(--space-3);
 }
 /* On a small screen each field of a row has the width of the form. */
 @media (max-width: 800px) {
@@ -620,10 +620,10 @@ button.primary:disabled,
 /* A list editor: one grid row of fields for each entry. */
 .grid-rows {
     display: grid;
-    gap: var(--space-1-5);
+    gap: var(--space-2);
     align-items: center;
-    margin-bottom: var(--space-1-5);
-    font-size: var(--font-size-2xs);
+    margin-bottom: var(--space-2);
+    font-size: var(--font-size-xs);
     color: var(--text-dim);
 }
 .grid-rows input,

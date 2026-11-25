@@ -684,14 +684,14 @@
 <style>
     .muted {
         color: var(--text-dim);
-        font-size: var(--font-size-sm);
+        font-size: var(--font-size-xs);
     }
     .controls {
         display: flex;
         flex-wrap: wrap;
         gap: var(--space-3) var(--space-4);
         align-items: flex-end;
-        margin-bottom: var(--space-3-5);
+        margin-bottom: var(--space-4);
     }
     .field {
         display: flex;
@@ -700,15 +700,15 @@
     }
     .field label {
         color: var(--text-dim);
-        font-size: var(--font-size-2xs);
+        font-size: var(--font-size-3xs);
         text-transform: uppercase;
         letter-spacing: var(--letter-spacing-sm);
     }
     .field.check {
         flex-direction: row;
         align-items: center;
-        gap: var(--space-1-5);
-        padding-bottom: var(--space-1-5);
+        gap: var(--space-2);
+        padding-bottom: var(--space-2);
     }
     .field.check label {
         text-transform: none;
@@ -717,28 +717,28 @@
         color: var(--text);
     }
     .below {
-        margin-top: var(--space-3-5);
+        margin-top: var(--space-4);
     }
     .headline {
         display: flex;
         align-items: baseline;
         gap: var(--space-3);
-        margin-bottom: var(--space-2-5);
+        margin-bottom: var(--space-3);
         flex-wrap: wrap;
     }
     .reasons {
-        margin: 0 0 var(--space-2-5);
-        padding-left: var(--space-4-5);
+        margin: 0 0 var(--space-3);
+        padding-left: var(--space-5);
     }
     .notes {
         list-style: none;
         margin: 0;
         padding: 0;
         color: var(--text-dim);
-        font-size: var(--font-size-sm);
+        font-size: var(--font-size-xs);
     }
     .notes li {
-        padding: 3px 0;
+        padding: var(--space-1) 0;
         border-top: var(--border-width-sm) solid var(--border);
     }
     .notes .caution {
@@ -749,7 +749,7 @@
         font-weight: var(--font-weight-strong);
     }
     .unattributed {
-        margin-top: var(--space-2-5);
+        margin-top: var(--space-3);
         padding-top: var(--space-2);
         border-top: var(--border-width-sm) solid var(--border);
         font-size: var(--font-size-md);
@@ -758,13 +758,13 @@
         margin: 0 0 var(--space-1);
     }
     .unattributed ul {
-        margin: 0 0 var(--space-1-5);
-        padding-left: var(--space-4-5);
+        margin: 0 0 var(--space-2);
+        padding-left: var(--space-5);
     }
     .store {
         display: flex;
         flex-wrap: wrap;
-        gap: var(--space-2-5);
+        gap: var(--space-3);
         align-items: center;
         margin-bottom: var(--space-3);
     }
@@ -774,19 +774,19 @@
     }
     .ok-line {
         color: var(--ok);
-        font-size: var(--font-size-sm);
+        font-size: var(--font-size-xs);
     }
     .err-line {
         color: var(--fail);
-        font-size: var(--font-size-sm);
+        font-size: var(--font-size-xs);
     }
     /* The four non-result states differ in frame, hue and wording. */
     .alert {
         display: flex;
         flex-wrap: wrap;
-        gap: var(--space-2-5);
+        gap: var(--space-3);
         align-items: center;
-        padding: var(--space-3-5) var(--space-4);
+        padding: var(--space-4);
         border: var(--border-width-sm) solid var(--fail);
         border-left-width: var(--border-width-lg);
         border-radius: var(--radius-xl);
@@ -799,7 +799,7 @@
     .empty,
     .none,
     .needs {
-        padding: var(--space-5-5);
+        padding: var(--space-6);
     }
     .empty {
         border-style: dashed;
@@ -814,7 +814,7 @@
     .empty p,
     .none p,
     .needs p {
-        margin: var(--space-1-5) 0 0;
+        margin: var(--space-2) 0 0;
         color: var(--text-dim);
         font-size: var(--font-size-md);
     }

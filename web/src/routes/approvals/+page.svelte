@@ -262,11 +262,11 @@
     }
     .err-text {
         color: var(--fail);
-        font-size: var(--font-size-sm);
+        font-size: var(--font-size-xs);
     }
     .hint-text {
         color: var(--ok);
-        font-size: var(--font-size-sm);
+        font-size: var(--font-size-xs);
     }
     .detail {
         display: grid;
@@ -279,7 +279,7 @@
         text-transform: uppercase;
         letter-spacing: var(--letter-spacing-sm);
         color: var(--text-dim);
-        margin: 0 0 var(--space-1-5);
+        margin: 0 0 var(--space-2);
     }
     .params {
         margin: 0;
@@ -290,7 +290,7 @@
     }
     .dim {
         color: var(--text-dim);
-        font-size: var(--font-size-sm);
+        font-size: var(--font-size-xs);
     }
     .hash {
         word-break: break-all;

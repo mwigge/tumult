@@ -18,9 +18,9 @@
 <style>
     .audit {
         margin: 0;
-        padding-left: var(--space-4-5);
+        padding-left: var(--space-5);
     }
     .audit li {
-        margin-bottom: 3px;
+        margin-bottom: var(--space-1);
     }
 </style>

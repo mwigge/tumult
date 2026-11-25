@@ -8,7 +8,7 @@
     "html": {
       "color": "rgb(216, 222, 228)",
       "font-family": "-apple-system, \"Segoe UI\", Inter, Roboto, sans-serif",
-      "font-size": "14px",
+      "font-size": "13px",
       "font-weight": "400",
       "line-height": "1.5",
       "letter-spacing": "normal",
@@ -36,14 +36,13 @@
       "padding": "8px 16px"
     },
     "div.shell > header[banner].topbar > span.name": {
-      "font-size": "17px",
+      "font-size": "18px",
       "font-weight": "700",
-      "letter-spacing": "0.4px",
+      "letter-spacing": "0.5px",
       "display": "block"
     },
     "div.shell > header[banner].topbar > button[button].btn \"Menu\"": {
       "font-family": "Arial",
-      "font-size": "13px",
       "line-height": "normal",
       "display": "block",
       "background-color": "rgb(28, 36, 44)",
@@ -52,40 +51,40 @@
       "border-bottom": "1px solid rgb(51, 64, 76)",
       "border-left": "1px solid rgb(51, 64, 76)",
       "border-radius": "6px",
-      "padding": "6px 14px"
+      "padding": "8px 16px"
     },
     "div.shell > main[main].main": {
       "display": "block",
-      "padding": "22px 16px 60px"
+      "padding": "24px 16px 60px"
     },
     "div.shell > main[main].main > div.page-head": {
       "display": "flex",
-      "margin": "0px 0px 18px",
-      "gap": "14px"
+      "margin": "0px 0px 20px",
+      "gap": "16px"
     },
     "div.shell > main[main].main > div.page-head > h1[heading] \"Performance\"": {
-      "font-size": "19px",
+      "font-size": "18px",
       "font-weight": "600",
       "display": "block"
     },
     "div.shell > main[main].main > div.page-head > span.sub": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "12.5px",
+      "font-size": "12px",
       "display": "block"
     },
     "div.shell > main[main].main > div.page-head > span.sub #2": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "12.5px",
+      "font-size": "12px",
       "display": "block"
     },
     "div.shell > main[main].main > div.page-head > span[status].sub": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "12.5px",
+      "font-size": "12px",
       "display": "block"
     },
     "div.shell > main[main].main > div.controls": {
       "display": "flex",
-      "margin": "0px 0px 14px",
+      "margin": "0px 0px 16px",
       "gap": "12px 16px"
     },
     "div.shell > main[main].main > div.controls > div.field": {
@@ -94,14 +93,13 @@
     },
     "div.shell > main[main].main > div.controls > div.field > label[LabelText]": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "block"
     },
     "div.shell > main[main].main > div.controls > div.field > select[combobox] \"TARGET\"": {
       "font-family": "Arial",
-      "font-size": "13px",
       "line-height": "normal",
       "display": "block",
       "background-color": "rgb(17, 22, 27)",
@@ -109,8 +107,8 @@
       "border-right": "1px solid rgb(97, 109, 121)",
       "border-bottom": "1px solid rgb(97, 109, 121)",
       "border-left": "1px solid rgb(97, 109, 121)",
-      "border-radius": "5px",
-      "padding": "6px 9px"
+      "border-radius": "6px",
+      "padding": "8px"
     },
     "div.shell > main[main].main > div.controls > div.field #2": {
       "display": "flex",
@@ -118,14 +116,13 @@
     },
     "div.shell > main[main].main > div.controls > div.field #2 > label[LabelText]": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "block"
     },
     "div.shell > main[main].main > div.controls > div.field #2 > select[combobox] \"ENVIRONMENT\"": {
       "font-family": "Arial",
-      "font-size": "13px",
       "line-height": "normal",
       "display": "block",
       "background-color": "rgb(17, 22, 27)",
@@ -133,8 +130,8 @@
       "border-right": "1px solid rgb(97, 109, 121)",
       "border-bottom": "1px solid rgb(97, 109, 121)",
       "border-left": "1px solid rgb(97, 109, 121)",
-      "border-radius": "5px",
-      "padding": "6px 9px"
+      "border-radius": "6px",
+      "padding": "8px"
     },
     "div.shell > main[main].main > div.controls > div.field #3": {
       "display": "flex",
@@ -142,14 +139,13 @@
     },
     "div.shell > main[main].main > div.controls > div.field #3 > label[LabelText]": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "block"
     },
     "div.shell > main[main].main > div.controls > div.field #3 > select[combobox] \"QUANTILE\"": {
       "font-family": "Arial",
-      "font-size": "13px",
       "line-height": "normal",
       "display": "block",
       "background-color": "rgb(17, 22, 27)",
@@ -157,8 +153,8 @@
       "border-right": "1px solid rgb(97, 109, 121)",
       "border-bottom": "1px solid rgb(97, 109, 121)",
       "border-left": "1px solid rgb(97, 109, 121)",
-      "border-radius": "5px",
-      "padding": "6px 9px"
+      "border-radius": "6px",
+      "padding": "8px"
     },
     "div.shell > main[main].main > div.controls > div.field #4": {
       "display": "flex",
@@ -166,14 +162,13 @@
     },
     "div.shell > main[main].main > div.controls > div.field #4 > label[LabelText]": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "block"
     },
     "div.shell > main[main].main > div.controls > div.field #4 > select[combobox] \"RANGE\"": {
       "font-family": "Arial",
-      "font-size": "13px",
       "line-height": "normal",
       "display": "block",
       "background-color": "rgb(17, 22, 27)",
@@ -181,8 +176,8 @@
       "border-right": "1px solid rgb(97, 109, 121)",
       "border-bottom": "1px solid rgb(97, 109, 121)",
       "border-left": "1px solid rgb(97, 109, 121)",
-      "border-radius": "5px",
-      "padding": "6px 9px"
+      "border-radius": "6px",
+      "padding": "8px"
     },
     "div.shell > main[main].main > div.controls > div.field #5": {
       "display": "flex",
@@ -190,14 +185,13 @@
     },
     "div.shell > main[main].main > div.controls > div.field #5 > label[LabelText]": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "block"
     },
     "div.shell > main[main].main > div.controls > div.field #5 > select[combobox] \"BASELINE VERSION\"": {
       "font-family": "Arial",
-      "font-size": "13px",
       "line-height": "normal",
       "display": "block",
       "background-color": "rgb(17, 22, 27)",
@@ -205,8 +199,8 @@
       "border-right": "1px solid rgb(97, 109, 121)",
       "border-bottom": "1px solid rgb(97, 109, 121)",
       "border-left": "1px solid rgb(97, 109, 121)",
-      "border-radius": "5px",
-      "padding": "6px 9px"
+      "border-radius": "6px",
+      "padding": "8px"
     },
     "div.shell > main[main].main > div.controls > div.field #6": {
       "display": "flex",
@@ -214,14 +208,13 @@
     },
     "div.shell > main[main].main > div.controls > div.field #6 > label[LabelText]": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "block"
     },
     "div.shell > main[main].main > div.controls > div.field #6 > select[combobox] \"CANDIDATE VERSION\"": {
       "font-family": "Arial",
-      "font-size": "13px",
       "line-height": "normal",
       "display": "block",
       "background-color": "rgb(17, 22, 27)",
@@ -229,13 +222,13 @@
       "border-right": "1px solid rgb(97, 109, 121)",
       "border-bottom": "1px solid rgb(97, 109, 121)",
       "border-left": "1px solid rgb(97, 109, 121)",
-      "border-radius": "5px",
-      "padding": "6px 9px"
+      "border-radius": "6px",
+      "padding": "8px"
     },
     "div.shell > main[main].main > div.controls > div.field.check": {
       "display": "flex",
-      "padding": "0px 0px 6px",
-      "gap": "6px"
+      "padding": "0px 0px 8px",
+      "gap": "8px"
     },
     "div.shell > main[main].main > div.controls > div.field.check > input[checkbox] \"Include partial runs\"": {
       "color": "rgb(255, 255, 255)",
@@ -246,13 +239,12 @@
       "margin": "3px 3px 3px 4px"
     },
     "div.shell > main[main].main > div.controls > div.field.check > label": {
-      "font-size": "13px",
       "display": "block"
     },
     "div.shell > main[main].main > div.grid.cols-2": {
       "display": "grid",
       "grid-template-columns": "1fr",
-      "gap": "14px"
+      "gap": "16px"
     },
     "div.shell > main[main].main > div.grid.cols-2 > section[region].panel \"VERDICT\"": {
       "display": "block",
@@ -262,108 +254,108 @@
       "border-bottom": "1px solid rgb(36, 45, 54)",
       "border-left": "1px solid rgb(36, 45, 54)",
       "border-radius": "6px",
-      "padding": "14px 16px"
+      "padding": "16px"
     },
     "div.shell > main[main].main > div.grid.cols-2 > section[region].panel \"VERDICT\" > h2[heading] \"VERDICT\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.7px",
+      "letter-spacing": "0.6px",
       "text-transform": "uppercase",
       "display": "block",
-      "margin": "0px 0px 10px"
+      "margin": "0px 0px 12px"
     },
     "div.shell > main[main].main > div.grid.cols-2 > section[region].panel \"VERDICT\" > div.headline": {
       "display": "flex",
-      "margin": "0px 0px 10px",
+      "margin": "0px 0px 12px",
       "gap": "12px"
     },
     "div.shell > main[main].main > div.grid.cols-2 > section[region].panel \"VERDICT\" > div.headline > span.badge.big.fail": {
       "color": "rgb(251, 80, 78)",
-      "font-size": "15px",
+      "font-size": "14px",
       "font-weight": "600",
-      "letter-spacing": "0.3px",
+      "letter-spacing": "0.5px",
       "display": "block",
       "background-color": "color(srgb 0.208627 0.13498 0.154118)",
       "border-top": "1px solid rgb(251, 80, 78)",
       "border-right": "1px solid rgb(251, 80, 78)",
       "border-bottom": "1px solid rgb(251, 80, 78)",
       "border-left": "1px solid rgb(251, 80, 78)",
-      "border-radius": "14px",
-      "padding": "3px 14px"
+      "border-radius": "999px",
+      "padding": "4px 16px"
     },
     "div.shell > main[main].main > div.grid.cols-2 > section[region].panel \"VERDICT\" > div.headline > span.badge.warn": {
       "color": "rgb(245, 158, 11)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.3px",
+      "letter-spacing": "0.5px",
       "display": "block",
       "background-color": "color(srgb 0.205333 0.177804 0.117333)",
-      "border-radius": "10px",
-      "padding": "1px 9px"
+      "border-radius": "999px",
+      "padding": "2px 8px"
     },
     "div.shell > main[main].main > div.grid.cols-2 > section[region].panel \"VERDICT\" > div.headline > span.mono": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
-      "font-size": "12.88px",
+      "font-size": "11.96px",
       "display": "block"
     },
     "div.shell > main[main].main > div.grid.cols-2 > section[region].panel \"VERDICT\" > div.headline > span.muted.mono": {
       "color": "rgb(139, 152, 165)",
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
-      "font-size": "12.5px",
+      "font-size": "12px",
       "display": "block"
     },
     "div.shell > main[main].main > div.grid.cols-2 > section[region].panel \"VERDICT\" > ul[list].reasons": {
       "display": "block",
-      "padding": "0px 0px 0px 18px",
-      "margin": "0px 0px 10px"
+      "padding": "0px 0px 0px 20px",
+      "margin": "0px 0px 12px"
     },
     "div.shell > main[main].main > div.grid.cols-2 > section[region].panel \"VERDICT\" > ul[list].reasons > li[listitem]": {
       "display": "list-item"
     },
     "div.shell > main[main].main > div.grid.cols-2 > section[region].panel \"VERDICT\" > ul[list].notes": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "12.5px",
+      "font-size": "12px",
       "display": "block"
     },
     "div.shell > main[main].main > div.grid.cols-2 > section[region].panel \"VERDICT\" > ul[list].notes > li[listitem]": {
       "display": "list-item",
       "border-top": "1px solid rgb(36, 45, 54)",
-      "padding": "3px 0px"
+      "padding": "4px 0px"
     },
     "div.shell > main[main].main > div.grid.cols-2 > section[region].panel \"VERDICT\" > ul[list].notes > li[listitem] #2": {
       "display": "list-item",
       "border-top": "1px solid rgb(36, 45, 54)",
-      "padding": "3px 0px"
+      "padding": "4px 0px"
     },
     "div.shell > main[main].main > div.grid.cols-2 > section[region].panel \"VERDICT\" > ul[list].notes > li[listitem] #3": {
       "display": "list-item",
       "border-top": "1px solid rgb(36, 45, 54)",
-      "padding": "3px 0px"
+      "padding": "4px 0px"
     },
     "div.shell > main[main].main > div.grid.cols-2 > section[region].panel \"VERDICT\" > ul[list].notes > li[listitem] #4": {
       "display": "list-item",
       "border-top": "1px solid rgb(36, 45, 54)",
-      "padding": "3px 0px"
+      "padding": "4px 0px"
     },
     "div.shell > main[main].main > div.grid.cols-2 > section[region].panel \"VERDICT\" > ul[list].notes > li[listitem] #5": {
       "display": "list-item",
       "border-top": "1px solid rgb(36, 45, 54)",
-      "padding": "3px 0px"
+      "padding": "4px 0px"
     },
     "div.shell > main[main].main > div.grid.cols-2 > section[region].panel \"VERDICT\" > ul[list].notes > li[listitem] #5 > span.mono": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
-      "font-size": "11.5px",
+      "font-size": "11.04px",
       "display": "inline"
     },
     "div.shell > main[main].main > div.grid.cols-2 > section[region].panel \"VERDICT\" > ul[list].notes > li[listitem] #6": {
       "display": "list-item",
       "border-top": "1px solid rgb(36, 45, 54)",
-      "padding": "3px 0px"
+      "padding": "4px 0px"
     },
     "div.shell > main[main].main > div.grid.cols-2 > section[region].panel \"VERDICT\" > ul[list].notes > li[listitem] #6 > span.mono": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
-      "font-size": "11.5px",
+      "font-size": "11.04px",
       "display": "inline"
     },
     "div.shell > main[main].main > div.grid.cols-2 > section[region].panel \"DIFFERENCE AT P95\"": {
@@ -374,16 +366,16 @@
       "border-bottom": "1px solid rgb(36, 45, 54)",
       "border-left": "1px solid rgb(36, 45, 54)",
       "border-radius": "6px",
-      "padding": "14px 16px"
+      "padding": "16px"
     },
     "div.shell > main[main].main > div.grid.cols-2 > section[region].panel \"DIFFERENCE AT P95\" > h2[heading] \"DIFFERENCE AT P95\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.7px",
+      "letter-spacing": "0.6px",
       "text-transform": "uppercase",
       "display": "block",
-      "margin": "0px 0px 10px"
+      "margin": "0px 0px 12px"
     },
     "div.shell > main[main].main > div.grid.cols-2 > section[region].panel \"DIFFERENCE AT P95\" > div": {
       "display": "block"
@@ -396,7 +388,7 @@
     },
     "div.shell > main[main].main > div.grid.cols-2 > section[region].panel \"DIFFERENCE AT P95\" > div.muted": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "12.5px",
+      "font-size": "12px",
       "display": "block"
     },
     "div.shell > main[main].main > div.grid.cols-2 > section[region].panel \"DIFFERENCE AT P95\" > div #2": {
@@ -404,7 +396,7 @@
     },
     "div.shell > main[main].main > div.grid.cols-2 > section[region].panel \"DIFFERENCE AT P95\" > span.mono": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
-      "font-size": "12.88px",
+      "font-size": "11.96px",
       "display": "inline"
     },
     "div.shell > main[main].main > div.grid.cols-2 > section[region].panel \"DIFFERENCE AT P95\" > div #3": {
@@ -412,12 +404,12 @@
     },
     "div.shell > main[main].main > div.grid.cols-2 > section[region].panel \"DIFFERENCE AT P95\" > div.muted #2": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "12.5px",
+      "font-size": "12px",
       "display": "block"
     },
     "div.shell > main[main].main > div.grid.cols-2 > section[region].panel \"DIFFERENCE AT P95\" > div.muted #3": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "12.5px",
+      "font-size": "12px",
       "display": "block"
     },
     "div.shell > main[main].main > section[region].panel.below \"LATENCY DISTRIBUTION\"": {
@@ -428,17 +420,17 @@
       "border-bottom": "1px solid rgb(36, 45, 54)",
       "border-left": "1px solid rgb(36, 45, 54)",
       "border-radius": "6px",
-      "padding": "14px 16px",
-      "margin": "14px 0px 0px"
+      "padding": "16px",
+      "margin": "16px 0px 0px"
     },
     "div.shell > main[main].main > section[region].panel.below \"LATENCY DISTRIBUTION\" > h2[heading] \"LATENCY DISTRIBUTION\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.7px",
+      "letter-spacing": "0.6px",
       "text-transform": "uppercase",
       "display": "block",
-      "margin": "0px 0px 10px"
+      "margin": "0px 0px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"LATENCY DISTRIBUTION\" > div[image] \"Latency distribution: baseline 1.0.0 p95…\"": {
       "display": "block"
@@ -456,7 +448,6 @@
       "display": "block"
     },
     "div.shell > main[main].main > section[region].panel.below \"LATENCY DISTRIBUTION\" > table[table].data \"Latency by version\"": {
-      "font-size": "13px",
       "display": "table"
     },
     "div.shell > main[main].main > section[region].panel.below \"LATENCY DISTRIBUTION\" > table[table].data \"Latency by version\" > thead[rowgroup]": {
@@ -467,83 +458,83 @@
     },
     "div.shell > main[main].main > section[region].panel.below \"LATENCY DISTRIBUTION\" > table[table].data \"Latency by version\" > thead[rowgroup] > tr[row] > th[columnheader] \"SIDE\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"LATENCY DISTRIBUTION\" > table[table].data \"Latency by version\" > thead[rowgroup] > tr[row] > th[columnheader] \"VERSION\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"LATENCY DISTRIBUTION\" > table[table].data \"Latency by version\" > thead[rowgroup] > tr[row] > th[columnheader] \"RUNS\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"LATENCY DISTRIBUTION\" > table[table].data \"Latency by version\" > thead[rowgroup] > tr[row] > th[columnheader] \"SAMPLES\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"LATENCY DISTRIBUTION\" > table[table].data \"Latency by version\" > thead[rowgroup] > tr[row] > th[columnheader] \"DROPPED\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"LATENCY DISTRIBUTION\" > table[table].data \"Latency by version\" > thead[rowgroup] > tr[row] > th[columnheader] \"P50 MS\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"LATENCY DISTRIBUTION\" > table[table].data \"Latency by version\" > thead[rowgroup] > tr[row] > th[columnheader] \"P95 MS\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"LATENCY DISTRIBUTION\" > table[table].data \"Latency by version\" > thead[rowgroup] > tr[row] > th[columnheader] \"P99 MS\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"LATENCY DISTRIBUTION\" > table[table].data \"Latency by version\" > tbody": {
       "display": "table-row-group"
@@ -555,56 +546,56 @@
       "font-weight": "600",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"LATENCY DISTRIBUTION\" > table[table].data \"Latency by version\" > tr[row] > td[cell].mono \"1.0.0\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"LATENCY DISTRIBUTION\" > table[table].data \"Latency by version\" > tr[row] > td[cell].mono \"1\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"LATENCY DISTRIBUTION\" > table[table].data \"Latency by version\" > tr[row] > td[cell].mono \"24\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"LATENCY DISTRIBUTION\" > table[table].data \"Latency by version\" > tr[row] > td[cell].mono \"0\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"LATENCY DISTRIBUTION\" > table[table].data \"Latency by version\" > tr[row] > td[cell].mono \"8.0\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"LATENCY DISTRIBUTION\" > table[table].data \"Latency by version\" > tr[row] > td[cell].mono \"9.3\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"LATENCY DISTRIBUTION\" > table[table].data \"Latency by version\" > tr[row] > td[cell].mono \"10.0\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"LATENCY DISTRIBUTION\" > table[table].data \"Latency by version\" > tr[row] #2": {
       "display": "table-row"
@@ -612,49 +603,49 @@
     "div.shell > main[main].main > section[region].panel.below \"LATENCY DISTRIBUTION\" > table[table].data \"Latency by version\" > tr[row] #2 > th[rowheader] \"candidate\"": {
       "font-weight": "600",
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"LATENCY DISTRIBUTION\" > table[table].data \"Latency by version\" > tr[row] #2 > td[cell].mono \"1.1.0\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"LATENCY DISTRIBUTION\" > table[table].data \"Latency by version\" > tr[row] #2 > td[cell].mono \"1\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"LATENCY DISTRIBUTION\" > table[table].data \"Latency by version\" > tr[row] #2 > td[cell].mono \"24\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"LATENCY DISTRIBUTION\" > table[table].data \"Latency by version\" > tr[row] #2 > td[cell].mono \"0\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"LATENCY DISTRIBUTION\" > table[table].data \"Latency by version\" > tr[row] #2 > td[cell].mono \"41.0\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"LATENCY DISTRIBUTION\" > table[table].data \"Latency by version\" > tr[row] #2 > td[cell].mono \"47.5\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"LATENCY DISTRIBUTION\" > table[table].data \"Latency by version\" > tr[row] #2 > td[cell].mono \"49.0\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\"": {
       "display": "block",
@@ -664,20 +655,19 @@
       "border-bottom": "1px solid rgb(36, 45, 54)",
       "border-left": "1px solid rgb(36, 45, 54)",
       "border-radius": "6px",
-      "padding": "14px 16px",
-      "margin": "14px 0px 0px"
+      "padding": "16px",
+      "margin": "16px 0px 0px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > h2[heading] \"PARTIAL RUNS AND WINDOWS\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.7px",
+      "letter-spacing": "0.6px",
       "text-transform": "uppercase",
       "display": "block",
-      "margin": "0px 0px 10px"
+      "margin": "0px 0px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Partial runs and windows by version\"": {
-      "font-size": "13px",
       "display": "table"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Partial runs and windows by version\" > thead[rowgroup]": {
@@ -688,123 +678,123 @@
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Partial runs and windows by version\" > thead[rowgroup] > tr[row] > th[columnheader] \"SIDE\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Partial runs and windows by version\" > thead[rowgroup] > tr[row] > th[columnheader] \"VERSION\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Partial runs and windows by version\" > thead[rowgroup] > tr[row] > th[columnheader] \"TRUNCATED\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Partial runs and windows by version\" > thead[rowgroup] > tr[row] > th[columnheader] \"ABORTED\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Partial runs and windows by version\" > thead[rowgroup] > tr[row] > th[columnheader] \"HALTED\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Partial runs and windows by version\" > thead[rowgroup] > tr[row] > th[columnheader] \"DEVIATED\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Partial runs and windows by version\" > thead[rowgroup] > tr[row] > th[columnheader] \"EXCLUDED\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Partial runs and windows by version\" > thead[rowgroup] > tr[row] > th[columnheader] \"WINDOWS PLANNED\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Partial runs and windows by version\" > thead[rowgroup] > tr[row] > th[columnheader] \"COMPLETED\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Partial runs and windows by version\" > thead[rowgroup] > tr[row] > th[columnheader] \"UNANSWERED\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Partial runs and windows by version\" > thead[rowgroup] > tr[row] > th[columnheader] \"LOST\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Partial runs and windows by version\" > thead[rowgroup] > tr[row] > th[columnheader] \"CENSORED\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Partial runs and windows by version\" > tbody": {
       "display": "table-row-group"
@@ -816,84 +806,84 @@
       "font-weight": "600",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Partial runs and windows by version\" > tr[row] > td[cell].mono \"1.0.0\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Partial runs and windows by version\" > tr[row] > td[cell].mono \"0\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Partial runs and windows by version\" > tr[row] > td[cell].mono \"0\" #2": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Partial runs and windows by version\" > tr[row] > td[cell].mono \"0\" #3": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Partial runs and windows by version\" > tr[row] > td[cell].mono \"0\" #4": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Partial runs and windows by version\" > tr[row] > td[cell].mono \"0\" #5": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Partial runs and windows by version\" > tr[row] > td[cell].mono \"24\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Partial runs and windows by version\" > tr[row] > td[cell].mono \"24\" #2": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Partial runs and windows by version\" > tr[row] > td[cell].mono \"0 (0.0 %)\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Partial runs and windows by version\" > tr[row] > td[cell].mono \"0\" #6": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Partial runs and windows by version\" > tr[row] > td[cell].mono \"0\" #7": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Partial runs and windows by version\" > tr[row] #2": {
       "display": "table-row"
@@ -901,82 +891,81 @@
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Partial runs and windows by version\" > tr[row] #2 > th[rowheader] \"candidate\"": {
       "font-weight": "600",
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Partial runs and windows by version\" > tr[row] #2 > td[cell].mono \"1.1.0\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Partial runs and windows by version\" > tr[row] #2 > td[cell].mono \"0\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Partial runs and windows by version\" > tr[row] #2 > td[cell].mono \"0\" #2": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Partial runs and windows by version\" > tr[row] #2 > td[cell].mono \"0\" #3": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Partial runs and windows by version\" > tr[row] #2 > td[cell].mono \"0\" #4": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Partial runs and windows by version\" > tr[row] #2 > td[cell].mono \"0\" #5": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Partial runs and windows by version\" > tr[row] #2 > td[cell].mono \"24\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Partial runs and windows by version\" > tr[row] #2 > td[cell].mono \"24\" #2": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Partial runs and windows by version\" > tr[row] #2 > td[cell].mono \"0 (0.0 %)\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Partial runs and windows by version\" > tr[row] #2 > td[cell].mono \"0\" #6": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Partial runs and windows by version\" > tr[row] #2 > td[cell].mono \"0\" #7": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > p[paragraph].muted": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "12.5px",
+      "font-size": "12px",
       "display": "block",
-      "margin": "12.5px 0px"
+      "margin": "12px 0px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Requests by version\"": {
-      "font-size": "13px",
       "display": "table"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Requests by version\" > thead[rowgroup]": {
@@ -987,63 +976,63 @@
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Requests by version\" > thead[rowgroup] > tr[row] > th[columnheader] \"SIDE\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Requests by version\" > thead[rowgroup] > tr[row] > th[columnheader] \"VERSION\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Requests by version\" > thead[rowgroup] > tr[row] > th[columnheader] \"REQUESTS SENT\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Requests by version\" > thead[rowgroup] > tr[row] > th[columnheader] \"FAILED\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Requests by version\" > thead[rowgroup] > tr[row] > th[columnheader] \"FAILURE SHARE\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Requests by version\" > thead[rowgroup] > tr[row] > th[columnheader] \"RUNS WITHOUT COUNTS\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Requests by version\" > tbody": {
       "display": "table-row-group"
@@ -1055,42 +1044,42 @@
       "font-weight": "600",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Requests by version\" > tr[row] > td[cell].mono \"1.0.0\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Requests by version\" > tr[row] > td[cell].mono \"2400\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Requests by version\" > tr[row] > td[cell].mono \"0\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Requests by version\" > tr[row] > td[cell].mono \"0.0 %\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Requests by version\" > tr[row] > td[cell].mono \"0\" #2": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Requests by version\" > tr[row] #2": {
       "display": "table-row"
@@ -1098,50 +1087,49 @@
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Requests by version\" > tr[row] #2 > th[rowheader] \"candidate\"": {
       "font-weight": "600",
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Requests by version\" > tr[row] #2 > td[cell].mono \"1.1.0\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Requests by version\" > tr[row] #2 > td[cell].mono \"2400\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Requests by version\" > tr[row] #2 > td[cell].mono \"0\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Requests by version\" > tr[row] #2 > td[cell].mono \"0.0 %\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Requests by version\" > tr[row] #2 > td[cell].mono \"0\" #2": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > p[paragraph]": {
       "display": "block",
-      "margin": "14px 0px"
+      "margin": "13px 0px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > p[paragraph].muted #2": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "12.5px",
+      "font-size": "12px",
       "display": "block",
-      "margin": "12.5px 0px"
+      "margin": "12px 0px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Runs by version\"": {
-      "font-size": "13px",
       "display": "table"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Runs by version\" > thead[rowgroup]": {
@@ -1152,63 +1140,63 @@
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Runs by version\" > thead[rowgroup] > tr[row] > th[columnheader] \"SIDE\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Runs by version\" > thead[rowgroup] > tr[row] > th[columnheader] \"RUN\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Runs by version\" > thead[rowgroup] > tr[row] > th[columnheader] \"VERSION KNOWN\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Runs by version\" > thead[rowgroup] > tr[row] > th[columnheader] \"STATUS\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Runs by version\" > thead[rowgroup] > tr[row] > th[columnheader] \"PLAN\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Runs by version\" > thead[rowgroup] > tr[row] > th[columnheader] \"IN THE SAMPLES\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Runs by version\" > tbody": {
       "display": "table-row-group"
@@ -1220,42 +1208,42 @@
       "font-weight": "600",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Runs by version\" > tr[row] > td[cell].mono \"run-1.0.0\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Runs by version\" > tr[row] > td[cell].mono \"observed\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Runs by version\" > tr[row] > td[cell].mono \"completed\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Runs by version\" > tr[row] > td[cell].mono \"whole\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Runs by version\" > tr[row] > td[cell].mono \"yes\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Runs by version\" > tr[row] #2": {
       "display": "table-row"
@@ -1263,37 +1251,37 @@
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Runs by version\" > tr[row] #2 > th[rowheader] \"candidate\"": {
       "font-weight": "600",
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Runs by version\" > tr[row] #2 > td[cell].mono \"run-1.1.0\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Runs by version\" > tr[row] #2 > td[cell].mono \"observed\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Runs by version\" > tr[row] #2 > td[cell].mono \"completed\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Runs by version\" > tr[row] #2 > td[cell].mono \"whole\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Runs by version\" > tr[row] #2 > td[cell].mono \"yes\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"STORED VERDICTS\"": {
       "display": "block",
@@ -1303,27 +1291,26 @@
       "border-bottom": "1px solid rgb(36, 45, 54)",
       "border-left": "1px solid rgb(36, 45, 54)",
       "border-radius": "6px",
-      "padding": "14px 16px",
-      "margin": "14px 0px 0px"
+      "padding": "16px",
+      "margin": "16px 0px 0px"
     },
     "div.shell > main[main].main > section[region].panel.below \"STORED VERDICTS\" > h2[heading] \"STORED VERDICTS\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.7px",
+      "letter-spacing": "0.6px",
       "text-transform": "uppercase",
       "display": "block",
-      "margin": "0px 0px 10px"
+      "margin": "0px 0px 12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"STORED VERDICTS\" > div.store": {
       "display": "flex",
       "margin": "0px 0px 12px",
-      "gap": "10px"
+      "gap": "12px"
     },
     "div.shell > main[main].main > section[region].panel.below \"STORED VERDICTS\" > div.store > button[button].primary \"Store verdict\"": {
       "color": "rgb(255, 255, 255)",
       "font-family": "Arial",
-      "font-size": "13px",
       "line-height": "normal",
       "display": "block",
       "background-color": "rgb(58, 106, 145)",
@@ -1331,17 +1318,16 @@
       "border-right": "1px solid rgb(94, 177, 239)",
       "border-bottom": "1px solid rgb(94, 177, 239)",
       "border-left": "1px solid rgb(94, 177, 239)",
-      "border-radius": "5px",
-      "padding": "7px 16px"
+      "border-radius": "6px",
+      "padding": "8px 16px"
     },
     "div.shell > main[main].main > section[region].panel.below \"STORED VERDICTS\" > div.store > span[status].ok-line": {
       "color": "rgb(52, 211, 153)",
-      "font-size": "12.5px",
+      "font-size": "12px",
       "display": "block"
     },
     "div.shell > main[main].main > section[region].panel.below \"STORED VERDICTS\" > div.state": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "13px",
       "display": "block",
       "padding": "28px"
     },

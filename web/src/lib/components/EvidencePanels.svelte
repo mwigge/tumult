@@ -35,7 +35,7 @@
 </script>
 
 {#if evidence === null}
-    <State kind="empty" panel style="margin-bottom: var(--space-3-5)" data-testid="no-evidence">
+    <State kind="empty" panel style="margin-bottom: var(--space-4)" data-testid="no-evidence">
         The lake has no journal of this run, so this page has no steps, objectives, load or probe
         samples to show.
     </State>
@@ -210,13 +210,13 @@
 
 <style>
     .block {
-        margin-bottom: var(--space-3-5);
+        margin-bottom: var(--space-4);
     }
     .facts {
         display: flex;
         flex-wrap: wrap;
-        gap: var(--space-2-5) 28px;
-        margin: 0 0 var(--space-2-5);
+        gap: var(--space-3) var(--space-7);
+        margin: 0 0 var(--space-3);
     }
     .facts dt {
         color: var(--text-dim);
@@ -227,7 +227,7 @@
     }
     .facts dd {
         margin: 0;
-        font-size: var(--font-size-lg);
+        font-size: var(--font-size-xl);
         font-weight: var(--font-weight-strong);
     }
     .result {

@@ -8,7 +8,7 @@
     "html": {
       "color": "rgb(216, 222, 228)",
       "font-family": "-apple-system, \"Segoe UI\", Inter, Roboto, sans-serif",
-      "font-size": "14px",
+      "font-size": "13px",
       "font-weight": "400",
       "line-height": "1.5",
       "letter-spacing": "normal",
@@ -38,20 +38,20 @@
     "div.shell > aside[complementary].side > div.brand": {
       "display": "block",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "0px 18px 14px",
-      "margin": "0px 0px 10px"
+      "padding": "0px 20px 16px",
+      "margin": "0px 0px 12px"
     },
     "div.shell > aside[complementary].side > div.brand > div.name": {
-      "font-size": "17px",
+      "font-size": "18px",
       "font-weight": "700",
-      "letter-spacing": "0.4px",
+      "letter-spacing": "0.5px",
       "display": "block"
     },
     "div.shell > aside[complementary].side > div.brand > div.tag": {
       "color": "rgb(127, 140, 151)",
       "font-size": "11px",
       "display": "block",
-      "margin": "2px 0px 0px"
+      "margin": "4px 0px 0px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\"": {
       "display": "block",
@@ -59,307 +59,285 @@
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◧ Overview\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◧ Overview\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◎ Resilience\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◎ Resilience\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◭ Performance\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◭ Performance\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"▦ Scores\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"▦ Scores\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⚖ DORA\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⚖ DORA\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⟲ Disaster recovery\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⟲ Disaster recovery\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link].active \"⚗ Experiments\"": {
-      "font-size": "13.5px",
       "display": "flex",
       "background-color": "rgb(28, 36, 44)",
       "border-left": "2px solid rgb(94, 177, 239)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link].active \"⚗ Experiments\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"▶ Runs\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"▶ Runs\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✚ Author\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✚ Author\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"☷ GameDays\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"☷ GameDays\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✓ Approvals\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✓ Approvals\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✎ Manual\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✎ Manual\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"≣ Logs\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"≣ Logs\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⌁ Traces\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⌁ Traces\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"∿ Metrics\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"∿ Metrics\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✳ Star Map\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✳ Star Map\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✦ Ask\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✦ Ask\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"▤ Reports\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"▤ Reports\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◔ Events\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◔ Events\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⚿ Users\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⚿ Users\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"➤ Webhooks\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"➤ Webhooks\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"↻ Schedules\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"↻ Schedules\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > button[button].theme \"◐ dark\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "display": "block",
       "border-top": "1px solid rgb(36, 45, 54)",
       "border-right": "1px solid rgb(36, 45, 54)",
       "border-bottom": "1px solid rgb(36, 45, 54)",
       "border-left": "1px solid rgb(36, 45, 54)",
       "border-radius": "4px",
-      "padding": "2px 8px",
-      "margin": "8px 18px 0px"
+      "padding": "4px 8px",
+      "margin": "8px 20px 0px"
     },
     "div.shell > main[main].main": {
       "display": "block",
-      "padding": "22px 26px 60px"
+      "padding": "24px 28px 60px"
     },
     "div.shell > main[main].main > div.page-head": {
       "display": "flex",
-      "margin": "0px 0px 18px",
-      "gap": "14px"
+      "margin": "0px 0px 20px",
+      "gap": "16px"
     },
     "div.shell > main[main].main > div.page-head > a[link].back \"← experiments\"": {
       "color": "rgb(139, 152, 165)",
       "display": "block"
     },
     "div.shell > main[main].main > div.page-head > h1[heading] \"checkout-saturation\"": {
-      "font-size": "19px",
+      "font-size": "18px",
       "font-weight": "600",
       "display": "block"
     },
     "div.shell > main[main].main > div.page-head > span.badge.fail": {
       "color": "rgb(251, 80, 78)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.3px",
+      "letter-spacing": "0.5px",
       "display": "block",
       "background-color": "color(srgb 0.208627 0.13498 0.154118)",
-      "border-radius": "10px",
-      "padding": "1px 9px"
+      "border-radius": "999px",
+      "padding": "2px 8px"
     },
     "div.shell > main[main].main > div.page-head > span.badge.neutral": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.3px",
+      "letter-spacing": "0.5px",
       "display": "block",
       "background-color": "rgb(28, 36, 44)",
-      "border-radius": "10px",
-      "padding": "1px 9px"
+      "border-radius": "999px",
+      "padding": "2px 8px"
     },
     "div.shell > main[main].main > div.page-head > span.sub.mono": {
       "color": "rgb(139, 152, 165)",
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
-      "font-size": "12.5px",
+      "font-size": "12px",
       "display": "block"
     },
     "div.shell > main[main].main > div.grid": {
       "display": "grid",
       "grid-template-columns": "repeat(4, 1fr)",
-      "margin": "0px 0px 14px",
-      "gap": "14px"
+      "margin": "0px 0px 16px",
+      "gap": "16px"
     },
     "div.shell > main[main].main > div.grid > div.panel.meta": {
       "display": "block",
@@ -369,7 +347,7 @@
       "border-bottom": "1px solid rgb(36, 45, 54)",
       "border-left": "1px solid rgb(36, 45, 54)",
       "border-radius": "6px",
-      "padding": "14px 16px"
+      "padding": "16px"
     },
     "div.shell > main[main].main > div.grid > div.panel.meta > span": {
       "color": "rgb(139, 152, 165)",
@@ -380,7 +358,7 @@
       "margin": "0px 0px 4px"
     },
     "div.shell > main[main].main > div.grid > div.panel.meta > b": {
-      "font-size": "13.5px",
+      "font-size": "14px",
       "font-weight": "600",
       "display": "inline"
     },
@@ -392,7 +370,7 @@
       "border-bottom": "1px solid rgb(36, 45, 54)",
       "border-left": "1px solid rgb(36, 45, 54)",
       "border-radius": "6px",
-      "padding": "14px 16px"
+      "padding": "16px"
     },
     "div.shell > main[main].main > div.grid > div.panel.meta #2 > span": {
       "color": "rgb(139, 152, 165)",
@@ -404,7 +382,7 @@
     },
     "div.shell > main[main].main > div.grid > div.panel.meta #2 > b.mono": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
-      "font-size": "13.5px",
+      "font-size": "14px",
       "font-weight": "600",
       "display": "inline"
     },
@@ -416,7 +394,7 @@
       "border-bottom": "1px solid rgb(36, 45, 54)",
       "border-left": "1px solid rgb(36, 45, 54)",
       "border-radius": "6px",
-      "padding": "14px 16px"
+      "padding": "16px"
     },
     "div.shell > main[main].main > div.grid > div.panel.meta #3 > span": {
       "color": "rgb(139, 152, 165)",
@@ -428,7 +406,7 @@
     },
     "div.shell > main[main].main > div.grid > div.panel.meta #3 > b.mono": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
-      "font-size": "13.5px",
+      "font-size": "14px",
       "font-weight": "600",
       "display": "inline"
     },
@@ -440,7 +418,7 @@
       "border-bottom": "1px solid rgb(36, 45, 54)",
       "border-left": "1px solid rgb(36, 45, 54)",
       "border-radius": "6px",
-      "padding": "14px 16px"
+      "padding": "16px"
     },
     "div.shell > main[main].main > div.grid > div.panel.meta #4 > span": {
       "color": "rgb(139, 152, 165)",
@@ -452,15 +430,15 @@
     },
     "div.shell > main[main].main > div.grid > div.panel.meta #4 > b.mono": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
-      "font-size": "13.5px",
+      "font-size": "14px",
       "font-weight": "600",
       "display": "inline"
     },
     "div.shell > main[main].main > div.grid.cols-2.block": {
       "display": "grid",
       "grid-template-columns": "1fr 1fr",
-      "margin": "0px 0px 14px",
-      "gap": "14px"
+      "margin": "0px 0px 16px",
+      "gap": "16px"
     },
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel": {
       "display": "block",
@@ -470,21 +448,21 @@
       "border-bottom": "1px solid rgb(36, 45, 54)",
       "border-left": "1px solid rgb(36, 45, 54)",
       "border-radius": "6px",
-      "padding": "14px 16px"
+      "padding": "16px"
     },
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel > h2[heading] \"STEADY STATE\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.7px",
+      "letter-spacing": "0.6px",
       "text-transform": "uppercase",
       "display": "block",
-      "margin": "0px 0px 10px"
+      "margin": "0px 0px 12px"
     },
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel > dl[DescriptionList].facts": {
       "display": "flex",
-      "margin": "0px 0px 10px",
-      "gap": "10px 28px"
+      "margin": "0px 0px 12px",
+      "gap": "12px 28px"
     },
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel > dl[DescriptionList].facts > div": {
       "display": "block"
@@ -498,18 +476,18 @@
       "margin": "0px 0px 4px"
     },
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel > dl[DescriptionList].facts > dd[definition]": {
-      "font-size": "13.5px",
+      "font-size": "14px",
       "font-weight": "600",
       "display": "block"
     },
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel > dl[DescriptionList].facts > dd[definition] > span.badge.neutral": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
-      "letter-spacing": "0.3px",
+      "font-size": "12px",
+      "letter-spacing": "0.5px",
       "display": "inline-block",
       "background-color": "rgb(28, 36, 44)",
-      "border-radius": "10px",
-      "padding": "1px 9px"
+      "border-radius": "999px",
+      "padding": "2px 8px"
     },
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel > dl[DescriptionList].facts > div #2": {
       "display": "block"
@@ -523,18 +501,18 @@
       "margin": "0px 0px 4px"
     },
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel > dl[DescriptionList].facts > dd[definition] #2": {
-      "font-size": "13.5px",
+      "font-size": "14px",
       "font-weight": "600",
       "display": "block"
     },
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel > dl[DescriptionList].facts > dd[definition] #2 > span.badge.ok": {
       "color": "rgb(52, 211, 153)",
-      "font-size": "11.5px",
-      "letter-spacing": "0.3px",
+      "font-size": "12px",
+      "letter-spacing": "0.5px",
       "display": "inline-block",
       "background-color": "color(srgb 0.0993726 0.206902 0.195294)",
-      "border-radius": "10px",
-      "padding": "1px 9px"
+      "border-radius": "999px",
+      "padding": "2px 8px"
     },
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel > dl[DescriptionList].facts > div #3": {
       "display": "block"
@@ -548,21 +526,20 @@
       "margin": "0px 0px 4px"
     },
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel > dl[DescriptionList].facts > dd[definition] #3": {
-      "font-size": "13.5px",
+      "font-size": "14px",
       "font-weight": "600",
       "display": "block"
     },
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel > dl[DescriptionList].facts > dd[definition] #3 > span.badge.fail": {
       "color": "rgb(251, 80, 78)",
-      "font-size": "11.5px",
-      "letter-spacing": "0.3px",
+      "font-size": "12px",
+      "letter-spacing": "0.5px",
       "display": "inline-block",
       "background-color": "color(srgb 0.208627 0.13498 0.154118)",
-      "border-radius": "10px",
-      "padding": "1px 9px"
+      "border-radius": "999px",
+      "padding": "2px 8px"
     },
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel > table[table].data \"Recovery\"": {
-      "font-size": "13px",
       "display": "table"
     },
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel > table[table].data \"Recovery\" > thead[rowgroup]": {
@@ -573,33 +550,33 @@
     },
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel > table[table].data \"Recovery\" > thead[rowgroup] > tr[row] > th[columnheader] \"RECOVERY\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel > table[table].data \"Recovery\" > thead[rowgroup] > tr[row] > th[columnheader] \"TARGET\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel > table[table].data \"Recovery\" > thead[rowgroup] > tr[row] > th[columnheader] \"MEASURED\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel > table[table].data \"Recovery\" > tbody": {
       "display": "table-row-group"
@@ -610,40 +587,40 @@
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel > table[table].data \"Recovery\" > tr[row] > td[cell] \"RTO\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel > table[table].data \"Recovery\" > tr[row] > td[cell].mono \"30 s\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel > table[table].data \"Recovery\" > tr[row] > td[cell].mono \"12.5 s\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel > table[table].data \"Recovery\" > tr[row] #2": {
       "display": "table-row"
     },
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel > table[table].data \"Recovery\" > tr[row] #2 > td[cell] \"RPO\"": {
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel > table[table].data \"Recovery\" > tr[row] #2 > td[cell].mono \"5 s\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel > table[table].data \"Recovery\" > tr[row] #2 > td[cell].mono \"not measured\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel #2": {
       "display": "block",
@@ -653,19 +630,18 @@
       "border-bottom": "1px solid rgb(36, 45, 54)",
       "border-left": "1px solid rgb(36, 45, 54)",
       "border-radius": "6px",
-      "padding": "14px 16px"
+      "padding": "16px"
     },
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel #2 > h2[heading] \"OBJECTIVES (3)\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.7px",
+      "letter-spacing": "0.6px",
       "text-transform": "uppercase",
       "display": "block",
-      "margin": "0px 0px 10px"
+      "margin": "0px 0px 12px"
     },
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel #2 > table[table].data": {
-      "font-size": "13px",
       "display": "table"
     },
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel #2 > table[table].data > thead[rowgroup]": {
@@ -676,73 +652,73 @@
     },
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel #2 > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"OBJECTIVE\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel #2 > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"METRIC\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel #2 > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"TARGET\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel #2 > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"OBSERVED\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel #2 > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"MARGIN\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel #2 > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"VERDICT\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel #2 > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"CRITICALITY\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel #2 > table[table].data > tbody": {
       "display": "table-row-group"
@@ -755,55 +731,55 @@
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel #2 > table[table].data > tr[row] > td[cell].mono \"load.latency_p95_ms\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel #2 > table[table].data > tr[row] > td[cell].mono \"≤ 200\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel #2 > table[table].data > tr[row] > td[cell].mono \"80\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel #2 > table[table].data > tr[row] > td[cell].mono \"+120\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel #2 > table[table].data > tr[row] > td[cell] \"met\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel #2 > table[table].data > tr[row] > td[cell] \"met\" > span.badge.ok": {
       "color": "rgb(52, 211, 153)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.3px",
+      "letter-spacing": "0.5px",
       "display": "inline-block",
       "background-color": "color(srgb 0.0993726 0.206902 0.195294)",
-      "border-radius": "10px",
-      "padding": "1px 9px"
+      "border-radius": "999px",
+      "padding": "2px 8px"
     },
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel #2 > table[table].data > tr[row] > td[cell] \"blocking\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel #2 > table[table].data > tr[row] #2": {
       "display": "table-row"
@@ -813,55 +789,55 @@
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel #2 > table[table].data > tr[row] #2 > td[cell].mono \"load.total_requests\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel #2 > table[table].data > tr[row] #2 > td[cell].mono \"≥ 400000\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel #2 > table[table].data > tr[row] #2 > td[cell].mono \"302618\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel #2 > table[table].data > tr[row] #2 > td[cell].mono \"-97382\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel #2 > table[table].data > tr[row] #2 > td[cell] \"breached\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel #2 > table[table].data > tr[row] #2 > td[cell] \"breached\" > span.badge.fail": {
       "color": "rgb(251, 80, 78)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.3px",
+      "letter-spacing": "0.5px",
       "display": "inline-block",
       "background-color": "color(srgb 0.208627 0.13498 0.154118)",
-      "border-radius": "10px",
-      "padding": "1px 9px"
+      "border-radius": "999px",
+      "padding": "2px 8px"
     },
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel #2 > table[table].data > tr[row] #2 > td[cell] \"blocking\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel #2 > table[table].data > tr[row] #3": {
       "display": "table-row"
@@ -870,49 +846,49 @@
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel #2 > table[table].data > tr[row] #3 > td[cell].mono \"rpo\" #2": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel #2 > table[table].data > tr[row] #3 > td[cell].mono \"≤ 5\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel #2 > table[table].data > tr[row] #3 > td[cell].mono \"—\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel #2 > table[table].data > tr[row] #3 > td[cell].mono \"—\" #2": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel #2 > table[table].data > tr[row] #3 > td[cell] \"inconclusive\"": {
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel #2 > table[table].data > tr[row] #3 > td[cell] \"inconclusive\" > span.badge.warn": {
       "color": "rgb(245, 158, 11)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.3px",
+      "letter-spacing": "0.5px",
       "display": "inline-block",
       "background-color": "color(srgb 0.205333 0.177804 0.117333)",
-      "border-radius": "10px",
-      "padding": "1px 9px"
+      "border-radius": "999px",
+      "padding": "2px 8px"
     },
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel #2 > table[table].data > tr[row] #3 > td[cell] \"advisory\"": {
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel.block": {
       "display": "block",
@@ -922,20 +898,19 @@
       "border-bottom": "1px solid rgb(36, 45, 54)",
       "border-left": "1px solid rgb(36, 45, 54)",
       "border-radius": "6px",
-      "padding": "14px 16px",
-      "margin": "0px 0px 14px"
+      "padding": "16px",
+      "margin": "0px 0px 16px"
     },
     "div.shell > main[main].main > div.panel.block > h2[heading] \"STEPS (5)\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.7px",
+      "letter-spacing": "0.6px",
       "text-transform": "uppercase",
       "display": "block",
-      "margin": "0px 0px 10px"
+      "margin": "0px 0px 12px"
     },
     "div.shell > main[main].main > div.panel.block > table[table].data": {
-      "font-size": "13px",
       "display": "table"
     },
     "div.shell > main[main].main > div.panel.block > table[table].data > thead[rowgroup]": {
@@ -946,73 +921,73 @@
     },
     "div.shell > main[main].main > div.panel.block > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"PHASE\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel.block > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"STEP\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel.block > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"TYPE\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel.block > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"STATUS\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel.block > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"STARTED\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel.block > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"TOOK\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel.block > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"RESULT\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel.block > table[table].data > tbody": {
       "display": "table-row-group"
@@ -1023,55 +998,55 @@
     "div.shell > main[main].main > div.panel.block > table[table].data > tr[row] > td[cell] \"Steady state before\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel.block > table[table].data > tr[row] > td[cell].mono \"health\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel.block > table[table].data > tr[row] > td[cell] \"probe\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel.block > table[table].data > tr[row] > td[cell] \"succeeded\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel.block > table[table].data > tr[row] > td[cell] \"succeeded\" > span.badge.ok": {
       "color": "rgb(52, 211, 153)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.3px",
+      "letter-spacing": "0.5px",
       "display": "inline-block",
       "background-color": "color(srgb 0.0993726 0.206902 0.195294)",
-      "border-radius": "10px",
-      "padding": "1px 9px"
+      "border-radius": "999px",
+      "padding": "2px 8px"
     },
     "div.shell > main[main].main > div.panel.block > table[table].data > tr[row] > td[cell].mono \"+0.0 s\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel.block > table[table].data > tr[row] > td[cell].mono \"6ms\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel.block > table[table].data > tr[row] > td[cell].mono.result \"ok\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel.block > table[table].data > tr[row] #2": {
       "display": "table-row"
@@ -1079,55 +1054,55 @@
     "div.shell > main[main].main > div.panel.block > table[table].data > tr[row] #2 > td[cell] \"Method\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel.block > table[table].data > tr[row] #2 > td[cell].mono \"cpu-stress\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel.block > table[table].data > tr[row] #2 > td[cell] \"action\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel.block > table[table].data > tr[row] #2 > td[cell] \"succeeded\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel.block > table[table].data > tr[row] #2 > td[cell] \"succeeded\" > span.badge.ok": {
       "color": "rgb(52, 211, 153)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.3px",
+      "letter-spacing": "0.5px",
       "display": "inline-block",
       "background-color": "color(srgb 0.0993726 0.206902 0.195294)",
-      "border-radius": "10px",
-      "padding": "1px 9px"
+      "border-radius": "999px",
+      "padding": "2px 8px"
     },
     "div.shell > main[main].main > div.panel.block > table[table].data > tr[row] #2 > td[cell].mono \"+8.3 s\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel.block > table[table].data > tr[row] #2 > td[cell].mono \"2m 3s\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel.block > table[table].data > tr[row] #2 > td[cell].mono.result": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel.block > table[table].data > tr[row] #3": {
       "display": "table-row"
@@ -1135,55 +1110,55 @@
     "div.shell > main[main].main > div.panel.block > table[table].data > tr[row] #3 > td[cell] \"Method\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel.block > table[table].data > tr[row] #3 > td[cell].mono \"process-still-up\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel.block > table[table].data > tr[row] #3 > td[cell] \"probe\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel.block > table[table].data > tr[row] #3 > td[cell] \"failed\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel.block > table[table].data > tr[row] #3 > td[cell] \"failed\" > span.badge.fail": {
       "color": "rgb(251, 80, 78)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.3px",
+      "letter-spacing": "0.5px",
       "display": "inline-block",
       "background-color": "color(srgb 0.208627 0.13498 0.154118)",
-      "border-radius": "10px",
-      "padding": "1px 9px"
+      "border-radius": "999px",
+      "padding": "2px 8px"
     },
     "div.shell > main[main].main > div.panel.block > table[table].data > tr[row] #3 > td[cell].mono \"+9.0 s\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel.block > table[table].data > tr[row] #3 > td[cell].mono \"40ms\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel.block > table[table].data > tr[row] #3 > td[cell].mono.result \"the process is gone\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel.block > table[table].data > tr[row] #4": {
       "display": "table-row"
@@ -1191,104 +1166,104 @@
     "div.shell > main[main].main > div.panel.block > table[table].data > tr[row] #4 > td[cell] \"Steady state after\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel.block > table[table].data > tr[row] #4 > td[cell].mono \"health\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel.block > table[table].data > tr[row] #4 > td[cell] \"probe\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel.block > table[table].data > tr[row] #4 > td[cell] \"timeout\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel.block > table[table].data > tr[row] #4 > td[cell] \"timeout\" > span.badge.fail": {
       "color": "rgb(251, 80, 78)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.3px",
+      "letter-spacing": "0.5px",
       "display": "inline-block",
       "background-color": "color(srgb 0.208627 0.13498 0.154118)",
-      "border-radius": "10px",
-      "padding": "1px 9px"
+      "border-radius": "999px",
+      "padding": "2px 8px"
     },
     "div.shell > main[main].main > div.panel.block > table[table].data > tr[row] #4 > td[cell].mono \"+118.0 s\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel.block > table[table].data > tr[row] #4 > td[cell].mono \"5.0s\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel.block > table[table].data > tr[row] #4 > td[cell].mono.result": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel.block > table[table].data > tr[row] #5": {
       "display": "table-row"
     },
     "div.shell > main[main].main > div.panel.block > table[table].data > tr[row] #5 > td[cell] \"Rollback\"": {
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel.block > table[table].data > tr[row] #5 > td[cell].mono \"heal\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel.block > table[table].data > tr[row] #5 > td[cell] \"action\"": {
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel.block > table[table].data > tr[row] #5 > td[cell] \"succeeded\"": {
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel.block > table[table].data > tr[row] #5 > td[cell] \"succeeded\" > span.badge.ok": {
       "color": "rgb(52, 211, 153)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.3px",
+      "letter-spacing": "0.5px",
       "display": "inline-block",
       "background-color": "color(srgb 0.0993726 0.206902 0.195294)",
-      "border-radius": "10px",
-      "padding": "1px 9px"
+      "border-radius": "999px",
+      "padding": "2px 8px"
     },
     "div.shell > main[main].main > div.panel.block > table[table].data > tr[row] #5 > td[cell].mono \"+119.0 s\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel.block > table[table].data > tr[row] #5 > td[cell].mono \"6ms\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel.block > table[table].data > tr[row] #5 > td[cell].mono.result \"healed\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel.block #2": {
       "display": "block",
@@ -1298,22 +1273,22 @@
       "border-bottom": "1px solid rgb(36, 45, 54)",
       "border-left": "1px solid rgb(36, 45, 54)",
       "border-radius": "6px",
-      "padding": "14px 16px",
-      "margin": "0px 0px 14px"
+      "padding": "16px",
+      "margin": "0px 0px 16px"
     },
     "div.shell > main[main].main > div.panel.block #2 > h2[heading] \"LOAD\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.7px",
+      "letter-spacing": "0.6px",
       "text-transform": "uppercase",
       "display": "block",
-      "margin": "0px 0px 10px"
+      "margin": "0px 0px 12px"
     },
     "div.shell > main[main].main > div.panel.block #2 > dl[DescriptionList].facts": {
       "display": "flex",
-      "margin": "0px 0px 10px",
-      "gap": "10px 28px"
+      "margin": "0px 0px 12px",
+      "gap": "12px 28px"
     },
     "div.shell > main[main].main > div.panel.block #2 > dl[DescriptionList].facts > div": {
       "display": "block"
@@ -1328,7 +1303,7 @@
     },
     "div.shell > main[main].main > div.panel.block #2 > dl[DescriptionList].facts > dd[definition].mono": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
-      "font-size": "13.5px",
+      "font-size": "14px",
       "font-weight": "600",
       "display": "block"
     },
@@ -1345,7 +1320,7 @@
     },
     "div.shell > main[main].main > div.panel.block #2 > dl[DescriptionList].facts > dd[definition].mono #2": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
-      "font-size": "13.5px",
+      "font-size": "14px",
       "font-weight": "600",
       "display": "block"
     },
@@ -1362,7 +1337,7 @@
     },
     "div.shell > main[main].main > div.panel.block #2 > dl[DescriptionList].facts > dd[definition].mono #3": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
-      "font-size": "13.5px",
+      "font-size": "14px",
       "font-weight": "600",
       "display": "block"
     },
@@ -1379,7 +1354,7 @@
     },
     "div.shell > main[main].main > div.panel.block #2 > dl[DescriptionList].facts > dd[definition].mono #4": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
-      "font-size": "13.5px",
+      "font-size": "14px",
       "font-weight": "600",
       "display": "block"
     },
@@ -1396,7 +1371,7 @@
     },
     "div.shell > main[main].main > div.panel.block #2 > dl[DescriptionList].facts > dd[definition].mono #5": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
-      "font-size": "13.5px",
+      "font-size": "14px",
       "font-weight": "600",
       "display": "block"
     },
@@ -1413,7 +1388,7 @@
     },
     "div.shell > main[main].main > div.panel.block #2 > dl[DescriptionList].facts > dd[definition].mono #6": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
-      "font-size": "13.5px",
+      "font-size": "14px",
       "font-weight": "600",
       "display": "block"
     },
@@ -1430,7 +1405,7 @@
     },
     "div.shell > main[main].main > div.panel.block #2 > dl[DescriptionList].facts > dd[definition].mono #7": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
-      "font-size": "13.5px",
+      "font-size": "14px",
       "font-weight": "600",
       "display": "block"
     },
@@ -1447,7 +1422,7 @@
     },
     "div.shell > main[main].main > div.panel.block #2 > dl[DescriptionList].facts > dd[definition].mono #8": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
-      "font-size": "13.5px",
+      "font-size": "14px",
       "font-weight": "600",
       "display": "block"
     },
@@ -1464,14 +1439,14 @@
     },
     "div.shell > main[main].main > div.panel.block #2 > dl[DescriptionList].facts > dd[definition].mono #9": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
-      "font-size": "13.5px",
+      "font-size": "14px",
       "font-weight": "600",
       "display": "block"
     },
     "div.shell > main[main].main > div.panel.block #2 > div.grid.cols-2": {
       "display": "grid",
       "grid-template-columns": "1fr 1fr",
-      "gap": "14px"
+      "gap": "16px"
     },
     "div.shell > main[main].main > div.panel.block #2 > div.grid.cols-2 > div[image] \"Latency of the load over time: p50, p95 …\"": {
       "display": "block"
@@ -1505,17 +1480,17 @@
       "border-bottom": "1px solid rgb(36, 45, 54)",
       "border-left": "1px solid rgb(36, 45, 54)",
       "border-radius": "6px",
-      "padding": "14px 16px",
-      "margin": "0px 0px 14px"
+      "padding": "16px",
+      "margin": "0px 0px 16px"
     },
     "div.shell > main[main].main > div.panel.block #3 > h2[heading] \"PROBE SAMPLES (5)\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.7px",
+      "letter-spacing": "0.6px",
       "text-transform": "uppercase",
       "display": "block",
-      "margin": "0px 0px 10px"
+      "margin": "0px 0px 12px"
     },
     "div.shell > main[main].main > div.panel.block #3 > div[image] \"How long each probe sample took over the…\"": {
       "display": "block"
@@ -1537,28 +1512,27 @@
       "border-bottom": "1px solid rgb(36, 45, 54)",
       "border-left": "1px solid rgb(36, 45, 54)",
       "border-radius": "6px",
-      "padding": "14px 16px",
-      "margin": "0px 0px 14px"
+      "padding": "16px",
+      "margin": "0px 0px 16px"
     },
     "div.shell > main[main].main > div.panel > h2[heading] \"TRACE WATERFALL — 0 SPANS\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.7px",
+      "letter-spacing": "0.6px",
       "text-transform": "uppercase",
       "display": "block",
-      "margin": "0px 0px 10px"
+      "margin": "0px 0px 12px"
     },
     "div.shell > main[main].main > div.panel > div.state": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "13px",
       "display": "block",
       "padding": "28px"
     },
     "div.shell > main[main].main > div.grid.cols-2": {
       "display": "grid",
       "grid-template-columns": "1fr 1fr",
-      "gap": "14px"
+      "gap": "16px"
     },
     "div.shell > main[main].main > div.grid.cols-2 > div.panel": {
       "display": "block",
@@ -1568,20 +1542,19 @@
       "border-bottom": "1px solid rgb(36, 45, 54)",
       "border-left": "1px solid rgb(36, 45, 54)",
       "border-radius": "6px",
-      "padding": "14px 16px"
+      "padding": "16px"
     },
     "div.shell > main[main].main > div.grid.cols-2 > div.panel > h2[heading] \"LOGS (0)\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.7px",
+      "letter-spacing": "0.6px",
       "text-transform": "uppercase",
       "display": "block",
-      "margin": "0px 0px 10px"
+      "margin": "0px 0px 12px"
     },
     "div.shell > main[main].main > div.grid.cols-2 > div.panel > div.state": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "13px",
       "display": "block",
       "padding": "28px"
     },
@@ -1593,20 +1566,19 @@
       "border-bottom": "1px solid rgb(36, 45, 54)",
       "border-left": "1px solid rgb(36, 45, 54)",
       "border-radius": "6px",
-      "padding": "14px 16px"
+      "padding": "16px"
     },
     "div.shell > main[main].main > div.grid.cols-2 > div.panel #2 > h2[heading] \"METRIC POINTS (0)\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.7px",
+      "letter-spacing": "0.6px",
       "text-transform": "uppercase",
       "display": "block",
-      "margin": "0px 0px 10px"
+      "margin": "0px 0px 12px"
     },
     "div.shell > main[main].main > div.grid.cols-2 > div.panel #2 > div.state": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "13px",
       "display": "block",
       "padding": "28px"
     },
