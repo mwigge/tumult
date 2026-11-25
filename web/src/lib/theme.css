@@ -212,6 +212,37 @@ table.data tr.clickable:hover {
     background: var(--accent-dim);
     color: #fff;
 }
+/* The small look of Segmented.svelte and Tabs.svelte: the views of the
+   Scores page and the value of the DORA heatmap. */
+.views {
+    display: flex;
+    margin-left: var(--space-3);
+}
+.views button,
+.toggle button {
+    background: var(--bg-raised);
+    color: var(--text-dim);
+    border: var(--border-width-sm) solid var(--border-strong);
+    padding: 3px var(--space-2-5);
+    font: inherit;
+    font-size: var(--font-size-xs);
+    cursor: pointer;
+}
+.views button:first-child,
+.toggle button:first-child {
+    border-radius: var(--radius-md) 0 0 var(--radius-md);
+}
+.views button:last-child,
+.toggle button:last-child {
+    border-radius: 0 var(--radius-md) var(--radius-md) 0;
+    border-left: none;
+}
+.views button.on,
+.toggle button.on {
+    color: var(--text);
+    background: var(--bg-hover);
+    border-color: var(--accent);
+}
 select,
 textarea,
 input[type='text'],

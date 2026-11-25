@@ -4,6 +4,7 @@
     // register does not hold it, so the page shows what the URL asks for.
     import { PERIOD_DAYS } from '#lib/dr.js';
     import type { DrFilters } from '#lib/dr.js';
+    import Segmented from './Segmented.svelte';
 
     let {
         filters,
@@ -22,6 +23,10 @@
         '1y': '1 year',
         '3y': '3 years',
     };
+    const PERIODS = Object.keys(PERIOD_DAYS).map((value) => ({
+        value,
+        label: PERIOD_LABEL[value],
+    }));
     const choices = (values: string[], chosen: string) =>
         chosen && !values.includes(chosen) ? [...values, chosen].sort() : values;
 </script>
@@ -47,15 +52,12 @@
             <option value={environment}>{environment}</option>
         {/each}
     </select>
-    <div class="seg" role="group" aria-label="Period">
-        {#each Object.keys(PERIOD_DAYS) as period (period)}
-            <button
-                class:active={filters.period === period}
-                aria-pressed={filters.period === period}
-                onclick={() => onchange('period', period)}>{PERIOD_LABEL[period]}</button
-            >
-        {/each}
-    </div>
+    <Segmented
+        label="Period"
+        options={PERIODS}
+        value={filters.period}
+        onchange={(period) => onchange('period', period)}
+    />
 </div>
 
 <style>

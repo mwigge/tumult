@@ -12,6 +12,7 @@
     import { api } from '#lib/api.js';
     import type { StarEdge, StarKind, StarMap, StarNode } from '#lib/types.js';
     import RangeSwitch from '#lib/components/RangeSwitch.svelte';
+    import Segmented from '#lib/components/Segmented.svelte';
     import EChart from '#lib/components/EChart.svelte';
     import StarDrawer from '#lib/components/StarDrawer.svelte';
     import { chartTheme, chartTokens } from '#lib/echarts.js';
@@ -292,13 +293,12 @@
         {loading && map ? '· loading' : ''}
     </span>
     <div class="controls">
-        <div class="seg" role="group" aria-label="lens">
-            {#each LENSES as l (l)}
-                <button class:active={lens === l} onclick={() => setParams({ lens: l })}>
-                    {l}
-                </button>
-            {/each}
-        </div>
+        <Segmented
+            label="lens"
+            options={LENSES}
+            value={lens}
+            onchange={(l) => setParams({ lens: l })}
+        />
         <select
             aria-label="environment"
             value={env}

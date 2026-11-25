@@ -37,6 +37,7 @@
     import DoraScenarios from './DoraScenarios.svelte';
     import EChart from './EChart.svelte';
     import ScoreNumber from './ScoreNumber.svelte';
+    import Segmented from './Segmented.svelte';
 
     let { lei, onlei }: { lei: string; onlei: (lei: string) => void } = $props();
 
@@ -44,6 +45,10 @@
     let maturity = $state<MaturityReport | null>(null);
     let error = $state<string | null>(null);
     let mode = $state<HeatmapMode>('coverage');
+    const HEATMAP_VALUES: { value: HeatmapMode; label: string }[] = [
+        { value: 'coverage', label: 'Coverage' },
+        { value: 'status', label: 'Evidence status' },
+    ];
     /** The row whose evidence the drawer shows. */
     let opened = $state<DoraExpectation | null>(null);
 
@@ -187,18 +192,14 @@
         <section class="panel" data-testid="dora-heatmap">
             <div class="panel-head">
                 <h2>Articles × {report.by === 'org' ? 'org units' : 'functions'}</h2>
-                <div class="toggle" role="group" aria-label="heatmap value">
-                    <button
-                        class:on={mode === 'coverage'}
-                        aria-pressed={mode === 'coverage'}
-                        onclick={() => (mode = 'coverage')}>Coverage</button
-                    >
-                    <button
-                        class:on={mode === 'status'}
-                        aria-pressed={mode === 'status'}
-                        onclick={() => (mode = 'status')}>Evidence status</button
-                    >
-                </div>
+                <Segmented
+                    label="heatmap value"
+                    class="toggle"
+                    selectedClass="on"
+                    options={HEATMAP_VALUES}
+                    value={mode}
+                    onchange={(next) => (mode = next)}
+                />
             </div>
             {#if report.rows.length === 0 || report.articles.length === 0}
                 <div class="state">
@@ -641,27 +642,6 @@
         align-items: center;
         justify-content: space-between;
         gap: var(--space-3);
-    }
-    .toggle button {
-        background: var(--bg-raised);
-        color: var(--text-dim);
-        border: var(--border-width-sm) solid var(--border-strong);
-        padding: 3px var(--space-2-5);
-        font: inherit;
-        font-size: var(--font-size-xs);
-        cursor: pointer;
-    }
-    .toggle button:first-child {
-        border-radius: var(--radius-md) 0 0 var(--radius-md);
-    }
-    .toggle button:last-child {
-        border-radius: 0 var(--radius-md) var(--radius-md) 0;
-        border-left: none;
-    }
-    .toggle button.on {
-        color: var(--text);
-        background: var(--bg-hover);
-        border-color: var(--accent);
     }
     .link {
         background: none;

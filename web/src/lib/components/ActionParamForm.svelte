@@ -25,6 +25,12 @@
 
 <script lang="ts">
     import type { CatalogAction } from '#lib/types.js';
+    import Segmented from './Segmented.svelte';
+
+    const PROBE_KINDS = [
+        { value: 'exec', label: 'Command' },
+        { value: 'http', label: 'HTTP URL' },
+    ] as const;
 
     let { action, form = $bindable() }: { action: CatalogAction; form: AuthorForm } = $props();
 </script>
@@ -60,14 +66,12 @@
 {/if}
 
 <h3>Steady-state probe</h3>
-<div class="seg" role="group" aria-label="probe kind">
-    <button class:active={form.probeKind === 'exec'} onclick={() => (form.probeKind = 'exec')}>
-        Command
-    </button>
-    <button class:active={form.probeKind === 'http'} onclick={() => (form.probeKind = 'http')}>
-        HTTP URL
-    </button>
-</div>
+<Segmented
+    label="probe kind"
+    options={PROBE_KINDS}
+    value={form.probeKind}
+    onchange={(kind) => (form.probeKind = kind)}
+/>
 <div class="grid cols-2" style="margin-top: var(--space-2-5)">
     {#if form.probeKind === 'exec'}
         <label>

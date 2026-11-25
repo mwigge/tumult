@@ -10,7 +10,6 @@ src/lib/components/DoraEvidence.svelte spacing 3px
 src/lib/components/DoraEvidence.svelte colour rgb(0 0 0 / 25%)
 src/lib/components/DoraNotices.svelte border-width 3px
 src/lib/components/DoraScore.svelte spacing 3px
-src/lib/components/DoraScore.svelte spacing 3px
 src/lib/components/DrEmpty.svelte font-size 15px
 src/lib/components/DrEmpty.svelte spacing 20px
 src/lib/components/DrRecoveryChart.svelte spacing 20px
@@ -43,6 +42,7 @@ src/lib/theme.css spacing 1px
 src/lib/theme.css spacing 1px
 src/lib/theme.css spacing 26px
 src/lib/theme.css spacing 28px
+src/lib/theme.css spacing 3px
 src/lib/theme.css spacing 3px
 src/lib/theme.css spacing 5px
 src/lib/theme.css spacing 5px
@@ -78,7 +78,6 @@ src/routes/resilience/+page.svelte spacing 9px
 src/routes/schedules/+page.svelte spacing 5px
 src/routes/scores/+page.svelte font-size 18px
 src/routes/scores/+page.svelte font-weight 500
-src/routes/scores/+page.svelte spacing 3px
 src/routes/starmap/+page.svelte spacing 3px
 src/routes/starmap/+page.svelte radius 50%
 src/routes/starmap/+page.svelte radius 50%

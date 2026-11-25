@@ -2,6 +2,7 @@
     import { api, fmtAgo, fmtTs, shortId } from '#lib/api.js';
     import type { RunEvent } from '#lib/types.js';
     import Badge from '#lib/components/Badge.svelte';
+    import Segmented from '#lib/components/Segmented.svelte';
 
     // Event-type filter: '' = everything, otherwise one audit event name.
     const FILTERS: { value: string; label: string }[] = [
@@ -50,13 +51,12 @@
     <h1>Events</h1>
     <span class="sub">{rows ? `${rows.length} recent` : 'run audit trail across all runs'}</span>
     <div class="controls">
-        <div class="seg">
-            {#each FILTERS as f (f.value)}
-                <button class:active={filter === f.value} onclick={() => (filter = f.value)}>
-                    {f.label}
-                </button>
-            {/each}
-        </div>
+        <Segmented
+            label="event kind"
+            options={FILTERS}
+            value={filter}
+            onchange={(f) => (filter = f)}
+        />
     </div>
 </div>
 

@@ -4,6 +4,7 @@
     import { ACTIVE_RUN_STATES, api, fmtAgo, fmtDuration, fmtTs, shortId } from '#lib/api.js';
     import type { MeResponse, RunRow } from '#lib/types.js';
     import Badge from '#lib/components/Badge.svelte';
+    import Segmented from '#lib/components/Segmented.svelte';
     import StatusBadge from '#lib/components/StatusBadge.svelte';
     import { runTimeNs, runWaitNs } from '#lib/duration.js';
 
@@ -113,13 +114,12 @@
         >{shown ? `${shown.length} run${shown.length === 1 ? '' : 's'}` : 'newest first'}</span
     >
     <div class="controls">
-        <div class="seg">
-            {#each FILTERS as f (f)}
-                <button class:active={filter === f} onclick={() => (filter = f)}>
-                    {f === '' ? 'all' : f}
-                </button>
-            {/each}
-        </div>
+        <Segmented
+            label="run state"
+            options={FILTERS.map((f) => ({ value: f, label: f === '' ? 'all' : f }))}
+            value={filter}
+            onchange={(f) => (filter = f)}
+        />
         {#if canRun}
             {#if activeCount > 0}
                 <button class:danger={haltArmed} class="btn halt" onclick={halt} disabled={halting}>
