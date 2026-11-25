@@ -62,6 +62,10 @@ design tokens in `tokens/`, in the DTCG 2025.10 format:
   spacing, spacing, radii, border widths and layers (`z-overlay`).
   Spacing is on a 4 px scale: `space-2` is 8 px, and the half step
   `space-1-5` is 6 px.
+- `docs.tokens.json`: the colours of the docs site and its landing page,
+  under `docs`. Most name a light role; a few are their own, such as the
+  copper of the logo and the darker code colours. The GameDay terminal
+  of the landing page names the dark roles, as it is dark on purpose.
 - `tumult.resolver.json`: the sets and the two themes. Dark is the default.
 
 `npm run build:tokens` writes `src/lib/tokens.css`, the custom properties
@@ -69,9 +73,12 @@ the pages use (`--bg`, `--space-2`), and `src/lib/tokens.gen.ts`, the
 colours, font and sizes for the charts: ECharts draws on a canvas and
 cannot read a custom property. It also writes the colours of the CLI HTML
 report, `tumult-cli/src/commands/report/html/tokens.css`: light, and dark
-when the system asks for it. All are committed. A unit test and CI fail
-when they are not what the token files give, so change a token file and
-run the command, never the outputs.
+when the system asks for it. Jekyll builds the docs site and cannot run
+the command, so it also writes the colour variables of the docs theme,
+`docs/_sass/color_schemes/_tumult-tokens.scss`, and the colours of the
+landing page, `docs/assets/css/tokens.css`. All are committed. A unit
+test and CI fail when they are not what the token files give, so change a
+token file and run the command, never the outputs.
 
 Chart code takes these values from `src/lib/chart-theme.ts`. The theme
 it registers sets the axis, grid, legend and tooltip colours and the

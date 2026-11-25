@@ -1,0 +1,23 @@
+// Written by web/scripts/build-tokens.mjs from web/tokens/. Do not edit:
+// change a token file and run `npm run build:tokens` in web/.
+//
+// The colour variables of the docs theme, from the light theme of
+// Krönika. tumult.scss imports them.
+
+$body-background-color: #ffffff;
+$sidebar-color: #f4f6f8;
+$border-color: #e3e8ed;
+$feedback-color: #e9eef2;
+$body-heading-color: #1b2329;
+$body-text-color: #1b2329;
+$nav-child-link-color: #5b6772;
+$search-result-preview-color: #5b6772;
+$link-color: #1f6fb2;
+$btn-primary-color: #1f6fb2;
+$code-background-color: #f4f6f8;
+$grey-dk-000: #5b6772;
+$tumult-code-comment: #5b6772;
+$tumult-code-keyword: #b5352a;
+$tumult-code-string: #0a7550;
+$tumult-code-number: #a74c08;
+$tumult-code-name: #1f6fb2;

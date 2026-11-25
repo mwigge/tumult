@@ -1,4 +1,5 @@
-import { readFileSync } from 'node:fs';
+import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -10,6 +11,10 @@ const WEB = fileURLToPath(new URL('../..', import.meta.url));
 const TOKENS = join(WEB, 'tokens');
 /** The colour block of the CLI report, as a path under web/. */
 const REPORT = '../tumult-cli/src/commands/report/html/tokens.css';
+/** The colour variables of the docs theme, as a path under web/. */
+const DOCS_SCHEME = '../docs/_sass/color_schemes/_tumult-tokens.scss';
+/** The colours of the landing page of the docs site, as a path under web/. */
+const LANDING = '../docs/assets/css/tokens.css';
 
 /** An srgb colour as the DTCG format writes it. */
 const colour = (hex: string) => ({
@@ -190,6 +195,71 @@ describe('build', () => {
         expect(print).toBe('print {\n    :root {\n        --bg: #ffffff;\n    }\n}\n');
         // Only colours: the report has its own type and spacing.
         expect(css).not.toMatch(/--(?:mono|font-|line-height|letter-spacing|space-|radius-|z-)/);
+    });
+
+    it('writes the colour variables of the docs theme from the light theme', () => {
+        const scss = build(TOKENS)[DOCS_SCHEME];
+
+        for (const line of [
+            // The docs page is white, as a light panel is. The sidebar and
+            // the code panel have the colour of the light page.
+            '$body-background-color: #ffffff;',
+            '$sidebar-color: #f4f6f8;',
+            '$code-background-color: #f4f6f8;',
+            '$body-text-color: #1b2329;',
+            '$link-color: #1f6fb2;',
+            // A colour of the docs only: keywords in code, darker than the fail colour.
+            '$tumult-code-keyword: #b5352a;',
+        ])
+            expect(scss).toContain(`\n${line}\n`);
+        // GitHub Pages compiles it with Ruby Sass 3: only comments and plain variables.
+        for (const line of scss.split('\n').filter(Boolean))
+            expect(line).toMatch(/^(?:\/\/.*|\$[a-z0-9-]+: #[0-9a-fA-F]{6};)$/);
+    });
+
+    it('writes the colours of the landing page: light, with a dark terminal', () => {
+        const css = build(TOKENS)[LANDING];
+        const root = css.match(/^:root \{([^}]*)\}/m)?.[1] ?? '';
+
+        for (const property of [
+            '--page: #ffffff;',
+            '--band: #f4f6f8;',
+            '--text: #1b2329;',
+            '--copper: #9a5320;',
+            // The terminal is dark on purpose: it takes the dark theme.
+            '--term-bg: #0b0e11;',
+            '--term-text: #d8dee4;',
+        ])
+            expect(root).toContain(`\n    ${property}\n`);
+        // In Krönika --bg is the grey of the light page, so the landing page
+        // has names of its own for its white page and its grey bands.
+        expect(root).not.toMatch(/--bg(?:-raised)?:/);
+        // One block: the page is light only.
+        expect(css.match(/\{/g)).toHaveLength(1);
+    });
+
+    it('rejects a token of the docs set that is not a colour', () => {
+        const dir = mkdtempSync(join(tmpdir(), 'tokens-'));
+        try {
+            cpSync(TOKENS, dir, { recursive: true });
+            const file = join(dir, 'docs.tokens.json');
+            const docs = JSON.parse(readFileSync(file, 'utf8'));
+            docs.docs.landing.page = { $type: 'dimension', $value: { value: 4, unit: 'px' } };
+            writeFileSync(file, JSON.stringify(docs));
+
+            expect(() => build(dir)).toThrow(
+                'docs.landing.page: a token of the docs set must be a colour',
+            );
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
+    it('keeps the colours of the docs out of the outputs of Krönika', () => {
+        const outputs = build(TOKENS);
+
+        for (const file of ['src/lib/tokens.css', 'src/lib/tokens.gen.ts', REPORT])
+            expect(outputs[file], file).not.toMatch(/docs|copper|--term-|--page|--band/i);
     });
 
     it('writes the committed outputs from the committed token files', () => {
