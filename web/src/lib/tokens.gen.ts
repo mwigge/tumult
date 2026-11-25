@@ -22,30 +22,30 @@ export const tokens = {
             "neutral-dot": "#888888",
             "band": {
                 "good": "#009E73",
-                "fair": "#E69F00",
+                "fair": "#c28600",
                 "poor": "#D55E00"
             },
-            "unscored": "#5b6772",
+            "unscored": "#6f7c87",
             "status": {
                 "none": "#D55E00",
-                "designed": "#E69F00",
-                "existing": "#56B4E9",
+                "designed": "#c28600",
+                "existing": "#1d9ae0",
                 "operating": "#009E73"
             },
             "starmap": {
                 "kind": {
                     "org": "#4C8EDA",
-                    "entity": "#C990C0",
+                    "entity": "#BA82B2",
                     "system": "#7B6CD9",
-                    "component": "#57C7E3",
+                    "component": "#27A1BC",
                     "service": "#2A9D8F",
                     "workload": "#B08D57",
                     "ext": "#6E7B8B",
-                    "def": "#B8A038",
-                    "run": "#9AA5B1",
-                    "slo": "#3B5BA9",
+                    "def": "#AB9328",
+                    "run": "#8B96A2",
+                    "slo": "#4263B1",
                     "article": "#A45EBF",
-                    "gap": "#D9B8A0",
+                    "gap": "#AE8E77",
                     "cluster": "#2F7F9E"
                 },
                 "relation": {
@@ -79,14 +79,16 @@ export const tokens = {
         "bg-hover": "#1c242c",
         "border": "#242d36",
         "border-strong": "#33404c",
+        "border-input": "#616d79",
         "text": "#d8dee4",
         "text-dim": "#8b98a5",
-        "text-faint": "#5b6772",
+        "text-faint": "#7f8c97",
         "ok": "#34d399",
         "warn": "#f59e0b",
-        "fail": "#ef4444",
+        "fail": "#fb504e",
         "accent": "#5eb1ef",
-        "accent-dim": "#2d5d84"
+        "accent-dim": "#3a6a91",
+        "on-accent": "#ffffff"
     },
     "light": {
         "mono": "'SF Mono', 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace",
@@ -106,30 +108,30 @@ export const tokens = {
             "neutral-dot": "#888888",
             "band": {
                 "good": "#009E73",
-                "fair": "#E69F00",
+                "fair": "#c28600",
                 "poor": "#D55E00"
             },
-            "unscored": "#5b6772",
+            "unscored": "#6f7c87",
             "status": {
                 "none": "#D55E00",
-                "designed": "#E69F00",
-                "existing": "#56B4E9",
+                "designed": "#c28600",
+                "existing": "#1d9ae0",
                 "operating": "#009E73"
             },
             "starmap": {
                 "kind": {
                     "org": "#4C8EDA",
-                    "entity": "#C990C0",
+                    "entity": "#BA82B2",
                     "system": "#7B6CD9",
-                    "component": "#57C7E3",
+                    "component": "#27A1BC",
                     "service": "#2A9D8F",
                     "workload": "#B08D57",
                     "ext": "#6E7B8B",
-                    "def": "#B8A038",
-                    "run": "#9AA5B1",
-                    "slo": "#3B5BA9",
+                    "def": "#AB9328",
+                    "run": "#8B96A2",
+                    "slo": "#4263B1",
                     "article": "#A45EBF",
-                    "gap": "#D9B8A0",
+                    "gap": "#AE8E77",
                     "cluster": "#2F7F9E"
                 },
                 "relation": {
@@ -163,13 +165,15 @@ export const tokens = {
         "bg-hover": "#e9eef2",
         "border": "#e3e8ed",
         "border-strong": "#c5ced6",
+        "border-input": "#8d959d",
         "text": "#1b2329",
         "text-dim": "#5b6772",
-        "text-faint": "#8b98a5",
-        "ok": "#0f8a5f",
-        "warn": "#b45309",
-        "fail": "#c0392b",
+        "text-faint": "#616d79",
+        "ok": "#097852",
+        "warn": "#ab4d04",
+        "fail": "#be3729",
         "accent": "#1f6fb2",
-        "accent-dim": "#9cc4e4"
+        "accent-dim": "#4a7ba4",
+        "on-accent": "#ffffff"
     }
 } as const;

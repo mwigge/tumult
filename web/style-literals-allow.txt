@@ -52,8 +52,6 @@ src/lib/theme.css spacing 9px
 src/lib/theme.css spacing 9px
 src/lib/theme.css spacing 9px
 src/lib/theme.css radius 14px
-src/lib/theme.css colour #fff
-src/lib/theme.css colour #fff
 src/routes/+layout.svelte spacing 3px
 src/routes/ask/+page.svelte spacing 11px
 src/routes/ask/+page.svelte spacing 3px

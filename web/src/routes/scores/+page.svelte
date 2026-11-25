@@ -32,6 +32,7 @@
     import TabPanel from '#lib/components/TabPanel.svelte';
     import Tabs from '#lib/components/Tabs.svelte';
     import { withParam } from '#lib/tabs.js';
+    import { onRow } from '#lib/rows.js';
 
     const VIEWS: { value: 'org' | 'dora'; label: string }[] = [
         { value: 'org', label: 'Org scores' },
@@ -76,12 +77,17 @@
         };
     });
 
-    function drill(path: string) {
+    /** The view of the node at `path`, in the range and view of the page. */
+    function nodeHref(path: string): string {
         // eslint-disable-next-line svelte/prefer-svelte-reactivity -- Local calculation; no retained reactive state.
         const params = new URLSearchParams(page.url.searchParams.toString());
         if (path) params.set('node', path);
         else params.delete('node');
-        goto(`?${params}`, { reset: false });
+        return `?${params}`;
+    }
+
+    function drill(path: string) {
+        goto(nodeHref(path), { reset: false });
     }
 
     function setRange(r: string) {
@@ -258,6 +264,7 @@
         {:else}
             <Panel
                 title={`${tree.name} — ${tree.children.length} direct member${tree.children.length === 1 ? '' : 's'}, weakest first`}
+                scroll
             >
                 {#if tree.children.length === 0}
                     <State kind="empty">No members below this node.</State>
@@ -299,10 +306,15 @@
                                 <td>{tree.weakest ?? '—'}</td>
                             </tr>
                             {#each tree.children as c (c.path)}
-                                <tr class="clickable" onclick={() => drill(c.path)}>
+                                <tr class="clickable" onclick={onRow(() => drill(c.path))}>
                                     <td
                                         ><span class="indent">└</span>
-                                        {c.name} <span class="kind">({c.kind})</span></td
+                                        <a
+                                            class="row-link"
+                                            href={nodeHref(c.path)}
+                                            data-sveltekit-reset="false">{c.name}</a
+                                        >
+                                        <span class="kind">({c.kind})</span></td
                                     >
                                     <td class="mono">{fmtScore(c.score)}</td>
                                     <td
@@ -355,6 +367,11 @@
         grid-template-columns: repeat(4, 1fr);
         gap: var(--space-3);
         margin-bottom: var(--space-3);
+    }
+    @media (max-width: 800px) {
+        .cards {
+            grid-template-columns: repeat(2, 1fr);
+        }
     }
     .card .label {
         color: var(--text-dim);

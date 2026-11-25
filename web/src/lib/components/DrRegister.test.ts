@@ -126,7 +126,7 @@ describe('the DR test register', () => {
         expect(textOf(rowOf(html, 'data-target="orders/prod"'))).toContain('4 s target 10 s');
         const catalog = textOf(rowOf(html, 'data-target="catalog/prod"'));
         expect(catalog).toContain('5 min target 15 min');
-        expect(catalog).toContain('75 s target 60 s');
+        expect(catalog).toContain('75 s target 60 s, missed');
         const payments = rowOf(html, 'data-target="payments-db/prod"');
         expect(textOf(payments)).toContain('at least 30.1 s, not recovered target 10 s');
         expect(payments).toMatch(/class="measured[^"]*\balarm"/);

@@ -5,6 +5,7 @@
     import { page } from '$app/state';
     import { goto } from '$app/navigation';
     import State from '#lib/components/State.svelte';
+    import Title from '#lib/components/Title.svelte';
 
     onMount(() => {
         const range = page.url.searchParams.get('range');
@@ -13,5 +14,7 @@
         });
     });
 </script>
+
+<Title name="Topology" />
 
 <State kind="empty">The topology graph is now the <a href="/starmap">Star Map</a>.</State>

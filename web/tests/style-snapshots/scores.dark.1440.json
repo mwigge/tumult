@@ -21,6 +21,10 @@
       "display": "block",
       "background-color": "rgb(11, 14, 17)"
     },
+    "a[link].sr-only.skip-link \"Skip to main content\"": {
+      "color": "rgb(94, 177, 239)",
+      "display": "block"
+    },
     "div.shell": {
       "display": "grid",
       "grid-template-columns": "208px 1fr"
@@ -44,16 +48,16 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > div.brand > div.tag": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-size": "11px",
       "display": "block",
       "margin": "2px 0px 0px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\"": {
       "display": "block",
       "padding": "0px 0px 1px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◧ Overview\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◧ Overview\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "13.5px",
       "display": "flex",
@@ -61,10 +65,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◧ Overview\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◧ Overview\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◎ Resilience\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◎ Resilience\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "13.5px",
       "display": "flex",
@@ -72,10 +76,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◎ Resilience\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◎ Resilience\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◭ Performance\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◭ Performance\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "13.5px",
       "display": "flex",
@@ -83,10 +87,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◭ Performance\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◭ Performance\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link].active \"▦ Scores\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link].active \"▦ Scores\"": {
       "font-size": "13.5px",
       "display": "flex",
       "background-color": "rgb(28, 36, 44)",
@@ -94,10 +98,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link].active \"▦ Scores\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link].active \"▦ Scores\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⚖ DORA\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⚖ DORA\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "13.5px",
       "display": "flex",
@@ -105,10 +109,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⚖ DORA\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⚖ DORA\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⟲ Disaster recovery\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⟲ Disaster recovery\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "13.5px",
       "display": "flex",
@@ -116,10 +120,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⟲ Disaster recovery\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⟲ Disaster recovery\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⚗ Experiments\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⚗ Experiments\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "13.5px",
       "display": "flex",
@@ -127,10 +131,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⚗ Experiments\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⚗ Experiments\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"▶ Runs\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"▶ Runs\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "13.5px",
       "display": "flex",
@@ -138,10 +142,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"▶ Runs\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"▶ Runs\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✚ Author\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✚ Author\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "13.5px",
       "display": "flex",
@@ -149,10 +153,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✚ Author\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✚ Author\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"☷ GameDays\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"☷ GameDays\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "13.5px",
       "display": "flex",
@@ -160,10 +164,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"☷ GameDays\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"☷ GameDays\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✓ Approvals\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✓ Approvals\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "13.5px",
       "display": "flex",
@@ -171,10 +175,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✓ Approvals\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✓ Approvals\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✎ Manual\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✎ Manual\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "13.5px",
       "display": "flex",
@@ -182,10 +186,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✎ Manual\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✎ Manual\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"≣ Logs\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"≣ Logs\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "13.5px",
       "display": "flex",
@@ -193,10 +197,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"≣ Logs\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"≣ Logs\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⌁ Traces\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⌁ Traces\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "13.5px",
       "display": "flex",
@@ -204,10 +208,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⌁ Traces\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⌁ Traces\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"∿ Metrics\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"∿ Metrics\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "13.5px",
       "display": "flex",
@@ -215,10 +219,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"∿ Metrics\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"∿ Metrics\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✳ Star Map\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✳ Star Map\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "13.5px",
       "display": "flex",
@@ -226,10 +230,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✳ Star Map\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✳ Star Map\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✦ Ask\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✦ Ask\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "13.5px",
       "display": "flex",
@@ -237,10 +241,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✦ Ask\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✦ Ask\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"▤ Reports\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"▤ Reports\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "13.5px",
       "display": "flex",
@@ -248,10 +252,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"▤ Reports\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"▤ Reports\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◔ Events\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◔ Events\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "13.5px",
       "display": "flex",
@@ -259,10 +263,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◔ Events\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◔ Events\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⚿ Users\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⚿ Users\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "13.5px",
       "display": "flex",
@@ -270,10 +274,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⚿ Users\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⚿ Users\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"➤ Webhooks\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"➤ Webhooks\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "13.5px",
       "display": "flex",
@@ -281,10 +285,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"➤ Webhooks\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"➤ Webhooks\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"↻ Schedules\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"↻ Schedules\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "13.5px",
       "display": "flex",
@@ -292,7 +296,7 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"↻ Schedules\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"↻ Schedules\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > button[button].theme \"◐ dark\"": {
@@ -386,7 +390,7 @@
       "font-size": "12.5px",
       "line-height": "normal",
       "display": "block",
-      "background-color": "rgb(45, 93, 132)",
+      "background-color": "rgb(58, 106, 145)",
       "border-left": "1px solid rgb(51, 64, 76)",
       "padding": "5px 12px"
     },
@@ -427,7 +431,7 @@
       "margin": "0px 0px 6px"
     },
     "div.shell > main[main].main > div[tabpanel] \"Org scores\" > div.cards > div.panel.card > div.value.mono": {
-      "color": "rgb(230, 159, 0)",
+      "color": "rgb(194, 134, 0)",
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "24px",
       "font-weight": "600",
@@ -439,7 +443,7 @@
       "margin": "0px 6px 0px 0px"
     },
     "div.shell > main[main].main > div[tabpanel] \"Org scores\" > div.cards > div.panel.card > div.hint": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-size": "11.5px",
       "display": "block",
       "margin": "4px 0px 0px"
@@ -463,14 +467,14 @@
       "margin": "0px 0px 6px"
     },
     "div.shell > main[main].main > div[tabpanel] \"Org scores\" > div.cards > div.panel.card #2 > div.value.mono.delta.flat": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "24px",
       "font-weight": "600",
       "display": "block"
     },
     "div.shell > main[main].main > div[tabpanel] \"Org scores\" > div.cards > div.panel.card #2 > div.hint": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-size": "11.5px",
       "display": "block",
       "margin": "4px 0px 0px"
@@ -500,7 +504,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div[tabpanel] \"Org scores\" > div.cards > div.panel.card #3 > div.hint": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-size": "11.5px",
       "display": "block",
       "margin": "4px 0px 0px"
@@ -528,7 +532,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div[tabpanel] \"Org scores\" > div.cards > div.panel.card #4 > div.hint": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-size": "11.5px",
       "display": "block",
       "margin": "4px 0px 0px"

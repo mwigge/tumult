@@ -67,7 +67,7 @@ const SR_ONLY = [
 ];
 const FIELD = [
     'background: var(--bg-raised)',
-    'border: var(--border-width-sm) solid var(--border-strong)',
+    'border: var(--border-width-sm) solid var(--border-input)',
     'color: var(--text)',
     'border-radius: var(--radius-lg)',
     'padding: 5px var(--space-2)',
@@ -232,6 +232,10 @@ function rulesOf(css: string): Rule[] {
     return rules;
 }
 
+/** CSS text without its @media blocks: the rules that hold at every width. */
+const withoutMedia = (css: string) =>
+    css.replace(/@media[^{]*\{(?:[^{}]*\{[^{}]*\})*[^{}]*\}/g, '');
+
 /** The CSS of the <style> blocks of a Svelte file. */
 const styleOf = (svelte: string) =>
     [...svelte.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/g)].map((block) => block[1]).join('\n');
@@ -292,7 +296,8 @@ describe('the scan for copies of a shared rule', () => {
 
 describe('the rules that pages share', () => {
     it('are each written once in theme.css', () => {
-        const rules = rulesOf(read('lib/theme.css'));
+        // A media query may change a part of a rule on a small screen: that is no second rule.
+        const rules = rulesOf(withoutMedia(read('lib/theme.css')));
         const wrong = SHARED.flatMap(({ selector, body }) => {
             const found = rules.filter((rule) => rule.selectors.includes(selector));
             if (found.length !== 1) return [`${selector}: ${found.length} rules in theme.css`];

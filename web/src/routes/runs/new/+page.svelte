@@ -15,6 +15,7 @@
     import PageHeader from '#lib/components/PageHeader.svelte';
     import Panel from '#lib/components/Panel.svelte';
     import State from '#lib/components/State.svelte';
+    import { onRow } from '#lib/rows.js';
 
     let me = $state<MeResponse | null>(null);
     let entries = $state<RegistryEntry[] | null>(null);
@@ -188,7 +189,7 @@
     {/if}
 </PageHeader>
 
-<Panel title="1 · Definition" style="margin-bottom: var(--space-3-5)">
+<Panel title="1 · Definition" style="margin-bottom: var(--space-3-5)" scroll>
     {#if listError}
         <State kind="error">Failed to load the registry: {listError}</State>
     {:else if !entries}
@@ -213,10 +214,16 @@
                     <tr
                         class="clickable"
                         class:selected={selectedId === e.id}
-                        onclick={() => select(e.id)}
+                        onclick={onRow(() => select(e.id))}
                     >
                         <td style="color: var(--accent)">{selectedId === e.id ? '●' : '○'}</td>
-                        <td>{e.name}</td>
+                        <td>
+                            <button
+                                class="row-button"
+                                aria-pressed={selectedId === e.id}
+                                onclick={() => select(e.id)}>{e.name}</button
+                            >
+                        </td>
                         <td class="mono" style="color: var(--text-dim)">{e.id}</td>
                         <td class="mono" style="color: var(--text-dim)"
                             >{shortId(e.content_hash)}</td

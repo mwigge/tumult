@@ -96,6 +96,32 @@ of `src/` that `style-literals-allow.txt` does not hold; use a token instead.
 That list holds each raw value left today by file, kind and value, and the
 lint fails on a line that matches nothing, so the list only shrinks.
 
+## Contrast
+
+Krönika meets the contrast of WCAG 2.2 AA in both themes. Text needs
+4.5:1, and the parts a user needs to see need 3:1.
+`src/lib/contrast.test.ts` checks it from the tokens, and names each pair
+under its bar with its ratio:
+
+- `text`, `text-dim`, `text-faint`, `ok`, `warn`, `fail` and `accent` on
+  `bg`, `bg-raised`, `bg-panel` and `bg-hover`: 4.5:1.
+- Text on the accent fill `accent-dim`, such as a primary button or the
+  chosen segment, is `on-accent`: 4.5:1. The fill: 3:1 on the page and
+  the panel.
+- The edge of a field is `border-input`: 3:1 on its fill and the panel.
+  The focus ring, `accent`: 3:1 on every surface.
+- The text of a badge on its tint: 4.5:1. The tint is mixed with the
+  panel, so it is one colour on every surface.
+- Chart series, bands, DORA statuses and Star Map nodes and relations:
+  3:1 on the panel. The ink on a band, a tile or a cell: 4.5:1. A band
+  colour is text only in the large score of the Scores page.
+- `border` and `border-strong` need no 3:1 (WCAG 1.4.11): they draw panel
+  edges, row lines, chart axes and the edges of buttons that their text
+  names.
+
+The test also fails on text in another colour on the accent fill, and on
+a field edge in another role.
+
 ## Theme
 
 The theme button keeps the choice (`dark`, `light` or `auto`) in
@@ -120,7 +146,21 @@ can allow it. `tests/first-paint.spec.ts` checks the first paint.
   row of a table (`.detail-row`) and `.actions`.
 - Tables: a row header (`th scope="row"` in `table.data`) reads as a cell.
   It wraps, as a cell does.
+- Rows that open: a row that opens on a click (`tr.clickable`) has a
+  link (`.row-link`) or a button (`.row-button`) in the cell that names
+  it, so that the keyboard opens it too. Both look as the text of the
+  cell. A button that opens a row in place says so with `aria-expanded`.
+  `onRow` in `src/lib/rows.ts` is the click handler of the row.
+  `src/lib/keyboard-scan.test.ts` fails on a row with a click handler and
+  no link or button.
 - Forms: `.form`, `.row2` and the list editor `.grid-rows`.
+- Focus: one rule draws the focus ring of a field, and of the heading a
+  drawer gives the focus, when the keyboard moves the focus there
+  (`:focus-visible`). A button and a link keep the ring of the browser.
+  The first Tab stop of a page is `.skip-link`, a link past the
+  navigation to the main content, seen only while it has the focus. The
+  navigation is named "Main" and marks the page it shows with
+  `aria-current`.
 
 A page uses the class and keeps no copy of the rule in its own style
 block. `src/lib/theme-rules.test.ts` fails on a copy, and on a `:global()`
@@ -148,9 +188,20 @@ link back (`.back`), the title, a sub line, and then the badges and the
 controls the page puts in it. `src/lib/page-head.test.ts` fails on a page
 head written by hand.
 
+The title also names the browser tab, as "Runs · Krönika", through
+`Title.svelte`. A page with no head, such as the login page, uses `Title`
+itself. Every field has a name: a `<label>` around it, or an `aria-label`
+where the page has no room for one. `src/lib/names-scan.test.ts` fails on
+a page with no title and on a field with no name.
+
 `src/lib/components/Panel.svelte` is the box of one part of a page, with
 its title in an `h2`. With `variant="meta"` it is the stat tile: the title
-is the small capital name above the value.
+is the small capital name above the value. With `scroll`, a table wider
+than the panel scrolls sideways inside it, and the page does not. A panel
+that a page writes itself as `.panel` takes `data-scroll` for the same.
+
+`src/lib/components/MetaRow.svelte` holds the stat tiles at the head of a
+run, a trace or an experiment: four in a row, two on a small screen.
 
 `src/lib/components/State.svelte` is a part of a page with no data to show:
 
@@ -169,6 +220,26 @@ is the small capital name above the value.
 
 `src/lib/state-scan.test.ts` fails on a `.state` or `.skeleton` written by
 hand, and on a loading block with an inline height.
+
+## Small screens
+
+Krönika works on a phone. Below 900 px the side bar folds behind the
+Menu button of a top bar, and the open menu shows under the top bar:
+
+- The button says whether the menu is open (`aria-expanded`) and names
+  it (`aria-controls`).
+- Escape closes the menu and gives the focus back to the button.
+- A link in the menu closes it.
+
+Wide tables scroll inside their panel, rows of tiles go two in a row,
+and the fields of a `.row2` go one under the other.
+
+The breakpoints have names, in one list at the top of
+`src/lib/theme.css`: `xl` 1200 px, `lg` 1100 px, `md` 900 px and `sm`
+800 px. A media query cannot read a custom property, so each query
+writes its width. `src/lib/breakpoints.test.ts` fails on a query at any
+other width. `tests/phone.spec.ts` opens every page and state of the
+style snapshot at 390 x 844 and fails when one scrolls sideways.
 
 ## Segmented controls and tabs
 
@@ -226,3 +297,6 @@ way: a style with `position: fixed` or a dialog in another file.
   run.
 - A panel names the time window it shows, and says so when it has no data.
 - Filters live in the URL, so a view is a link you can share.
+- Colour is never the only signal: what a colour says, a word or a mark
+  says too, such as "soon" on an approval that lapses within the hour.
+- Headings go down one level at a time, from the h1 of the page.

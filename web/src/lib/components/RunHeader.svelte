@@ -9,6 +9,7 @@
     import Badge from './Badge.svelte';
     import StatusBadge from './StatusBadge.svelte';
     import PageHeader from './PageHeader.svelte';
+    import MetaRow from './MetaRow.svelte';
     import Panel from './Panel.svelte';
     import State from './State.svelte';
 
@@ -89,7 +90,7 @@
     </div>
 {/if}
 
-<div class="grid" style="grid-template-columns: repeat(4, 1fr); margin-bottom: var(--space-3-5)">
+<MetaRow>
     <Panel variant="meta" title="Queued">
         <b>{fmtTs(run.queued_at_ns)} ({fmtAgo(run.queued_at_ns)})</b>
     </Panel>
@@ -139,7 +140,7 @@
         </b>
     </Panel>
     <Panel variant="meta" title="Registry"><b class="mono">{run.registry_id}</b></Panel>
-</div>
+</MetaRow>
 
 <style>
     button.estop {

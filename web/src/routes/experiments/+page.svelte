@@ -11,6 +11,7 @@
     import PageHeader from '#lib/components/PageHeader.svelte';
     import Panel from '#lib/components/Panel.svelte';
     import State from '#lib/components/State.svelte';
+    import { onRow } from '#lib/rows.js';
 
     const filters = $derived({
         range: page.url.searchParams.get('range') ?? '24h',
@@ -65,11 +66,13 @@
     <div class="controls">
         <input
             type="search"
+            aria-label="Search name or id"
             placeholder="search name or id…"
             value={filters.q}
             oninput={(e) => setFilter('q', e.currentTarget.value)}
         />
         <select
+            aria-label="Outcome"
             value={filters.outcome}
             onchange={(e) => setFilter('outcome', e.currentTarget.value)}
         >
@@ -79,19 +82,31 @@
             {/each}
             <option value="incomplete">incomplete</option>
         </select>
-        <select value={filters.fault} onchange={(e) => setFilter('fault', e.currentTarget.value)}>
+        <select
+            aria-label="Fault"
+            value={filters.fault}
+            onchange={(e) => setFilter('fault', e.currentTarget.value)}
+        >
             <option value="">all faults</option>
             {#each dims?.faults ?? [] as f (f)}
                 <option value={f}>{f}</option>
             {/each}
         </select>
-        <select value={filters.target} onchange={(e) => setFilter('target', e.currentTarget.value)}>
+        <select
+            aria-label="Target"
+            value={filters.target}
+            onchange={(e) => setFilter('target', e.currentTarget.value)}
+        >
             <option value="">all targets</option>
             {#each dims?.targets ?? [] as t (t)}
                 <option value={t}>{t}</option>
             {/each}
         </select>
-        <select value={filters.origin} onchange={(e) => setFilter('origin', e.currentTarget.value)}>
+        <select
+            aria-label="Origin"
+            value={filters.origin}
+            onchange={(e) => setFilter('origin', e.currentTarget.value)}
+        >
             <option value="">all origins</option>
             <option value="automated">automated</option>
             <option value="manual">manual</option>
@@ -100,7 +115,7 @@
     </div>
 </PageHeader>
 
-<Panel>
+<Panel scroll>
     {#if error}
         <State kind="error">Failed to load experiments: {error}</State>
     {:else if !rows}
@@ -139,10 +154,12 @@
                             <td class="mono">{row.target_system ?? '—'}</td>
                         </tr>
                     {:else}
-                        <tr class="clickable" onclick={() => goto(`/experiments/${row.id}`)}>
+                        <tr class="clickable" onclick={onRow(() => goto(`/experiments/${row.id}`))}>
                             <td><StatusBadge status={row.status} /></td>
                             <td>
-                                {row.name ?? '—'}
+                                <a class="row-link" href="/experiments/{row.id}"
+                                    >{row.name ?? '—'}</a
+                                >
                                 {#if row.journal_only}
                                     <Badge
                                         tone="neutral"

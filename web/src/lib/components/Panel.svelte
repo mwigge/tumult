@@ -1,7 +1,9 @@
 <script lang="ts">
     // A panel of a page: the box that holds one part, with its title in an
     // h2. The `meta` variant is a stat tile: the title is the small capital
-    // name above the value. The rules are `.panel` in theme.css.
+    // name above the value. With `scroll`, a table wider than the panel
+    // scrolls sideways inside it, so the page does not. The rules are
+    // `.panel` in theme.css.
     import type { Snippet } from 'svelte';
     import type { HTMLAttributes } from 'svelte/elements';
 
@@ -9,6 +11,7 @@
         title,
         variant,
         tag = 'div',
+        scroll = false,
         children,
         ...attributes
     }: {
@@ -16,11 +19,18 @@
         variant?: 'meta';
         /** A `section` for a panel that a heading names. */
         tag?: 'div' | 'section';
+        /** Scroll sideways inside the panel when its table is wider than it. */
+        scroll?: boolean;
         children?: Snippet;
     } & Omit<HTMLAttributes<HTMLElement>, 'class' | 'title'> = $props();
 </script>
 
-<svelte:element this={tag} {...attributes} class={variant ? `panel ${variant}` : 'panel'}>
+<svelte:element
+    this={tag}
+    {...attributes}
+    class={variant ? `panel ${variant}` : 'panel'}
+    data-scroll={scroll ? '' : undefined}
+>
     {#if title !== undefined}
         {#if variant === 'meta'}<span>{title}</span>{:else}<h2>{title}</h2>{/if}
     {/if}

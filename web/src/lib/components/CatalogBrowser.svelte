@@ -4,6 +4,7 @@
     import Badge from './Badge.svelte';
     import Panel from './Panel.svelte';
     import State from './State.svelte';
+    import { onRow } from '#lib/rows.js';
 
     let { domains }: { domains: CatalogDomain[] } = $props();
 
@@ -27,16 +28,19 @@
             .filter((d) => d.actions.length > 0);
     });
 
-    function use(a: CatalogAction) {
-        void goto(
-            `/author/new?plugin=${encodeURIComponent(a.plugin)}&action=${encodeURIComponent(a.name)}`,
-        );
-    }
+    /** The form that authors an experiment with the action `a`. */
+    const formHref = (a: CatalogAction) =>
+        `/author/new?plugin=${encodeURIComponent(a.plugin)}&action=${encodeURIComponent(a.name)}`;
 </script>
 
 <div class="filters">
-    <input type="search" placeholder="Search actions, plugins, descriptions…" bind:value={q} />
-    <select bind:value={domain}>
+    <input
+        type="search"
+        aria-label="Search actions"
+        placeholder="Search actions, plugins, descriptions…"
+        bind:value={q}
+    />
+    <select aria-label="Domain" bind:value={domain}>
         <option value="">All domains</option>
         {#each domains as d (d.domain)}
             <option value={d.domain}>{d.label}</option>
@@ -48,7 +52,7 @@
     <State kind="empty">No catalog actions match.</State>
 {:else}
     {#each filtered as d (d.domain)}
-        <Panel style="margin-bottom: var(--space-3-5)">
+        <Panel style="margin-bottom: var(--space-3-5)" scroll>
             <h2>{d.label} <span class="count">({d.actions.length})</span></h2>
             <table class="data">
                 <thead>
@@ -56,8 +60,9 @@
                 </thead>
                 <tbody>
                     {#each d.actions as a (`${a.plugin}::${a.name}`)}
-                        <tr class="clickable" onclick={() => use(a)}>
-                            <td class="mono">{a.name}</td>
+                        <tr class="clickable" onclick={onRow(() => void goto(formHref(a)))}>
+                            <td class="mono"><a class="row-link" href={formHref(a)}>{a.name}</a></td
+                            >
                             <td><Badge kind="catalog" value={a.kind} /></td>
                             <td style="color: var(--text-dim)">{a.description}</td>
                             <td style="color: var(--accent)">Use →</td>

@@ -21,6 +21,10 @@
       "display": "block",
       "background-color": "rgb(11, 14, 17)"
     },
+    "a[link].sr-only.skip-link \"Skip to main content\"": {
+      "color": "rgb(94, 177, 239)",
+      "display": "block"
+    },
     "div.shell": {
       "display": "grid",
       "grid-template-columns": "208px 1fr"
@@ -44,16 +48,16 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > div.brand > div.tag": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-size": "11px",
       "display": "block",
       "margin": "2px 0px 0px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\"": {
       "display": "block",
       "padding": "0px 0px 1px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◧ Overview\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◧ Overview\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "13.5px",
       "display": "flex",
@@ -61,10 +65,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◧ Overview\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◧ Overview\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◎ Resilience\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◎ Resilience\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "13.5px",
       "display": "flex",
@@ -72,10 +76,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◎ Resilience\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◎ Resilience\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◭ Performance\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◭ Performance\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "13.5px",
       "display": "flex",
@@ -83,10 +87,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◭ Performance\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◭ Performance\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"▦ Scores\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"▦ Scores\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "13.5px",
       "display": "flex",
@@ -94,10 +98,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"▦ Scores\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"▦ Scores\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⚖ DORA\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⚖ DORA\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "13.5px",
       "display": "flex",
@@ -105,10 +109,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⚖ DORA\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⚖ DORA\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⟲ Disaster recovery\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⟲ Disaster recovery\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "13.5px",
       "display": "flex",
@@ -116,10 +120,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⟲ Disaster recovery\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⟲ Disaster recovery\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⚗ Experiments\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⚗ Experiments\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "13.5px",
       "display": "flex",
@@ -127,10 +131,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⚗ Experiments\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⚗ Experiments\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"▶ Runs\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"▶ Runs\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "13.5px",
       "display": "flex",
@@ -138,10 +142,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"▶ Runs\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"▶ Runs\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✚ Author\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✚ Author\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "13.5px",
       "display": "flex",
@@ -149,10 +153,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✚ Author\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✚ Author\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"☷ GameDays\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"☷ GameDays\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "13.5px",
       "display": "flex",
@@ -160,10 +164,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"☷ GameDays\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"☷ GameDays\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✓ Approvals\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✓ Approvals\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "13.5px",
       "display": "flex",
@@ -171,10 +175,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✓ Approvals\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✓ Approvals\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link].active \"✎ Manual\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link].active \"✎ Manual\"": {
       "font-size": "13.5px",
       "display": "flex",
       "background-color": "rgb(28, 36, 44)",
@@ -182,10 +186,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link].active \"✎ Manual\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link].active \"✎ Manual\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"≣ Logs\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"≣ Logs\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "13.5px",
       "display": "flex",
@@ -193,10 +197,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"≣ Logs\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"≣ Logs\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⌁ Traces\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⌁ Traces\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "13.5px",
       "display": "flex",
@@ -204,10 +208,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⌁ Traces\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⌁ Traces\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"∿ Metrics\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"∿ Metrics\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "13.5px",
       "display": "flex",
@@ -215,10 +219,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"∿ Metrics\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"∿ Metrics\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✳ Star Map\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✳ Star Map\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "13.5px",
       "display": "flex",
@@ -226,10 +230,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✳ Star Map\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✳ Star Map\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✦ Ask\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✦ Ask\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "13.5px",
       "display": "flex",
@@ -237,10 +241,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✦ Ask\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✦ Ask\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"▤ Reports\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"▤ Reports\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "13.5px",
       "display": "flex",
@@ -248,10 +252,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"▤ Reports\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"▤ Reports\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◔ Events\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◔ Events\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "13.5px",
       "display": "flex",
@@ -259,10 +263,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◔ Events\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◔ Events\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⚿ Users\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⚿ Users\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "13.5px",
       "display": "flex",
@@ -270,10 +274,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⚿ Users\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⚿ Users\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"➤ Webhooks\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"➤ Webhooks\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "13.5px",
       "display": "flex",
@@ -281,10 +285,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"➤ Webhooks\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"➤ Webhooks\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"↻ Schedules\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"↻ Schedules\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "13.5px",
       "display": "flex",
@@ -292,7 +296,7 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"↻ Schedules\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"↻ Schedules\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > button[button].theme \"◐ dark\"": {
@@ -347,10 +351,10 @@
       "line-height": "normal",
       "display": "block",
       "background-color": "rgb(17, 22, 27)",
-      "border-top": "1px solid rgb(51, 64, 76)",
-      "border-right": "1px solid rgb(51, 64, 76)",
-      "border-bottom": "1px solid rgb(51, 64, 76)",
-      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-top": "1px solid rgb(97, 109, 121)",
+      "border-right": "1px solid rgb(97, 109, 121)",
+      "border-bottom": "1px solid rgb(97, 109, 121)",
+      "border-left": "1px solid rgb(97, 109, 121)",
       "border-radius": "5px",
       "padding": "6px 9px"
     },
@@ -385,7 +389,7 @@
       "font-size": "12.5px",
       "line-height": "normal",
       "display": "block",
-      "background-color": "rgb(45, 93, 132)",
+      "background-color": "rgb(58, 106, 145)",
       "border-left": "1px solid rgb(51, 64, 76)",
       "padding": "5px 12px"
     },
@@ -529,7 +533,7 @@
       "font-weight": "600",
       "letter-spacing": "0.3px",
       "display": "inline-block",
-      "background-color": "color(srgb 0.960784 0.619608 0.0431373 / 0.14)",
+      "background-color": "color(srgb 0.205333 0.177804 0.117333)",
       "border-radius": "10px",
       "padding": "1px 9px"
     },
@@ -537,6 +541,9 @@
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
       "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].clickable > td[cell] \"exercise rec-1\" > button[button].row-button \"exercise rec-1\"": {
+      "display": "inline-block"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].clickable > td[cell] \"failover\"": {
       "display": "table-cell",
@@ -564,7 +571,7 @@
       "font-weight": "600",
       "letter-spacing": "0.3px",
       "display": "inline-block",
-      "background-color": "color(srgb 0.203922 0.827451 0.6 / 0.14)",
+      "background-color": "color(srgb 0.0993726 0.206902 0.195294)",
       "border-radius": "10px",
       "padding": "1px 9px"
     },
@@ -697,7 +704,7 @@
       "font-weight": "600",
       "letter-spacing": "0.3px",
       "display": "inline-block",
-      "background-color": "color(srgb 0.203922 0.827451 0.6 / 0.14)",
+      "background-color": "color(srgb 0.0993726 0.206902 0.195294)",
       "border-radius": "10px",
       "padding": "1px 9px"
     },
@@ -730,7 +737,7 @@
       "font-weight": "600",
       "letter-spacing": "0.3px",
       "display": "inline-block",
-      "background-color": "color(srgb 0.203922 0.827451 0.6 / 0.14)",
+      "background-color": "color(srgb 0.0993726 0.206902 0.195294)",
       "border-radius": "10px",
       "padding": "1px 9px"
     },
@@ -765,7 +772,7 @@
       "display": "inline"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > p[paragraph].line #3 > span.dim": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-size": "12px",
       "display": "inline"
     },
@@ -804,7 +811,7 @@
       "margin": "0px 0px 4px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > ul[list].plain > li[listitem] > span.dim": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-size": "12px",
       "display": "inline"
     },
@@ -841,7 +848,7 @@
       "display": "inline"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > ul[list].plain #2 > li[listitem] > span.dim": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-size": "12px",
       "display": "inline"
     },
@@ -871,23 +878,23 @@
       "font-weight": "600",
       "letter-spacing": "0.3px",
       "display": "inline-block",
-      "background-color": "color(srgb 0.203922 0.827451 0.6 / 0.14)",
+      "background-color": "color(srgb 0.0993726 0.206902 0.195294)",
       "border-radius": "10px",
       "padding": "1px 9px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > ol[list].steps > li[listitem] > span.dim": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-size": "12px",
       "display": "inline"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > ol[list].steps > li[listitem] > div.dim.mono": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "12px",
       "display": "block"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > ol[list].steps > li[listitem] > div.dim": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-size": "12px",
       "display": "block"
     },
@@ -896,17 +903,17 @@
       "margin": "0px 0px 4px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > ol[list].steps > li[listitem] #2 > span.badge.fail": {
-      "color": "rgb(239, 68, 68)",
+      "color": "rgb(251, 80, 78)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
       "display": "inline-block",
-      "background-color": "color(srgb 0.937255 0.266667 0.266667 / 0.14)",
+      "background-color": "color(srgb 0.208627 0.13498 0.154118)",
       "border-radius": "10px",
       "padding": "1px 9px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > ol[list].steps > li[listitem] #2 > div.dim.mono": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "12px",
       "display": "block"
@@ -929,17 +936,17 @@
       "margin": "0px 0px 4px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > ul[list].plain #3 > li[listitem] > span.dim": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-size": "12px",
       "display": "inline"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > ul[list].plain #3 > li[listitem] > span.dim #2": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-size": "12px",
       "display": "inline"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > ul[list].plain #3 > li[listitem] > span.dim #3": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-size": "12px",
       "display": "inline"
     },
@@ -964,7 +971,7 @@
       "padding": "1px 9px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > ul[list].plain #3 > li[listitem] > div.dim": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-size": "12px",
       "display": "block"
     },
@@ -1009,17 +1016,17 @@
       "font-weight": "600",
       "letter-spacing": "0.3px",
       "display": "inline-block",
-      "background-color": "color(srgb 0.203922 0.827451 0.6 / 0.14)",
+      "background-color": "color(srgb 0.0993726 0.206902 0.195294)",
       "border-radius": "10px",
       "padding": "1px 9px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > ol[list].signoffs > li[listitem] > span.dim": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-size": "12px",
       "display": "inline"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > ol[list].signoffs > li[listitem] > span.dim #2": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-size": "12px",
       "display": "inline"
     },
@@ -1040,40 +1047,41 @@
       "line-height": "normal",
       "display": "block",
       "background-color": "rgb(17, 22, 27)",
-      "border-top": "1px solid rgb(51, 64, 76)",
-      "border-right": "1px solid rgb(51, 64, 76)",
-      "border-bottom": "1px solid rgb(51, 64, 76)",
-      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-top": "1px solid rgb(97, 109, 121)",
+      "border-right": "1px solid rgb(97, 109, 121)",
+      "border-bottom": "1px solid rgb(97, 109, 121)",
+      "border-left": "1px solid rgb(97, 109, 121)",
       "border-radius": "5px",
       "padding": "6px 9px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > div.sign > button[button].btn.primary \"Approve\"": {
+      "color": "rgb(255, 255, 255)",
       "font-family": "Arial",
       "line-height": "normal",
       "display": "block",
-      "background-color": "rgb(45, 93, 132)",
-      "border-top": "1px solid rgb(45, 93, 132)",
-      "border-right": "1px solid rgb(45, 93, 132)",
-      "border-bottom": "1px solid rgb(45, 93, 132)",
-      "border-left": "1px solid rgb(45, 93, 132)",
+      "background-color": "rgb(58, 106, 145)",
+      "border-top": "1px solid rgb(58, 106, 145)",
+      "border-right": "1px solid rgb(58, 106, 145)",
+      "border-bottom": "1px solid rgb(58, 106, 145)",
+      "border-left": "1px solid rgb(58, 106, 145)",
       "border-radius": "6px",
       "padding": "6px 14px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > div.sign > button[button].btn.danger \"Reject\"": {
-      "color": "rgb(239, 68, 68)",
+      "color": "rgb(251, 80, 78)",
       "font-family": "Arial",
       "line-height": "normal",
       "display": "block",
       "background-color": "rgb(28, 36, 44)",
-      "border-top": "1px solid rgb(239, 68, 68)",
-      "border-right": "1px solid rgb(239, 68, 68)",
-      "border-bottom": "1px solid rgb(239, 68, 68)",
-      "border-left": "1px solid rgb(239, 68, 68)",
+      "border-top": "1px solid rgb(251, 80, 78)",
+      "border-right": "1px solid rgb(251, 80, 78)",
+      "border-bottom": "1px solid rgb(251, 80, 78)",
+      "border-left": "1px solid rgb(251, 80, 78)",
       "border-radius": "6px",
       "padding": "6px 14px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > p[paragraph].dim": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-size": "12px",
       "display": "block",
       "margin": "12px 0px"
@@ -1101,7 +1109,7 @@
       "display": "inline"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > ol[list].audit > li[listitem] > span.dim": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-size": "12px",
       "display": "inline"
     },
@@ -1115,12 +1123,12 @@
       "display": "inline"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > ol[list].audit > li[listitem] #2 > span.dim": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-size": "12px",
       "display": "inline"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > div.dim.hash": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "12px",
       "display": "block",
@@ -1134,20 +1142,20 @@
       "line-height": "normal",
       "display": "inline-block",
       "background-color": "rgb(28, 36, 44)",
-      "border-top": "1px solid rgb(45, 93, 132)",
-      "border-right": "1px solid rgb(45, 93, 132)",
-      "border-bottom": "1px solid rgb(45, 93, 132)",
-      "border-left": "1px solid rgb(45, 93, 132)",
+      "border-top": "1px solid rgb(58, 106, 145)",
+      "border-right": "1px solid rgb(58, 106, 145)",
+      "border-bottom": "1px solid rgb(58, 106, 145)",
+      "border-left": "1px solid rgb(58, 106, 145)",
       "border-radius": "6px",
       "padding": "6px 14px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > div.verify > div[status].verdict.bad": {
       "display": "block",
-      "background-color": "color(srgb 0.937255 0.266667 0.266667 / 0.08)",
-      "border-top": "1px solid rgb(239, 68, 68)",
-      "border-right": "1px solid rgb(239, 68, 68)",
-      "border-bottom": "1px solid rgb(239, 68, 68)",
-      "border-left": "1px solid rgb(239, 68, 68)",
+      "background-color": "color(srgb 0.984314 0.313726 0.305882 / 0.08)",
+      "border-top": "1px solid rgb(251, 80, 78)",
+      "border-right": "1px solid rgb(251, 80, 78)",
+      "border-bottom": "1px solid rgb(251, 80, 78)",
+      "border-left": "1px solid rgb(251, 80, 78)",
       "border-radius": "6px",
       "padding": "8px 10px",
       "margin": "8px 0px 0px"
@@ -1157,7 +1165,7 @@
       "margin": "0px 0px 4px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > div.verify > div[status].verdict.bad > p[paragraph] > span.dim": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-size": "12px",
       "display": "inline"
     },
@@ -1276,7 +1284,7 @@
       "padding": "1px 9px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > table[table].data.evidence > tr[row] > td[cell] \"file report added by alice · Nov 13, 08:…\" > div.dim": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-size": "12px",
       "display": "block"
     },
@@ -1340,7 +1348,7 @@
       "display": "inline"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > table[table].data.evidence > tr[row] #2 > td[cell] \"link ticket added by bob · Nov 13, 09:00…\" > div.dim": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-size": "12px",
       "display": "block"
     },
@@ -1383,10 +1391,10 @@
       "line-height": "normal",
       "display": "block",
       "background-color": "rgb(17, 22, 27)",
-      "border-top": "1px solid rgb(51, 64, 76)",
-      "border-right": "1px solid rgb(51, 64, 76)",
-      "border-bottom": "1px solid rgb(51, 64, 76)",
-      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-top": "1px solid rgb(97, 109, 121)",
+      "border-right": "1px solid rgb(97, 109, 121)",
+      "border-bottom": "1px solid rgb(97, 109, 121)",
+      "border-left": "1px solid rgb(97, 109, 121)",
       "border-radius": "5px",
       "padding": "5px 8px"
     },
@@ -1404,7 +1412,7 @@
       "padding": "6px 14px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > div.attach > span.dim": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-size": "12px",
       "display": "block"
     },
@@ -1426,10 +1434,10 @@
       "line-height": "normal",
       "display": "block",
       "background-color": "rgb(17, 22, 27)",
-      "border-top": "1px solid rgb(51, 64, 76)",
-      "border-right": "1px solid rgb(51, 64, 76)",
-      "border-bottom": "1px solid rgb(51, 64, 76)",
-      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-top": "1px solid rgb(97, 109, 121)",
+      "border-right": "1px solid rgb(97, 109, 121)",
+      "border-bottom": "1px solid rgb(97, 109, 121)",
+      "border-left": "1px solid rgb(97, 109, 121)",
       "border-radius": "5px",
       "padding": "6px 9px"
     },
@@ -1446,10 +1454,10 @@
       "line-height": "normal",
       "display": "block",
       "background-color": "rgb(17, 22, 27)",
-      "border-top": "1px solid rgb(51, 64, 76)",
-      "border-right": "1px solid rgb(51, 64, 76)",
-      "border-bottom": "1px solid rgb(51, 64, 76)",
-      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-top": "1px solid rgb(97, 109, 121)",
+      "border-right": "1px solid rgb(97, 109, 121)",
+      "border-bottom": "1px solid rgb(97, 109, 121)",
+      "border-left": "1px solid rgb(97, 109, 121)",
       "border-radius": "5px",
       "padding": "6px 9px"
     },
@@ -1466,10 +1474,10 @@
       "line-height": "normal",
       "display": "block",
       "background-color": "rgb(17, 22, 27)",
-      "border-top": "1px solid rgb(51, 64, 76)",
-      "border-right": "1px solid rgb(51, 64, 76)",
-      "border-bottom": "1px solid rgb(51, 64, 76)",
-      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-top": "1px solid rgb(97, 109, 121)",
+      "border-right": "1px solid rgb(97, 109, 121)",
+      "border-bottom": "1px solid rgb(97, 109, 121)",
+      "border-left": "1px solid rgb(97, 109, 121)",
       "border-radius": "5px",
       "padding": "6px 9px"
     },
@@ -1495,7 +1503,7 @@
       "margin": "10px 0px 6px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > p[paragraph].dim #2": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-size": "12px",
       "display": "block",
       "margin": "12px 0px"
@@ -1523,6 +1531,9 @@
       "border-bottom": "1px solid rgb(36, 45, 54)",
       "padding": "7px 10px"
     },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].clickable #2 > td[cell] \"exercise rec-2\" > button[button].row-button \"exercise rec-2\"": {
+      "display": "inline-block"
+    },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].clickable #2 > td[cell] \"failover\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
@@ -1549,7 +1560,7 @@
       "font-weight": "600",
       "letter-spacing": "0.3px",
       "display": "inline-block",
-      "background-color": "color(srgb 0.960784 0.619608 0.0431373 / 0.14)",
+      "background-color": "color(srgb 0.205333 0.177804 0.117333)",
       "border-radius": "10px",
       "padding": "1px 9px"
     },
@@ -1595,13 +1606,16 @@
       "font-weight": "600",
       "letter-spacing": "0.3px",
       "display": "inline-block",
-      "background-color": "color(srgb 0.203922 0.827451 0.6 / 0.14)",
+      "background-color": "color(srgb 0.0993726 0.206902 0.195294)",
       "border-radius": "10px",
       "padding": "1px 9px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].clickable #3 > td[cell] \"exercise rec-3\"": {
       "display": "table-cell",
       "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].clickable #3 > td[cell] \"exercise rec-3\" > button[button].row-button \"exercise rec-3\"": {
+      "display": "inline-block"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].clickable #3 > td[cell] \"failover\"": {
       "display": "table-cell",
@@ -1622,12 +1636,12 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].clickable #3 > td[cell] \"failed\" > span.badge.fail": {
-      "color": "rgb(239, 68, 68)",
+      "color": "rgb(251, 80, 78)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
       "display": "inline-block",
-      "background-color": "color(srgb 0.937255 0.266667 0.266667 / 0.14)",
+      "background-color": "color(srgb 0.208627 0.13498 0.154118)",
       "border-radius": "10px",
       "padding": "1px 9px"
     },

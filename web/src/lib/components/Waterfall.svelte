@@ -9,6 +9,8 @@
     // The signature span waterfall: ruler + indented tree + status-coloured
     // duration bars. Bars encode status (Ok=emerald, Error=red, Unset=slate);
     // the resilience.* span category is shown as a dim tag on the label.
+    // Colour is not the only signal: an Ok or Error span has a mark before
+    // its duration, and the word for a screen reader.
     import type { Span } from '#lib/types.js';
     import { fmtDuration } from '#lib/api.js';
 
@@ -53,6 +55,12 @@
     });
 
     const ticks = $derived(Array.from({ length: 6 }, (_, i) => (built.spanNs / 5) * i));
+
+    /** The mark and the word of a status that colours a bar; Unset has none. */
+    const MARKS: Record<string, { mark: string; word: string; tone: 'ok' | 'fail' }> = {
+        Ok: { mark: '✓', word: 'ok', tone: 'ok' },
+        Error: { mark: '✕', word: 'error', tone: 'fail' },
+    };
 
     function barColor(span: Span): string {
         if (span.status_code === 'Error') return 'var(--fail)';
@@ -105,7 +113,14 @@
                 <span class="bar" style="left: {left}%; width: {width}%; background: {barColor(s)}"
                 ></span>
             </span>
-            <span class="dur mono">{fmtDuration(s.duration_ns)}</span>
+            <span class="dur mono">
+                {#if MARKS[s.status_code]}
+                    {@const status = MARKS[s.status_code]}
+                    <span class="mark {status.tone}" aria-hidden="true">{status.mark}</span>
+                    <span class="sr-only">{status.word}</span>
+                {/if}
+                {fmtDuration(s.duration_ns)}
+            </span>
         </button>
     {/each}
 </div>
@@ -203,5 +218,11 @@
         color: var(--text-dim);
         text-align: right;
         font-size: var(--font-size-2xs);
+    }
+    .mark.ok {
+        color: var(--ok);
+    }
+    .mark.fail {
+        color: var(--fail);
     }
 </style>

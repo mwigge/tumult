@@ -21,6 +21,10 @@
       "display": "block",
       "background-color": "rgb(244, 246, 248)"
     },
+    "a[link].sr-only.skip-link \"Skip to main content\"": {
+      "color": "rgb(31, 111, 178)",
+      "display": "block"
+    },
     "div.shell": {
       "display": "grid",
       "grid-template-columns": "208px 1fr"
@@ -44,16 +48,16 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > div.brand > div.tag": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "11px",
       "display": "block",
       "margin": "2px 0px 0px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\"": {
       "display": "block",
       "padding": "0px 0px 1px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◧ Overview\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◧ Overview\"": {
       "color": "rgb(91, 103, 114)",
       "font-size": "13.5px",
       "display": "flex",
@@ -61,10 +65,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◧ Overview\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◧ Overview\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◎ Resilience\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◎ Resilience\"": {
       "color": "rgb(91, 103, 114)",
       "font-size": "13.5px",
       "display": "flex",
@@ -72,10 +76,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◎ Resilience\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◎ Resilience\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◭ Performance\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◭ Performance\"": {
       "color": "rgb(91, 103, 114)",
       "font-size": "13.5px",
       "display": "flex",
@@ -83,10 +87,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◭ Performance\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◭ Performance\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"▦ Scores\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"▦ Scores\"": {
       "color": "rgb(91, 103, 114)",
       "font-size": "13.5px",
       "display": "flex",
@@ -94,10 +98,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"▦ Scores\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"▦ Scores\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⚖ DORA\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⚖ DORA\"": {
       "color": "rgb(91, 103, 114)",
       "font-size": "13.5px",
       "display": "flex",
@@ -105,10 +109,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⚖ DORA\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⚖ DORA\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link].active \"⟲ Disaster recovery\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link].active \"⟲ Disaster recovery\"": {
       "font-size": "13.5px",
       "display": "flex",
       "background-color": "rgb(233, 238, 242)",
@@ -116,10 +120,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link].active \"⟲ Disaster recovery\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link].active \"⟲ Disaster recovery\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⚗ Experiments\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⚗ Experiments\"": {
       "color": "rgb(91, 103, 114)",
       "font-size": "13.5px",
       "display": "flex",
@@ -127,10 +131,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⚗ Experiments\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⚗ Experiments\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"▶ Runs\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"▶ Runs\"": {
       "color": "rgb(91, 103, 114)",
       "font-size": "13.5px",
       "display": "flex",
@@ -138,10 +142,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"▶ Runs\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"▶ Runs\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✚ Author\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✚ Author\"": {
       "color": "rgb(91, 103, 114)",
       "font-size": "13.5px",
       "display": "flex",
@@ -149,10 +153,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✚ Author\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✚ Author\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"☷ GameDays\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"☷ GameDays\"": {
       "color": "rgb(91, 103, 114)",
       "font-size": "13.5px",
       "display": "flex",
@@ -160,10 +164,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"☷ GameDays\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"☷ GameDays\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✓ Approvals\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✓ Approvals\"": {
       "color": "rgb(91, 103, 114)",
       "font-size": "13.5px",
       "display": "flex",
@@ -171,10 +175,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✓ Approvals\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✓ Approvals\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✎ Manual\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✎ Manual\"": {
       "color": "rgb(91, 103, 114)",
       "font-size": "13.5px",
       "display": "flex",
@@ -182,10 +186,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✎ Manual\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✎ Manual\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"≣ Logs\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"≣ Logs\"": {
       "color": "rgb(91, 103, 114)",
       "font-size": "13.5px",
       "display": "flex",
@@ -193,10 +197,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"≣ Logs\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"≣ Logs\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⌁ Traces\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⌁ Traces\"": {
       "color": "rgb(91, 103, 114)",
       "font-size": "13.5px",
       "display": "flex",
@@ -204,10 +208,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⌁ Traces\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⌁ Traces\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"∿ Metrics\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"∿ Metrics\"": {
       "color": "rgb(91, 103, 114)",
       "font-size": "13.5px",
       "display": "flex",
@@ -215,10 +219,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"∿ Metrics\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"∿ Metrics\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✳ Star Map\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✳ Star Map\"": {
       "color": "rgb(91, 103, 114)",
       "font-size": "13.5px",
       "display": "flex",
@@ -226,10 +230,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✳ Star Map\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✳ Star Map\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✦ Ask\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✦ Ask\"": {
       "color": "rgb(91, 103, 114)",
       "font-size": "13.5px",
       "display": "flex",
@@ -237,10 +241,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✦ Ask\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✦ Ask\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"▤ Reports\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"▤ Reports\"": {
       "color": "rgb(91, 103, 114)",
       "font-size": "13.5px",
       "display": "flex",
@@ -248,10 +252,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"▤ Reports\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"▤ Reports\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◔ Events\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◔ Events\"": {
       "color": "rgb(91, 103, 114)",
       "font-size": "13.5px",
       "display": "flex",
@@ -259,10 +263,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◔ Events\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◔ Events\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⚿ Users\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⚿ Users\"": {
       "color": "rgb(91, 103, 114)",
       "font-size": "13.5px",
       "display": "flex",
@@ -270,10 +274,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⚿ Users\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⚿ Users\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"➤ Webhooks\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"➤ Webhooks\"": {
       "color": "rgb(91, 103, 114)",
       "font-size": "13.5px",
       "display": "flex",
@@ -281,10 +285,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"➤ Webhooks\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"➤ Webhooks\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"↻ Schedules\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"↻ Schedules\"": {
       "color": "rgb(91, 103, 114)",
       "font-size": "13.5px",
       "display": "flex",
@@ -292,7 +296,7 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"↻ Schedules\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"↻ Schedules\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > button[button].theme \"○ light\"": {
@@ -340,10 +344,10 @@
       "line-height": "normal",
       "display": "block",
       "background-color": "rgb(255, 255, 255)",
-      "border-top": "1px solid rgb(197, 206, 214)",
-      "border-right": "1px solid rgb(197, 206, 214)",
-      "border-bottom": "1px solid rgb(197, 206, 214)",
-      "border-left": "1px solid rgb(197, 206, 214)",
+      "border-top": "1px solid rgb(141, 149, 157)",
+      "border-right": "1px solid rgb(141, 149, 157)",
+      "border-bottom": "1px solid rgb(141, 149, 157)",
+      "border-left": "1px solid rgb(141, 149, 157)",
       "border-radius": "5px",
       "padding": "6px 9px"
     },
@@ -353,10 +357,10 @@
       "line-height": "normal",
       "display": "block",
       "background-color": "rgb(255, 255, 255)",
-      "border-top": "1px solid rgb(197, 206, 214)",
-      "border-right": "1px solid rgb(197, 206, 214)",
-      "border-bottom": "1px solid rgb(197, 206, 214)",
-      "border-left": "1px solid rgb(197, 206, 214)",
+      "border-top": "1px solid rgb(141, 149, 157)",
+      "border-right": "1px solid rgb(141, 149, 157)",
+      "border-bottom": "1px solid rgb(141, 149, 157)",
+      "border-left": "1px solid rgb(141, 149, 157)",
       "border-radius": "5px",
       "padding": "6px 9px"
     },
@@ -382,7 +386,7 @@
       "font-size": "12.5px",
       "line-height": "normal",
       "display": "block",
-      "background-color": "rgb(156, 196, 228)",
+      "background-color": "rgb(74, 123, 164)",
       "border-left": "1px solid rgb(197, 206, 214)",
       "padding": "5px 12px"
     },
@@ -530,7 +534,7 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > tr[row] > th[rowheader] \"archive · prod\" > span.dim": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-weight": "400",
       "display": "inline"
     },
@@ -555,7 +559,7 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > tr[row] > td[cell].last \"no DR test yet\" > span.dim": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "display": "inline"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > tr[row] > td[cell].mono.nowrap \"test now\"": {
@@ -574,7 +578,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > tr[row] > td[cell].nowrap \"every 365 days from its plan\" > span.line.dim": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "display": "block"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > tr[row] > td[cell].nowrap \"due 2026-12-04\"": {
@@ -595,7 +599,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > tr[row] > td[cell] \"not measured target 2 min\" > span.target": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "11.5px",
       "display": "block"
     },
@@ -608,7 +612,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > tr[row] > td[cell] \"not measured target 30 s\" > span.target": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "11.5px",
       "display": "block"
     },
@@ -622,7 +626,7 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > tr[row] #2 > th[rowheader] \"billing · prod\" > span.dim": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-weight": "400",
       "display": "inline"
     },
@@ -632,12 +636,12 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > tr[row] #2 > td[cell].nowrap \"overdue\" > span.badge.fail": {
-      "color": "rgb(192, 57, 43)",
+      "color": "rgb(190, 55, 41)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
       "display": "inline-block",
-      "background-color": "color(srgb 0.752941 0.223529 0.168627 / 0.14)",
+      "background-color": "color(srgb 0.964314 0.890196 0.88251)",
       "border-radius": "10px",
       "padding": "1px 9px"
     },
@@ -663,12 +667,12 @@
       "padding": "1px 9px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > tr[row] #2 > td[cell].last \"2026-04-28 automated breached\" > span.badge.fail": {
-      "color": "rgb(192, 57, 43)",
+      "color": "rgb(190, 55, 41)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
       "display": "inline-block",
-      "background-color": "color(srgb 0.752941 0.223529 0.168627 / 0.14)",
+      "background-color": "color(srgb 0.964314 0.890196 0.88251)",
       "border-radius": "10px",
       "padding": "1px 9px"
     },
@@ -688,7 +692,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > tr[row] #2 > td[cell].nowrap \"every 180 days from its function\" > span.line.dim": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "display": "block"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > tr[row] #2 > td[cell].nowrap \"no plan\"": {
@@ -697,20 +701,20 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > tr[row] #2 > td[cell].nowrap \"no plan\" > span.dim": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "display": "inline"
     },
-    "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > tr[row] #2 > td[cell] \"14 s target 10 s\"": {
+    "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > tr[row] #2 > td[cell] \"14 s target 10 s, missed\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(227, 232, 237)",
       "padding": "7px 10px"
     },
-    "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > tr[row] #2 > td[cell] \"14 s target 10 s\" > span.measured.alarm": {
-      "color": "rgb(192, 57, 43)",
+    "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > tr[row] #2 > td[cell] \"14 s target 10 s, missed\" > span.measured.alarm": {
+      "color": "rgb(190, 55, 41)",
       "display": "block"
     },
-    "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > tr[row] #2 > td[cell] \"14 s target 10 s\" > span.target": {
-      "color": "rgb(139, 152, 165)",
+    "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > tr[row] #2 > td[cell] \"14 s target 10 s, missed\" > span.target": {
+      "color": "rgb(97, 109, 121)",
       "font-size": "11.5px",
       "display": "block"
     },
@@ -723,7 +727,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > tr[row] #2 > td[cell] \"not measured no target\" > span.target": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "11.5px",
       "display": "block"
     },
@@ -737,7 +741,7 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > tr[row] #3 > th[rowheader] \"catalog · prod\" > span.dim": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-weight": "400",
       "display": "inline"
     },
@@ -747,12 +751,12 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > tr[row] #3 > td[cell].nowrap \"due\" > span.badge.warn": {
-      "color": "rgb(180, 83, 9)",
+      "color": "rgb(171, 77, 4)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
       "display": "inline-block",
-      "background-color": "color(srgb 0.705882 0.32549 0.0352941 / 0.14)",
+      "background-color": "color(srgb 0.953882 0.902274 0.862196)",
       "border-radius": "10px",
       "padding": "1px 9px"
     },
@@ -778,12 +782,12 @@
       "padding": "1px 9px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > tr[row] #3 > td[cell].last \"2025-11-29 manual met\" > span.badge.ok": {
-      "color": "rgb(15, 138, 95)",
+      "color": "rgb(9, 120, 82)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
       "display": "inline-block",
-      "background-color": "color(srgb 0.0588235 0.541176 0.372549 / 0.14)",
+      "background-color": "color(srgb 0.864941 0.925882 0.90502)",
       "border-radius": "10px",
       "padding": "1px 9px"
     },
@@ -803,7 +807,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > tr[row] #3 > td[cell].nowrap \"every 365 days by default\" > span.line.dim": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "display": "block"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > tr[row] #3 > td[cell].nowrap \"no plan\"": {
@@ -812,7 +816,7 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > tr[row] #3 > td[cell].nowrap \"no plan\" > span.dim": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "display": "inline"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > tr[row] #3 > td[cell] \"5 min target 15 min\"": {
@@ -824,7 +828,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > tr[row] #3 > td[cell] \"5 min target 15 min\" > span.target": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "11.5px",
       "display": "block"
     },
@@ -837,7 +841,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > tr[row] #3 > td[cell] \"10 s target 60 s\" > span.target": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "11.5px",
       "display": "block"
     },
@@ -851,7 +855,7 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > tr[row] #4 > th[rowheader] \"ledger · prod\" > span.dim": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-weight": "400",
       "display": "inline"
     },
@@ -861,12 +865,12 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > tr[row] #4 > td[cell].nowrap \"ok\" > span.badge.ok": {
-      "color": "rgb(15, 138, 95)",
+      "color": "rgb(9, 120, 82)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
       "display": "inline-block",
-      "background-color": "color(srgb 0.0588235 0.541176 0.372549 / 0.14)",
+      "background-color": "color(srgb 0.864941 0.925882 0.90502)",
       "border-radius": "10px",
       "padding": "1px 9px"
     },
@@ -892,12 +896,12 @@
       "padding": "1px 9px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > tr[row] #4 > td[cell].last \"2026-11-09 automated met\" > span.badge.ok": {
-      "color": "rgb(15, 138, 95)",
+      "color": "rgb(9, 120, 82)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
       "display": "inline-block",
-      "background-color": "color(srgb 0.0588235 0.541176 0.372549 / 0.14)",
+      "background-color": "color(srgb 0.864941 0.925882 0.90502)",
       "border-radius": "10px",
       "padding": "1px 9px"
     },
@@ -917,7 +921,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > tr[row] #4 > td[cell].nowrap \"every 365 days by default\" > span.line.dim": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "display": "block"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > tr[row] #4 > td[cell].nowrap \"no plan\"": {
@@ -926,7 +930,7 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > tr[row] #4 > td[cell].nowrap \"no plan\" > span.dim": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "display": "inline"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > tr[row] #4 > td[cell] \"38 s target 60 s\"": {
@@ -938,7 +942,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > tr[row] #4 > td[cell] \"38 s target 60 s\" > span.target": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "11.5px",
       "display": "block"
     },
@@ -951,7 +955,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > tr[row] #4 > td[cell] \"8 s target 30 s\" > span.target": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "11.5px",
       "display": "block"
     },
@@ -965,7 +969,7 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > tr[row] #5 > th[rowheader] \"orders · prod\" > span.dim": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-weight": "400",
       "display": "inline"
     },
@@ -975,12 +979,12 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > tr[row] #5 > td[cell].nowrap \"ok\" > span.badge.ok": {
-      "color": "rgb(15, 138, 95)",
+      "color": "rgb(9, 120, 82)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
       "display": "inline-block",
-      "background-color": "color(srgb 0.0588235 0.541176 0.372549 / 0.14)",
+      "background-color": "color(srgb 0.864941 0.925882 0.90502)",
       "border-radius": "10px",
       "padding": "1px 9px"
     },
@@ -1006,12 +1010,12 @@
       "padding": "1px 9px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > tr[row] #5 > td[cell].last \"2026-11-04 automated met\" > span.badge.ok": {
-      "color": "rgb(15, 138, 95)",
+      "color": "rgb(9, 120, 82)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
       "display": "inline-block",
-      "background-color": "color(srgb 0.0588235 0.541176 0.372549 / 0.14)",
+      "background-color": "color(srgb 0.864941 0.925882 0.90502)",
       "border-radius": "10px",
       "padding": "1px 9px"
     },
@@ -1031,7 +1035,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > tr[row] #5 > td[cell].nowrap \"every 365 days by default\" > span.line.dim": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "display": "block"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > tr[row] #5 > td[cell].nowrap \"no plan\"": {
@@ -1040,7 +1044,7 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > tr[row] #5 > td[cell].nowrap \"no plan\" > span.dim": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "display": "inline"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > tr[row] #5 > td[cell] \"4 s target 10 s\"": {
@@ -1052,7 +1056,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > tr[row] #5 > td[cell] \"4 s target 10 s\" > span.target": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "11.5px",
       "display": "block"
     },
@@ -1065,7 +1069,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > tr[row] #5 > td[cell] \"not measured no target\" > span.target": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "11.5px",
       "display": "block"
     },
@@ -1079,7 +1083,7 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > tr[row] #6 > th[rowheader] \"payments-db · prod\" > span.dim": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-weight": "400",
       "display": "inline"
     },
@@ -1089,12 +1093,12 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > tr[row] #6 > td[cell].nowrap \"overdue\" > span.badge.fail": {
-      "color": "rgb(192, 57, 43)",
+      "color": "rgb(190, 55, 41)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
       "display": "inline-block",
-      "background-color": "color(srgb 0.752941 0.223529 0.168627 / 0.14)",
+      "background-color": "color(srgb 0.964314 0.890196 0.88251)",
       "border-radius": "10px",
       "padding": "1px 9px"
     },
@@ -1120,12 +1124,12 @@
       "padding": "1px 9px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > tr[row] #6 > td[cell].last \"2026-08-06 automated not recovered\" > span.badge.fail": {
-      "color": "rgb(192, 57, 43)",
+      "color": "rgb(190, 55, 41)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
       "display": "inline-block",
-      "background-color": "color(srgb 0.752941 0.223529 0.168627 / 0.14)",
+      "background-color": "color(srgb 0.964314 0.890196 0.88251)",
       "border-radius": "10px",
       "padding": "1px 9px"
     },
@@ -1145,7 +1149,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > tr[row] #6 > td[cell].nowrap \"every 90 days from its plan\" > span.line.dim": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "display": "block"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > tr[row] #6 > td[cell].nowrap \"due 2026-11-19\"": {
@@ -1163,11 +1167,11 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > tr[row] #6 > td[cell] \"at least 30.1 s, not recovered target 10…\" > span.measured.alarm": {
-      "color": "rgb(192, 57, 43)",
+      "color": "rgb(190, 55, 41)",
       "display": "block"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > tr[row] #6 > td[cell] \"at least 30.1 s, not recovered target 10…\" > span.target": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "11.5px",
       "display": "block"
     },
@@ -1180,7 +1184,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > tr[row] #6 > td[cell] \"not measured no target\" > span.target": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "11.5px",
       "display": "block"
     },
@@ -1193,7 +1197,7 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > tr[row] #7 > th[rowheader] \"search · staging\" > span.dim": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-weight": "400",
       "display": "inline"
     },
@@ -1216,7 +1220,7 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > tr[row] #7 > td[cell].last \"no DR test yet\" > span.dim": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "display": "inline"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > tr[row] #7 > td[cell].mono.nowrap \"test now\"": {
@@ -1233,7 +1237,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > tr[row] #7 > td[cell].nowrap \"every 365 days by default\" > span.line.dim": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "display": "block"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > tr[row] #7 > td[cell].nowrap \"no plan\"": {
@@ -1241,7 +1245,7 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > tr[row] #7 > td[cell].nowrap \"no plan\" > span.dim": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "display": "inline"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > tr[row] #7 > td[cell] \"not measured target 10 s\"": {
@@ -1252,7 +1256,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > tr[row] #7 > td[cell] \"not measured target 10 s\" > span.target": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "11.5px",
       "display": "block"
     },
@@ -1264,7 +1268,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DUE REGISTER\" > table[table].data \"Due register: the last DR test of each t…\" > tr[row] #7 > td[cell] \"not measured no target\" > span.target": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "11.5px",
       "display": "block"
     },
@@ -1314,7 +1318,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"RTO AND RPO OVER TIME\" > div.legend > span.item #3 > b": {
-      "color": "rgb(192, 57, 43)",
+      "color": "rgb(190, 55, 41)",
       "font-weight": "700",
       "display": "inline"
     },
@@ -1323,7 +1327,7 @@
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"RTO AND RPO OVER TIME\" > div.legend > span.item #4 > i.swatch.dashed": {
       "display": "inline-block",
-      "border-top": "2px dashed rgb(192, 57, 43)",
+      "border-top": "2px dashed rgb(190, 55, 41)",
       "margin": "0px 2px 0px 0px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"RTO AND RPO OVER TIME\" > section[region].target \"billing · prod\"": {
@@ -1842,7 +1846,7 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] > td[cell].nowrap \"ledger · prod\" > span.dim": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "display": "inline"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] > td[cell] \"met\"": {
@@ -1851,12 +1855,12 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] > td[cell] \"met\" > span.badge.ok": {
-      "color": "rgb(15, 138, 95)",
+      "color": "rgb(9, 120, 82)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
       "display": "inline-block",
-      "background-color": "color(srgb 0.0588235 0.541176 0.372549 / 0.14)",
+      "background-color": "color(srgb 0.864941 0.925882 0.90502)",
       "border-radius": "10px",
       "padding": "1px 9px"
     },
@@ -1869,7 +1873,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] > td[cell] \"38 s target 60 s\" > span.target": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "11.5px",
       "display": "block"
     },
@@ -1882,7 +1886,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] > td[cell] \"8 s target 30 s\" > span.target": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "11.5px",
       "display": "block"
     },
@@ -1936,7 +1940,7 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #2 > td[cell].nowrap \"search · staging\" > span.dim": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "display": "inline"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #2 > td[cell] \"not measured\"": {
@@ -1963,7 +1967,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #2 > td[cell] \"no outage seen target 10 s\" > span.target": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "11.5px",
       "display": "block"
     },
@@ -1976,7 +1980,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #2 > td[cell] \"not measured no target\" > span.target": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "11.5px",
       "display": "block"
     },
@@ -2030,7 +2034,7 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #3 > td[cell].nowrap \"orders · prod\" > span.dim": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "display": "inline"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #3 > td[cell] \"met\"": {
@@ -2039,12 +2043,12 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #3 > td[cell] \"met\" > span.badge.ok": {
-      "color": "rgb(15, 138, 95)",
+      "color": "rgb(9, 120, 82)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
       "display": "inline-block",
-      "background-color": "color(srgb 0.0588235 0.541176 0.372549 / 0.14)",
+      "background-color": "color(srgb 0.864941 0.925882 0.90502)",
       "border-radius": "10px",
       "padding": "1px 9px"
     },
@@ -2057,7 +2061,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #3 > td[cell] \"4 s target 10 s\" > span.target": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "11.5px",
       "display": "block"
     },
@@ -2070,7 +2074,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #3 > td[cell] \"not measured no target\" > span.target": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "11.5px",
       "display": "block"
     },
@@ -2124,7 +2128,7 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #4 > td[cell].nowrap \"orders · prod\" > span.dim": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "display": "inline"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #4 > td[cell] \"met\"": {
@@ -2133,12 +2137,12 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #4 > td[cell] \"met\" > span.badge.ok": {
-      "color": "rgb(15, 138, 95)",
+      "color": "rgb(9, 120, 82)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
       "display": "inline-block",
-      "background-color": "color(srgb 0.0588235 0.541176 0.372549 / 0.14)",
+      "background-color": "color(srgb 0.864941 0.925882 0.90502)",
       "border-radius": "10px",
       "padding": "1px 9px"
     },
@@ -2151,7 +2155,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #4 > td[cell] \"5.4 s target 10 s\" > span.target": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "11.5px",
       "display": "block"
     },
@@ -2164,7 +2168,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #4 > td[cell] \"not measured no target\" > span.target": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "11.5px",
       "display": "block"
     },
@@ -2218,7 +2222,7 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #5 > td[cell].nowrap \"orders · prod\" > span.dim": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "display": "inline"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #5 > td[cell] \"met\"": {
@@ -2227,12 +2231,12 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #5 > td[cell] \"met\" > span.badge.ok": {
-      "color": "rgb(15, 138, 95)",
+      "color": "rgb(9, 120, 82)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
       "display": "inline-block",
-      "background-color": "color(srgb 0.0588235 0.541176 0.372549 / 0.14)",
+      "background-color": "color(srgb 0.864941 0.925882 0.90502)",
       "border-radius": "10px",
       "padding": "1px 9px"
     },
@@ -2245,7 +2249,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #5 > td[cell] \"6.8 s target 10 s\" > span.target": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "11.5px",
       "display": "block"
     },
@@ -2258,7 +2262,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #5 > td[cell] \"not measured no target\" > span.target": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "11.5px",
       "display": "block"
     },
@@ -2312,7 +2316,7 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #6 > td[cell].nowrap \"orders · prod\" > span.dim": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "display": "inline"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #6 > td[cell] \"met\"": {
@@ -2321,12 +2325,12 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #6 > td[cell] \"met\" > span.badge.ok": {
-      "color": "rgb(15, 138, 95)",
+      "color": "rgb(9, 120, 82)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
       "display": "inline-block",
-      "background-color": "color(srgb 0.0588235 0.541176 0.372549 / 0.14)",
+      "background-color": "color(srgb 0.864941 0.925882 0.90502)",
       "border-radius": "10px",
       "padding": "1px 9px"
     },
@@ -2339,7 +2343,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #6 > td[cell] \"4.7 s target 10 s\" > span.target": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "11.5px",
       "display": "block"
     },
@@ -2352,7 +2356,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #6 > td[cell] \"not measured no target\" > span.target": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "11.5px",
       "display": "block"
     },
@@ -2406,7 +2410,7 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #7 > td[cell].nowrap \"orders · prod\" > span.dim": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "display": "inline"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #7 > td[cell] \"met\"": {
@@ -2415,12 +2419,12 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #7 > td[cell] \"met\" > span.badge.ok": {
-      "color": "rgb(15, 138, 95)",
+      "color": "rgb(9, 120, 82)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
       "display": "inline-block",
-      "background-color": "color(srgb 0.0588235 0.541176 0.372549 / 0.14)",
+      "background-color": "color(srgb 0.864941 0.925882 0.90502)",
       "border-radius": "10px",
       "padding": "1px 9px"
     },
@@ -2433,7 +2437,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #7 > td[cell] \"6.1 s target 10 s\" > span.target": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "11.5px",
       "display": "block"
     },
@@ -2446,7 +2450,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #7 > td[cell] \"not measured no target\" > span.target": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "11.5px",
       "display": "block"
     },
@@ -2500,7 +2504,7 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #8 > td[cell].nowrap \"orders · prod\" > span.dim": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "display": "inline"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #8 > td[cell] \"met\"": {
@@ -2509,12 +2513,12 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #8 > td[cell] \"met\" > span.badge.ok": {
-      "color": "rgb(15, 138, 95)",
+      "color": "rgb(9, 120, 82)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
       "display": "inline-block",
-      "background-color": "color(srgb 0.0588235 0.541176 0.372549 / 0.14)",
+      "background-color": "color(srgb 0.864941 0.925882 0.90502)",
       "border-radius": "10px",
       "padding": "1px 9px"
     },
@@ -2527,7 +2531,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #8 > td[cell] \"4 s target 10 s\" > span.target": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "11.5px",
       "display": "block"
     },
@@ -2540,7 +2544,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #8 > td[cell] \"not measured no target\" > span.target": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "11.5px",
       "display": "block"
     },
@@ -2594,7 +2598,7 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #9 > td[cell].nowrap \"ledger · prod\" > span.dim": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "display": "inline"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #9 > td[cell] \"met\"": {
@@ -2603,12 +2607,12 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #9 > td[cell] \"met\" > span.badge.ok": {
-      "color": "rgb(15, 138, 95)",
+      "color": "rgb(9, 120, 82)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
       "display": "inline-block",
-      "background-color": "color(srgb 0.0588235 0.541176 0.372549 / 0.14)",
+      "background-color": "color(srgb 0.864941 0.925882 0.90502)",
       "border-radius": "10px",
       "padding": "1px 9px"
     },
@@ -2621,7 +2625,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #9 > td[cell] \"50 s target 60 s\" > span.target": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "11.5px",
       "display": "block"
     },
@@ -2634,7 +2638,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #9 > td[cell] \"12 s target 30 s\" > span.target": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "11.5px",
       "display": "block"
     },
@@ -2688,7 +2692,7 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #10 > td[cell].nowrap \"orders · prod\" > span.dim": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "display": "inline"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #10 > td[cell] \"met\"": {
@@ -2697,12 +2701,12 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #10 > td[cell] \"met\" > span.badge.ok": {
-      "color": "rgb(15, 138, 95)",
+      "color": "rgb(9, 120, 82)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
       "display": "inline-block",
-      "background-color": "color(srgb 0.0588235 0.541176 0.372549 / 0.14)",
+      "background-color": "color(srgb 0.864941 0.925882 0.90502)",
       "border-radius": "10px",
       "padding": "1px 9px"
     },
@@ -2715,7 +2719,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #10 > td[cell] \"5.4 s target 10 s\" > span.target": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "11.5px",
       "display": "block"
     },
@@ -2728,7 +2732,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #10 > td[cell] \"not measured no target\" > span.target": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "11.5px",
       "display": "block"
     },
@@ -2782,7 +2786,7 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #11 > td[cell].nowrap \"orders · prod\" > span.dim": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "display": "inline"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #11 > td[cell] \"breached\"": {
@@ -2791,26 +2795,26 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #11 > td[cell] \"breached\" > span.badge.fail": {
-      "color": "rgb(192, 57, 43)",
+      "color": "rgb(190, 55, 41)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
       "display": "inline-block",
-      "background-color": "color(srgb 0.752941 0.223529 0.168627 / 0.14)",
+      "background-color": "color(srgb 0.964314 0.890196 0.88251)",
       "border-radius": "10px",
       "padding": "1px 9px"
     },
-    "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #11 > td[cell] \"12.5 s target 10 s\"": {
+    "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #11 > td[cell] \"12.5 s target 10 s, missed\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(227, 232, 237)",
       "padding": "7px 10px"
     },
-    "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #11 > td[cell] \"12.5 s target 10 s\" > span.measured.alarm": {
-      "color": "rgb(192, 57, 43)",
+    "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #11 > td[cell] \"12.5 s target 10 s, missed\" > span.measured.alarm": {
+      "color": "rgb(190, 55, 41)",
       "display": "block"
     },
-    "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #11 > td[cell] \"12.5 s target 10 s\" > span.target": {
-      "color": "rgb(139, 152, 165)",
+    "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #11 > td[cell] \"12.5 s target 10 s, missed\" > span.target": {
+      "color": "rgb(97, 109, 121)",
       "font-size": "11.5px",
       "display": "block"
     },
@@ -2823,7 +2827,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #11 > td[cell] \"not measured no target\" > span.target": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "11.5px",
       "display": "block"
     },
@@ -2877,7 +2881,7 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #12 > td[cell].nowrap \"orders · prod\" > span.dim": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "display": "inline"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #12 > td[cell] \"met\"": {
@@ -2886,12 +2890,12 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #12 > td[cell] \"met\" > span.badge.ok": {
-      "color": "rgb(15, 138, 95)",
+      "color": "rgb(9, 120, 82)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
       "display": "inline-block",
-      "background-color": "color(srgb 0.0588235 0.541176 0.372549 / 0.14)",
+      "background-color": "color(srgb 0.864941 0.925882 0.90502)",
       "border-radius": "10px",
       "padding": "1px 9px"
     },
@@ -2904,7 +2908,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #12 > td[cell] \"4.7 s target 10 s\" > span.target": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "11.5px",
       "display": "block"
     },
@@ -2917,7 +2921,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #12 > td[cell] \"not measured no target\" > span.target": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "11.5px",
       "display": "block"
     },
@@ -2971,7 +2975,7 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #13 > td[cell].nowrap \"orders · prod\" > span.dim": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "display": "inline"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #13 > td[cell] \"met\"": {
@@ -2980,12 +2984,12 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #13 > td[cell] \"met\" > span.badge.ok": {
-      "color": "rgb(15, 138, 95)",
+      "color": "rgb(9, 120, 82)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
       "display": "inline-block",
-      "background-color": "color(srgb 0.0588235 0.541176 0.372549 / 0.14)",
+      "background-color": "color(srgb 0.864941 0.925882 0.90502)",
       "border-radius": "10px",
       "padding": "1px 9px"
     },
@@ -2998,7 +3002,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #13 > td[cell] \"6.1 s target 10 s\" > span.target": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "11.5px",
       "display": "block"
     },
@@ -3011,7 +3015,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #13 > td[cell] \"not measured no target\" > span.target": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "11.5px",
       "display": "block"
     },
@@ -3065,7 +3069,7 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #14 > td[cell].nowrap \"orders · prod\" > span.dim": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "display": "inline"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #14 > td[cell] \"met\"": {
@@ -3074,12 +3078,12 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #14 > td[cell] \"met\" > span.badge.ok": {
-      "color": "rgb(15, 138, 95)",
+      "color": "rgb(9, 120, 82)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
       "display": "inline-block",
-      "background-color": "color(srgb 0.0588235 0.541176 0.372549 / 0.14)",
+      "background-color": "color(srgb 0.864941 0.925882 0.90502)",
       "border-radius": "10px",
       "padding": "1px 9px"
     },
@@ -3092,7 +3096,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #14 > td[cell] \"4 s target 10 s\" > span.target": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "11.5px",
       "display": "block"
     },
@@ -3105,7 +3109,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #14 > td[cell] \"not measured no target\" > span.target": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "11.5px",
       "display": "block"
     },
@@ -3159,7 +3163,7 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #15 > td[cell].nowrap \"payments-db · prod\" > span.dim": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "display": "inline"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #15 > td[cell] \"not recovered\"": {
@@ -3168,12 +3172,12 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #15 > td[cell] \"not recovered\" > span.badge.fail": {
-      "color": "rgb(192, 57, 43)",
+      "color": "rgb(190, 55, 41)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
       "display": "inline-block",
-      "background-color": "color(srgb 0.752941 0.223529 0.168627 / 0.14)",
+      "background-color": "color(srgb 0.964314 0.890196 0.88251)",
       "border-radius": "10px",
       "padding": "1px 9px"
     },
@@ -3183,11 +3187,11 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #15 > td[cell] \"at least 30.1 s, not recovered target 10…\" > span.measured.alarm": {
-      "color": "rgb(192, 57, 43)",
+      "color": "rgb(190, 55, 41)",
       "display": "block"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #15 > td[cell] \"at least 30.1 s, not recovered target 10…\" > span.target": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "11.5px",
       "display": "block"
     },
@@ -3200,7 +3204,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #15 > td[cell] \"not measured no target\" > span.target": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "11.5px",
       "display": "block"
     },
@@ -3254,7 +3258,7 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #16 > td[cell].nowrap \"orders · prod\" > span.dim": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "display": "inline"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #16 > td[cell] \"met\"": {
@@ -3263,12 +3267,12 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #16 > td[cell] \"met\" > span.badge.ok": {
-      "color": "rgb(15, 138, 95)",
+      "color": "rgb(9, 120, 82)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
       "display": "inline-block",
-      "background-color": "color(srgb 0.0588235 0.541176 0.372549 / 0.14)",
+      "background-color": "color(srgb 0.864941 0.925882 0.90502)",
       "border-radius": "10px",
       "padding": "1px 9px"
     },
@@ -3281,7 +3285,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #16 > td[cell] \"5.4 s target 10 s\" > span.target": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "11.5px",
       "display": "block"
     },
@@ -3294,7 +3298,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #16 > td[cell] \"not measured no target\" > span.target": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "11.5px",
       "display": "block"
     },
@@ -3348,7 +3352,7 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #17 > td[cell].nowrap \"orders · prod\" > span.dim": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "display": "inline"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #17 > td[cell] \"met\"": {
@@ -3357,12 +3361,12 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #17 > td[cell] \"met\" > span.badge.ok": {
-      "color": "rgb(15, 138, 95)",
+      "color": "rgb(9, 120, 82)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
       "display": "inline-block",
-      "background-color": "color(srgb 0.0588235 0.541176 0.372549 / 0.14)",
+      "background-color": "color(srgb 0.864941 0.925882 0.90502)",
       "border-radius": "10px",
       "padding": "1px 9px"
     },
@@ -3375,7 +3379,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #17 > td[cell] \"6.8 s target 10 s\" > span.target": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "11.5px",
       "display": "block"
     },
@@ -3388,7 +3392,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #17 > td[cell] \"not measured no target\" > span.target": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "11.5px",
       "display": "block"
     },
@@ -3442,7 +3446,7 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #18 > td[cell].nowrap \"ledger · prod\" > span.dim": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "display": "inline"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #18 > td[cell] \"not recovered\"": {
@@ -3451,26 +3455,26 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #18 > td[cell] \"not recovered\" > span.badge.fail": {
-      "color": "rgb(192, 57, 43)",
+      "color": "rgb(190, 55, 41)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
       "display": "inline-block",
-      "background-color": "color(srgb 0.752941 0.223529 0.168627 / 0.14)",
+      "background-color": "color(srgb 0.964314 0.890196 0.88251)",
       "border-radius": "10px",
       "padding": "1px 9px"
     },
-    "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #18 > td[cell] \"at least 75 s, not recovered target 60 s\"": {
+    "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #18 > td[cell] \"at least 75 s, not recovered target 60 s…\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(227, 232, 237)",
       "padding": "7px 10px"
     },
-    "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #18 > td[cell] \"at least 75 s, not recovered target 60 s\" > span.measured.alarm": {
-      "color": "rgb(192, 57, 43)",
+    "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #18 > td[cell] \"at least 75 s, not recovered target 60 s…\" > span.measured.alarm": {
+      "color": "rgb(190, 55, 41)",
       "display": "block"
     },
-    "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #18 > td[cell] \"at least 75 s, not recovered target 60 s\" > span.target": {
-      "color": "rgb(139, 152, 165)",
+    "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #18 > td[cell] \"at least 75 s, not recovered target 60 s…\" > span.target": {
+      "color": "rgb(97, 109, 121)",
       "font-size": "11.5px",
       "display": "block"
     },
@@ -3483,7 +3487,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #18 > td[cell] \"not measured target 30 s\" > span.target": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "11.5px",
       "display": "block"
     },
@@ -3537,7 +3541,7 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #19 > td[cell].nowrap \"orders · prod\" > span.dim": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "display": "inline"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #19 > td[cell] \"met\"": {
@@ -3546,12 +3550,12 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #19 > td[cell] \"met\" > span.badge.ok": {
-      "color": "rgb(15, 138, 95)",
+      "color": "rgb(9, 120, 82)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
       "display": "inline-block",
-      "background-color": "color(srgb 0.0588235 0.541176 0.372549 / 0.14)",
+      "background-color": "color(srgb 0.864941 0.925882 0.90502)",
       "border-radius": "10px",
       "padding": "1px 9px"
     },
@@ -3564,7 +3568,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #19 > td[cell] \"4.7 s target 10 s\" > span.target": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "11.5px",
       "display": "block"
     },
@@ -3577,7 +3581,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #19 > td[cell] \"not measured no target\" > span.target": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "11.5px",
       "display": "block"
     },
@@ -3627,7 +3631,7 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #20 > td[cell].nowrap \"orders · prod\" > span.dim": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "display": "inline"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #20 > td[cell] \"met\"": {
@@ -3635,12 +3639,12 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #20 > td[cell] \"met\" > span.badge.ok": {
-      "color": "rgb(15, 138, 95)",
+      "color": "rgb(9, 120, 82)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
       "display": "inline-block",
-      "background-color": "color(srgb 0.0588235 0.541176 0.372549 / 0.14)",
+      "background-color": "color(srgb 0.864941 0.925882 0.90502)",
       "border-radius": "10px",
       "padding": "1px 9px"
     },
@@ -3652,7 +3656,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #20 > td[cell] \"6.1 s target 10 s\" > span.target": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "11.5px",
       "display": "block"
     },
@@ -3664,7 +3668,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.sections > section[region].panel \"DR TESTS IN THE PERIOD\" > table[table].data \"The DR tests of the period, newest first\" > tr[row] #20 > td[cell] \"not measured no target\" > span.target": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "11.5px",
       "display": "block"
     },

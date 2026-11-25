@@ -5,6 +5,7 @@
     import PageHeader from '#lib/components/PageHeader.svelte';
     import Panel from '#lib/components/Panel.svelte';
     import State from '#lib/components/State.svelte';
+    import { onRow } from '#lib/rows.js';
 
     let me = $state<MeResponse | null>(null);
     let days = $state<GameDayEntry[] | null>(null);
@@ -72,7 +73,7 @@
         : 'coordinated experiment campaigns'}
 />
 
-<Panel style="margin-bottom: var(--space-3-5)">
+<Panel style="margin-bottom: var(--space-3-5)" scroll>
     {#if error}
         <State kind="error">Failed to load gamedays: {error}</State>
     {:else if !days}
@@ -88,9 +89,9 @@
                 {#each days as d (d.id)}
                     <tr
                         class="clickable"
-                        onclick={() => (window.location.href = `/gamedays/${d.id}`)}
+                        onclick={onRow(() => (window.location.href = `/gamedays/${d.id}`))}
                     >
-                        <td>{d.name}</td>
+                        <td><a class="row-link" href="/gamedays/{d.id}">{d.name}</a></td>
                         <td class="mono" style="color: var(--text-dim)">{d.id}</td>
                         <td title={fmtTs(d.registered_at_ns)}>{fmtAgo(d.registered_at_ns)}</td>
                         <td>{d.registered_by ?? '—'}</td>
@@ -152,7 +153,7 @@
     }
     textarea {
         background: var(--bg-raised);
-        border: var(--border-width-sm) solid var(--border-strong);
+        border: var(--border-width-sm) solid var(--border-input);
         color: var(--text);
         border-radius: var(--radius-lg);
         padding: var(--space-2) var(--space-2-5);

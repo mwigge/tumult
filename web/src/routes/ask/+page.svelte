@@ -66,6 +66,7 @@
         <input
             type="text"
             bind:value={question}
+            aria-label="Question"
             placeholder="Ask about experiments, outcomes, faults…"
             style="flex: 1"
         />
@@ -109,27 +110,26 @@
         {#if result.rows}
             <Panel
                 title={`Result — ${result.rows.length} row${result.rows.length === 1 ? '' : 's'}`}
+                scroll
             >
                 {#if result.rows.length === 0}
                     <State kind="empty">The query returned no rows.</State>
                 {:else}
-                    <div style="overflow-x: auto">
-                        <table class="data">
-                            <thead>
+                    <table class="data">
+                        <thead>
+                            <tr>
+                                {#each columns as c (c)}<th>{c}</th>{/each}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {#each result.rows as row, i (i)}
                                 <tr>
-                                    {#each columns as c (c)}<th>{c}</th>{/each}
+                                    {#each columns as c (c)}<td class="mono">{cell(row[c])}</td
+                                        >{/each}
                                 </tr>
-                            </thead>
-                            <tbody>
-                                {#each result.rows as row, i (i)}
-                                    <tr>
-                                        {#each columns as c (c)}<td class="mono">{cell(row[c])}</td
-                                            >{/each}
-                                    </tr>
-                                {/each}
-                            </tbody>
-                        </table>
-                    </div>
+                            {/each}
+                        </tbody>
+                    </table>
                 {/if}
             </Panel>
         {/if}

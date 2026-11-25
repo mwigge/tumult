@@ -43,6 +43,25 @@
         theme = THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length];
     }
 
+    // On a small screen the side bar folds behind the menu button of the
+    // top bar (theme.css). Escape closes the open menu and gives the focus
+    // back to the button; a click on a link in it closes it, as the page
+    // the link opens takes its place.
+    let menuOpen = $state(false);
+    let menuButton = $state<HTMLButtonElement>();
+    function closeOnEscape(event: KeyboardEvent) {
+        if (!menuOpen || event.key !== 'Escape') return;
+        menuOpen = false;
+        menuButton?.focus();
+    }
+    function closesOnLink(side: HTMLElement) {
+        const onClick = (event: MouseEvent) => {
+            if (event.target instanceof Element && event.target.closest('a')) menuOpen = false;
+        };
+        side.addEventListener('click', onClick);
+        return () => side.removeEventListener('click', onClick);
+    }
+
     const NAV: {
         href: string;
         label: string;
@@ -126,19 +145,39 @@
     }
 </script>
 
+<svelte:window onkeydown={closeOnEscape} />
+
 {#if page.url.pathname === '/login'}
     {@render children?.()}
 {:else}
+    <a class="sr-only skip-link" href="#main">Skip to main content</a>
     <div class="shell">
-        <aside class="side">
+        <header class="topbar">
+            <span class="name">Tumult</span>
+            <button
+                class="btn"
+                aria-expanded={menuOpen}
+                aria-controls="side"
+                bind:this={menuButton}
+                onclick={() => (menuOpen = !menuOpen)}
+            >
+                Menu
+            </button>
+        </header>
+        <aside class="side" class:open={menuOpen} id="side" {@attach closesOnLink}>
             <div class="brand">
                 <div class="name">Tumult</div>
                 <div class="tag">{TAGLINE}</div>
             </div>
-            <nav class="nav">
+            <nav class="nav" aria-label="Main">
                 {#each NAV as item (item.href)}
                     {#if (!item.admin || isAdmin) && (!item.operator || isOperator)}
-                        <a href={item.href} class:active={active(page.url, item.href)}>
+                        {@const current = active(page.url, item.href)}
+                        <a
+                            href={item.href}
+                            class:active={current}
+                            aria-current={current ? 'page' : undefined}
+                        >
                             <span>{item.icon}</span>{item.label}
                         </a>
                     {/if}
@@ -162,7 +201,7 @@
                 </div>
             {/if}
         </aside>
-        <main class="main">
+        <main class="main" id="main" tabindex="-1">
             {@render children?.()}
         </main>
     </div>

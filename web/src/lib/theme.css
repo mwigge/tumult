@@ -4,6 +4,16 @@
    tokens.css holds them, and scripts/build-tokens.mjs writes it from
    web/tokens/. */
 
+/* --- breakpoints -----------------------------------------------------------
+   The widths where the layout changes, each with a name. A media query
+   cannot read a custom property, so each query writes its width, and
+   src/lib/breakpoints.test.ts fails on a query at any other width.
+     xl  1200px  the key numbers of the Overview go three in a row
+     lg  1100px  two panels side by side go one under the other
+     md   900px  the side bar folds behind the menu button of a top bar
+     sm   800px  the key numbers and the meta tiles go two in a row
+*/
+
 * {
     box-sizing: border-box;
 }
@@ -81,7 +91,8 @@ code,
     border-bottom: var(--border-width-sm) solid var(--border);
     margin-bottom: var(--space-2-5);
 }
-.brand .name {
+.brand .name,
+.topbar .name {
     font-size: 17px;
     font-weight: 700;
     letter-spacing: 0.4px;
@@ -115,6 +126,42 @@ code,
     max-width: 1460px;
     min-width: 0;
 }
+/* Below md the side bar folds behind the menu button of a top bar. The
+   open menu shows under the top bar, in the flow of the page. Above md
+   the top bar is not shown and nothing here applies. */
+.topbar {
+    display: none;
+}
+@media (max-width: 900px) {
+    .shell {
+        display: block;
+    }
+    .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: var(--space-2) var(--space-4);
+        background: var(--bg-raised);
+        border-bottom: var(--border-width-sm) solid var(--border);
+    }
+    .side {
+        display: none;
+    }
+    .side.open {
+        display: flex;
+        position: static;
+        height: auto;
+        border-right: none;
+        border-bottom: var(--border-width-sm) solid var(--border);
+    }
+    /* The top bar names the app. */
+    .side .brand {
+        display: none;
+    }
+    .main {
+        padding-inline: var(--space-4);
+    }
+}
 .page-head {
     display: flex;
     align-items: baseline;
@@ -141,6 +188,12 @@ code,
     border-radius: var(--radius-xl);
     padding: var(--space-3-5) var(--space-4);
 }
+/* A panel whose table may be wider than it: the table scrolls sideways
+   inside the panel, and the page does not. Panel.svelte sets it with
+   `scroll`. */
+.panel[data-scroll] {
+    overflow-x: auto;
+}
 .panel h2 {
     font-size: var(--font-size-xs);
     text-transform: uppercase;
@@ -156,9 +209,18 @@ code,
 .grid.cols-2 {
     grid-template-columns: 1fr 1fr;
 }
+/* Side by side, a panel that scrolls is as wide as its content, as any
+   panel is, and the other column gives way. One under the other, it
+   scrolls. */
+.grid.cols-2 > .panel[data-scroll] {
+    min-width: min-content;
+}
 @media (max-width: 1100px) {
     .grid.cols-2 {
         grid-template-columns: 1fr;
+    }
+    .grid.cols-2 > .panel[data-scroll] {
+        min-width: 0;
     }
 }
 
@@ -205,6 +267,23 @@ table.data tr.clickable {
 table.data tr.clickable:hover {
     background: var(--bg-hover);
 }
+/* The link or the button in the cell that names a row that opens, so that
+   the keyboard opens the row too (see rows.ts). It looks as the text of
+   the cell: the row already shows that it opens. */
+.row-link,
+.row-link:hover {
+    color: inherit;
+    text-decoration: none;
+}
+.row-button {
+    background: none;
+    border: none;
+    padding: 0;
+    color: inherit;
+    font: inherit;
+    text-align: inherit;
+    cursor: pointer;
+}
 
 /* --- controls -------------------------------------------------------------*/
 .seg {
@@ -226,7 +305,13 @@ table.data tr.clickable:hover {
 }
 .seg button.active {
     background: var(--accent-dim);
-    color: #fff;
+    color: var(--on-accent);
+}
+/* On a small screen the buttons of a long group wrap to a second row. */
+@media (max-width: 900px) {
+    .seg {
+        flex-wrap: wrap;
+    }
 }
 /* The small look of Segmented.svelte and Tabs.svelte: the views of the
    Scores page and the value of the DORA heatmap. */
@@ -265,17 +350,26 @@ input[type='text'],
 input[type='search'],
 input[type='number'] {
     background: var(--bg-raised);
-    border: var(--border-width-sm) solid var(--border-strong);
+    border: var(--border-width-sm) solid var(--border-input);
     color: var(--text);
     border-radius: var(--radius-lg);
     padding: var(--space-1-5) 9px;
     font-size: var(--font-size-md);
-    outline: none;
 }
 select:focus,
 textarea:focus,
 input:focus {
     border-color: var(--accent);
+}
+/* The focus ring of a field, and of the heading a drawer gives the focus:
+   it shows when the keyboard moves the focus there. A button and a link
+   keep the ring of the browser. */
+select:focus-visible,
+textarea:focus-visible,
+input:focus-visible,
+.drawer [tabindex='-1']:focus-visible {
+    outline: var(--border-width-md) solid var(--accent);
+    outline-offset: 2px;
 }
 /* The date, time and file fields of the Manual forms. They come after
    input:focus, so their edge keeps its colour on focus, as before. */
@@ -283,7 +377,7 @@ input[type='date'],
 input[type='datetime-local'],
 input[type='file'] {
     background: var(--bg-raised);
-    border: var(--border-width-sm) solid var(--border-strong);
+    border: var(--border-width-sm) solid var(--border-input);
     color: var(--text);
     border-radius: var(--radius-lg);
     padding: 5px var(--space-2);
@@ -293,7 +387,7 @@ input[type='file'] {
 button.primary {
     background: var(--accent-dim);
     border: var(--border-width-sm) solid var(--accent);
-    color: #fff;
+    color: var(--on-accent);
     border-radius: var(--radius-lg);
     padding: 7px var(--space-4);
     font-size: var(--font-size-md);
@@ -312,12 +406,12 @@ button.primary {
 .btn:hover {
     border-color: var(--accent-dim);
 }
-/* A primary .btn keeps the text colour and the shape of .btn, which
-   button.primary would change. */
+/* A primary .btn keeps the shape of .btn, which button.primary would
+   change. */
 .btn.primary {
     background: var(--accent-dim);
     border-color: var(--accent-dim);
-    color: var(--text);
+    color: var(--on-accent);
     border-radius: var(--radius-xl);
     padding: var(--space-1-5) var(--space-3-5);
 }
@@ -335,7 +429,9 @@ button.primary:disabled,
 }
 
 /* --- status badges --------------------------------------------------------*/
-/* Badge.svelte draws every badge; src/lib/tone.ts chooses its tone. */
+/* Badge.svelte draws every badge; src/lib/tone.ts chooses its tone. The
+   tint is mixed with the panel, so it is one colour on every surface and
+   its text keeps 4.5:1 on a hovered row too (contrast.test.ts). */
 .badge {
     display: inline-block;
     /* A part that wants a gap before its badges sets --badge-gap. */
@@ -348,15 +444,15 @@ button.primary:disabled,
 }
 .badge.ok {
     color: var(--ok);
-    background: color-mix(in srgb, var(--ok) 14%, transparent);
+    background: color-mix(in srgb, var(--ok) 14%, var(--bg-panel));
 }
 .badge.warn {
     color: var(--warn);
-    background: color-mix(in srgb, var(--warn) 14%, transparent);
+    background: color-mix(in srgb, var(--warn) 14%, var(--bg-panel));
 }
 .badge.fail {
     color: var(--fail);
-    background: color-mix(in srgb, var(--fail) 14%, transparent);
+    background: color-mix(in srgb, var(--fail) 14%, var(--bg-panel));
 }
 .badge.neutral {
     color: var(--text-dim);
@@ -476,6 +572,25 @@ button.primary:disabled,
     clip-path: inset(50%);
     white-space: nowrap;
 }
+/* The first Tab stop of a page: a link past the navigation to the main
+   content. It is .sr-only until it has the focus. */
+.skip-link:focus {
+    top: var(--space-2);
+    left: var(--space-2);
+    z-index: var(--z-sticky);
+    width: auto;
+    height: auto;
+    clip-path: none;
+    padding: var(--space-1-5) var(--space-3);
+    background: var(--bg-raised);
+    border: var(--border-width-sm) solid var(--border-strong);
+    border-radius: var(--radius-lg);
+}
+/* The main content takes the focus from the skip link. It is not a
+   control, so it draws no ring. */
+.main:focus {
+    outline: none;
+}
 
 /* --- forms -----------------------------------------------------------------*/
 /* A form of fields one under the other, with rows of two. */
@@ -495,6 +610,12 @@ button.primary:disabled,
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: var(--space-2-5);
+}
+/* On a small screen each field of a row has the width of the form. */
+@media (max-width: 800px) {
+    .row2 {
+        grid-template-columns: 1fr;
+    }
 }
 /* A list editor: one grid row of fields for each entry. */
 .grid-rows {

@@ -354,6 +354,7 @@
                                 }}
                             >
                                 <input
+                                    aria-label="Reason"
                                     placeholder="reason (why this is accepted)"
                                     bind:value={reason}
                                     required
@@ -364,7 +365,12 @@
                                     <input type="number" min="0" max="3650" bind:value={days} />
                                 </label>
                                 {#if authOpen}
-                                    <input placeholder="your name" bind:value={actor} required />
+                                    <input
+                                        aria-label="Your name"
+                                        placeholder="your name"
+                                        bind:value={actor}
+                                        required
+                                    />
                                 {/if}
                                 <button type="submit" disabled={submitting}>Accept</button>
                                 <button
@@ -468,7 +474,7 @@
     {/if}
 
     {#if conformance && conformance.services.length > 0}
-        <section class="panel below" data-testid="conformance">
+        <section class="panel below" data-testid="conformance" data-scroll>
             <h2>Telemetry contract, {conformance.range}</h2>
             <div class="counts">
                 <Badge tone="ok" label="{conformance.summary.spine} spine" />
@@ -534,7 +540,7 @@
         </section>
     {/if}
 
-    <section class="panel score" data-testid="posture">
+    <section class="panel score" data-testid="posture" data-scroll>
         <h2>{RESILIENCE_SCORE}</h2>
         <p class="muted meaning">{RESILIENCE_SCORE_LINE}</p>
         <div class="headline">
@@ -645,7 +651,7 @@
     .suppress input {
         background: var(--bg-raised);
         color: var(--text);
-        border: var(--border-width-sm) solid var(--border-strong);
+        border: var(--border-width-sm) solid var(--border-input);
         border-radius: var(--radius-md);
         padding: var(--space-1) var(--space-2);
         font: inherit;
@@ -662,7 +668,7 @@
     }
     .suppress button[type='submit'] {
         background: var(--accent-dim);
-        color: var(--text);
+        color: var(--on-accent);
         border: none;
         border-radius: var(--radius-md);
         padding: var(--space-1) var(--space-3);

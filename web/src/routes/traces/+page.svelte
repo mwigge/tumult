@@ -13,6 +13,7 @@
     import PageHeader from '#lib/components/PageHeader.svelte';
     import Panel from '#lib/components/Panel.svelte';
     import State from '#lib/components/State.svelte';
+    import { onRow } from '#lib/rows.js';
 
     const filters = $derived({
         range: page.url.searchParams.get('range') ?? '24h',
@@ -121,9 +122,11 @@
         };
     });
 
+    const traceHref = (id: string) => `/traces/${encodeURIComponent(id)}`;
+
     function onPoint(params: { data?: unknown }) {
         const d = params.data as [number, number, string] | undefined;
-        if (d?.[2]) goto(`/traces/${encodeURIComponent(d[2])}`);
+        if (d?.[2]) goto(traceHref(d[2]));
     }
 </script>
 
@@ -133,6 +136,7 @@
 >
     <div class="controls">
         <select
+            aria-label="Outcome"
             value={filters.outcome}
             onchange={(e) => setFilter('outcome', e.currentTarget.value)}
         >
@@ -147,6 +151,7 @@
         </select>
         <input
             type="search"
+            aria-label="Service"
             placeholder="service…"
             value={filters.service}
             oninput={(e) => setFilter('service', e.currentTarget.value)}
@@ -154,6 +159,7 @@
         <input
             type="number"
             min="0"
+            aria-label="Shortest duration in ms"
             placeholder="min ms"
             style="width: 90px"
             value={filters.min_duration_ms}
@@ -194,7 +200,7 @@
     {/if}
 </Panel>
 
-<Panel>
+<Panel scroll>
     {#if error}
         <State kind="error">Failed to load traces: {error}</State>
     {:else if !rows}
@@ -211,12 +217,11 @@
             </thead>
             <tbody>
                 {#each rows as row (row.trace_id)}
-                    <tr
-                        class="clickable"
-                        onclick={() => goto(`/traces/${encodeURIComponent(row.trace_id)}`)}
-                    >
+                    <tr class="clickable" onclick={onRow(() => goto(traceHref(row.trace_id)))}>
                         <td class="mono" title={row.trace_id}
-                            >{row.root_name ?? shortId(row.trace_id)}</td
+                            ><a class="row-link" href={traceHref(row.trace_id)}
+                                >{row.root_name ?? shortId(row.trace_id)}</a
+                            ></td
                         >
                         <td class="mono">{row.service_name ?? '—'}</td>
                         <td title={new Date(row.started_ns / 1e6).toISOString()}

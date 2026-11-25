@@ -10,6 +10,7 @@
     import PageHeader from '#lib/components/PageHeader.svelte';
     import Panel from '#lib/components/Panel.svelte';
     import State from '#lib/components/State.svelte';
+    import { onRow } from '#lib/rows.js';
 
     // Client-side state filter: '' = all, 'active' = anything in
     // ACTIVE_RUN_STATES, otherwise one terminal state.
@@ -141,7 +142,7 @@
     <div class="panel halt-note">{haltNote}</div>
 {/if}
 
-<Panel>
+<Panel scroll>
     {#if error}
         <State kind="error">Failed to load runs: {error}</State>
     {:else if !shown}
@@ -158,9 +159,13 @@
             </thead>
             <tbody>
                 {#each shown as row (row.id)}
-                    <tr class="clickable" onclick={() => goto(`/runs/${row.id}`)}>
+                    <tr class="clickable" onclick={onRow(() => goto(`/runs/${row.id}`))}>
                         <td><StatusBadge status={row.state} /></td>
-                        <td>{row.definition_name ?? row.registry_id}</td>
+                        <td>
+                            <a class="row-link" href="/runs/{row.id}"
+                                >{row.definition_name ?? row.registry_id}</a
+                            >
+                        </td>
                         <td class="mono" style="color: var(--text-dim)">{shortId(row.id)}</td>
                         <td title={fmtTs(row.queued_at_ns)}>{fmtAgo(row.queued_at_ns)}</td>
                         <td class="mono">{fmtDuration(runWaitNs(row, nowNs()))}</td>

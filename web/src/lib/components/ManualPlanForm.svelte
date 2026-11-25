@@ -99,4 +99,9 @@
         grid-template-columns: 1fr 1fr 1fr;
         gap: var(--space-2-5);
     }
+    @media (max-width: 800px) {
+        .row3 {
+            grid-template-columns: 1fr;
+        }
+    }
 </style>

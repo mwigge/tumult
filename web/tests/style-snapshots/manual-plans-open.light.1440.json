@@ -21,6 +21,10 @@
       "display": "block",
       "background-color": "rgb(244, 246, 248)"
     },
+    "a[link].sr-only.skip-link \"Skip to main content\"": {
+      "color": "rgb(31, 111, 178)",
+      "display": "block"
+    },
     "div.shell": {
       "display": "grid",
       "grid-template-columns": "208px 1fr"
@@ -44,16 +48,16 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > div.brand > div.tag": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "11px",
       "display": "block",
       "margin": "2px 0px 0px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\"": {
       "display": "block",
       "padding": "0px 0px 1px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◧ Overview\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◧ Overview\"": {
       "color": "rgb(91, 103, 114)",
       "font-size": "13.5px",
       "display": "flex",
@@ -61,10 +65,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◧ Overview\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◧ Overview\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◎ Resilience\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◎ Resilience\"": {
       "color": "rgb(91, 103, 114)",
       "font-size": "13.5px",
       "display": "flex",
@@ -72,10 +76,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◎ Resilience\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◎ Resilience\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◭ Performance\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◭ Performance\"": {
       "color": "rgb(91, 103, 114)",
       "font-size": "13.5px",
       "display": "flex",
@@ -83,10 +87,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◭ Performance\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◭ Performance\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"▦ Scores\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"▦ Scores\"": {
       "color": "rgb(91, 103, 114)",
       "font-size": "13.5px",
       "display": "flex",
@@ -94,10 +98,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"▦ Scores\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"▦ Scores\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⚖ DORA\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⚖ DORA\"": {
       "color": "rgb(91, 103, 114)",
       "font-size": "13.5px",
       "display": "flex",
@@ -105,10 +109,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⚖ DORA\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⚖ DORA\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⟲ Disaster recovery\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⟲ Disaster recovery\"": {
       "color": "rgb(91, 103, 114)",
       "font-size": "13.5px",
       "display": "flex",
@@ -116,10 +120,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⟲ Disaster recovery\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⟲ Disaster recovery\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⚗ Experiments\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⚗ Experiments\"": {
       "color": "rgb(91, 103, 114)",
       "font-size": "13.5px",
       "display": "flex",
@@ -127,10 +131,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⚗ Experiments\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⚗ Experiments\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"▶ Runs\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"▶ Runs\"": {
       "color": "rgb(91, 103, 114)",
       "font-size": "13.5px",
       "display": "flex",
@@ -138,10 +142,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"▶ Runs\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"▶ Runs\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✚ Author\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✚ Author\"": {
       "color": "rgb(91, 103, 114)",
       "font-size": "13.5px",
       "display": "flex",
@@ -149,10 +153,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✚ Author\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✚ Author\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"☷ GameDays\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"☷ GameDays\"": {
       "color": "rgb(91, 103, 114)",
       "font-size": "13.5px",
       "display": "flex",
@@ -160,10 +164,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"☷ GameDays\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"☷ GameDays\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✓ Approvals\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✓ Approvals\"": {
       "color": "rgb(91, 103, 114)",
       "font-size": "13.5px",
       "display": "flex",
@@ -171,10 +175,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✓ Approvals\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✓ Approvals\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link].active \"✎ Manual\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link].active \"✎ Manual\"": {
       "font-size": "13.5px",
       "display": "flex",
       "background-color": "rgb(233, 238, 242)",
@@ -182,10 +186,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link].active \"✎ Manual\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link].active \"✎ Manual\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"≣ Logs\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"≣ Logs\"": {
       "color": "rgb(91, 103, 114)",
       "font-size": "13.5px",
       "display": "flex",
@@ -193,10 +197,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"≣ Logs\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"≣ Logs\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⌁ Traces\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⌁ Traces\"": {
       "color": "rgb(91, 103, 114)",
       "font-size": "13.5px",
       "display": "flex",
@@ -204,10 +208,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⌁ Traces\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⌁ Traces\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"∿ Metrics\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"∿ Metrics\"": {
       "color": "rgb(91, 103, 114)",
       "font-size": "13.5px",
       "display": "flex",
@@ -215,10 +219,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"∿ Metrics\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"∿ Metrics\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✳ Star Map\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✳ Star Map\"": {
       "color": "rgb(91, 103, 114)",
       "font-size": "13.5px",
       "display": "flex",
@@ -226,10 +230,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✳ Star Map\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✳ Star Map\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✦ Ask\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✦ Ask\"": {
       "color": "rgb(91, 103, 114)",
       "font-size": "13.5px",
       "display": "flex",
@@ -237,10 +241,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✦ Ask\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✦ Ask\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"▤ Reports\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"▤ Reports\"": {
       "color": "rgb(91, 103, 114)",
       "font-size": "13.5px",
       "display": "flex",
@@ -248,10 +252,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"▤ Reports\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"▤ Reports\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◔ Events\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◔ Events\"": {
       "color": "rgb(91, 103, 114)",
       "font-size": "13.5px",
       "display": "flex",
@@ -259,10 +263,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◔ Events\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◔ Events\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⚿ Users\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⚿ Users\"": {
       "color": "rgb(91, 103, 114)",
       "font-size": "13.5px",
       "display": "flex",
@@ -270,10 +274,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⚿ Users\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⚿ Users\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"➤ Webhooks\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"➤ Webhooks\"": {
       "color": "rgb(91, 103, 114)",
       "font-size": "13.5px",
       "display": "flex",
@@ -281,10 +285,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"➤ Webhooks\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"➤ Webhooks\" > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"↻ Schedules\"": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"↻ Schedules\"": {
       "color": "rgb(91, 103, 114)",
       "font-size": "13.5px",
       "display": "flex",
@@ -292,7 +296,7 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"↻ Schedules\" > span": {
+    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"↻ Schedules\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > button[button].theme \"○ light\"": {
@@ -347,10 +351,10 @@
       "line-height": "normal",
       "display": "block",
       "background-color": "rgb(255, 255, 255)",
-      "border-top": "1px solid rgb(197, 206, 214)",
-      "border-right": "1px solid rgb(197, 206, 214)",
-      "border-bottom": "1px solid rgb(197, 206, 214)",
-      "border-left": "1px solid rgb(197, 206, 214)",
+      "border-top": "1px solid rgb(141, 149, 157)",
+      "border-right": "1px solid rgb(141, 149, 157)",
+      "border-bottom": "1px solid rgb(141, 149, 157)",
+      "border-left": "1px solid rgb(141, 149, 157)",
       "border-radius": "5px",
       "padding": "6px 9px"
     },
@@ -376,7 +380,7 @@
       "font-size": "12.5px",
       "line-height": "normal",
       "display": "block",
-      "background-color": "rgb(156, 196, 228)",
+      "background-color": "rgb(74, 123, 164)",
       "border-left": "1px solid rgb(197, 206, 214)",
       "padding": "5px 12px"
     },
@@ -544,6 +548,9 @@
       "border-bottom": "1px solid rgb(227, 232, 237)",
       "padding": "7px 10px"
     },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > tr[row].clickable > td[cell] \"payments failover\" > button[button].row-button \"payments failover\"": {
+      "display": "inline-block"
+    },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > tr[row].clickable > td[cell] \"failover\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(227, 232, 237)",
@@ -565,7 +572,7 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > tr[row].clickable > td[cell] \"payments-api · prod\" > span.dim": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "12px",
       "display": "inline"
     },
@@ -585,12 +592,12 @@
       "display": "inline"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > tr[row].clickable > td[cell].nowrap \"2026-11-13 overdue\" > span.badge.fail": {
-      "color": "rgb(192, 57, 43)",
+      "color": "rgb(190, 55, 41)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
       "display": "inline-block",
-      "background-color": "color(srgb 0.752941 0.223529 0.168627 / 0.14)",
+      "background-color": "color(srgb 0.964314 0.890196 0.88251)",
       "border-radius": "10px",
       "padding": "1px 9px",
       "margin": "0px 0px 0px 6px"
@@ -601,12 +608,12 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > tr[row].clickable > td[cell] \"planned\" > span.badge.warn": {
-      "color": "rgb(180, 83, 9)",
+      "color": "rgb(171, 77, 4)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
       "display": "inline-block",
-      "background-color": "color(srgb 0.705882 0.32549 0.0352941 / 0.14)",
+      "background-color": "color(srgb 0.953882 0.902274 0.862196)",
       "border-radius": "10px",
       "padding": "1px 9px"
     },
@@ -644,15 +651,15 @@
       "padding": "6px 14px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > tr[row].clickable > td[cell] \"Edit plan payments failover Cancel plan …\" > div.row-actions > button[button].btn.danger \"Cancel plan payments failover\"": {
-      "color": "rgb(192, 57, 43)",
+      "color": "rgb(190, 55, 41)",
       "font-family": "Arial",
       "line-height": "normal",
       "display": "block",
       "background-color": "rgb(233, 238, 242)",
-      "border-top": "1px solid rgb(192, 57, 43)",
-      "border-right": "1px solid rgb(192, 57, 43)",
-      "border-bottom": "1px solid rgb(192, 57, 43)",
-      "border-left": "1px solid rgb(192, 57, 43)",
+      "border-top": "1px solid rgb(190, 55, 41)",
+      "border-right": "1px solid rgb(190, 55, 41)",
+      "border-bottom": "1px solid rgb(190, 55, 41)",
+      "border-left": "1px solid rgb(190, 55, 41)",
       "border-radius": "6px",
       "padding": "6px 14px"
     },
@@ -674,7 +681,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > tr[row].detail-row > td[cell] \"Function fn-pay · scope eu · created by …\" > div.plan-detail > p[paragraph].dim": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "12px",
       "display": "block",
       "margin": "12px 0px"
@@ -693,7 +700,7 @@
       "display": "inline"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > tr[row].detail-row > td[cell] \"Function fn-pay · scope eu · created by …\" > div.plan-detail > ol[list].audit > li[listitem] > span.dim": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "12px",
       "display": "inline"
     },
@@ -707,7 +714,7 @@
       "display": "inline"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > tr[row].detail-row > td[cell] \"Function fn-pay · scope eu · created by …\" > div.plan-detail > ol[list].audit > li[listitem] #2 > span.dim": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "12px",
       "display": "inline"
     },
@@ -728,11 +735,11 @@
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > tr[row].detail-row > td[cell] \"Function fn-pay · scope eu · created by …\" > div.plan-detail > div.verify > div[status].verdict": {
       "display": "block",
-      "background-color": "color(srgb 0.0588235 0.541176 0.372549 / 0.08)",
-      "border-top": "1px solid rgb(15, 138, 95)",
-      "border-right": "1px solid rgb(15, 138, 95)",
-      "border-bottom": "1px solid rgb(15, 138, 95)",
-      "border-left": "1px solid rgb(15, 138, 95)",
+      "background-color": "color(srgb 0.0352941 0.470588 0.321569 / 0.08)",
+      "border-top": "1px solid rgb(9, 120, 82)",
+      "border-right": "1px solid rgb(9, 120, 82)",
+      "border-bottom": "1px solid rgb(9, 120, 82)",
+      "border-left": "1px solid rgb(9, 120, 82)",
       "border-radius": "6px",
       "padding": "8px 10px",
       "margin": "8px 0px 0px"
@@ -742,7 +749,7 @@
       "margin": "0px 0px 4px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > tr[row].detail-row > td[cell] \"Function fn-pay · scope eu · created by …\" > div.plan-detail > div.verify > div[status].verdict > p[paragraph] > span.dim": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "12px",
       "display": "inline"
     },
@@ -752,6 +759,9 @@
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > tr[row].clickable #2 > td[cell] \"ledger restore\"": {
       "display": "table-cell",
       "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > tr[row].clickable #2 > td[cell] \"ledger restore\" > button[button].row-button \"ledger restore\"": {
+      "display": "inline-block"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > tr[row].clickable #2 > td[cell] \"failover\"": {
       "display": "table-cell",
@@ -772,7 +782,7 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > tr[row].clickable #2 > td[cell] \"payments-api · prod\" > span.dim": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "12px",
       "display": "inline"
     },
@@ -794,12 +804,12 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > tr[row].clickable #2 > td[cell] \"planned\" > span.badge.warn": {
-      "color": "rgb(180, 83, 9)",
+      "color": "rgb(171, 77, 4)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
       "display": "inline-block",
-      "background-color": "color(srgb 0.705882 0.32549 0.0352941 / 0.14)",
+      "background-color": "color(srgb 0.953882 0.902274 0.862196)",
       "border-radius": "10px",
       "padding": "1px 9px"
     },
@@ -834,15 +844,15 @@
       "padding": "6px 14px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > tr[row].clickable #2 > td[cell] \"Edit plan ledger restore Cancel plan led…\" > div.row-actions > button[button].btn.danger \"Cancel plan ledger restore\"": {
-      "color": "rgb(192, 57, 43)",
+      "color": "rgb(190, 55, 41)",
       "font-family": "Arial",
       "line-height": "normal",
       "display": "block",
       "background-color": "rgb(233, 238, 242)",
-      "border-top": "1px solid rgb(192, 57, 43)",
-      "border-right": "1px solid rgb(192, 57, 43)",
-      "border-bottom": "1px solid rgb(192, 57, 43)",
-      "border-left": "1px solid rgb(192, 57, 43)",
+      "border-top": "1px solid rgb(190, 55, 41)",
+      "border-right": "1px solid rgb(190, 55, 41)",
+      "border-bottom": "1px solid rgb(190, 55, 41)",
+      "border-left": "1px solid rgb(190, 55, 41)",
       "border-radius": "6px",
       "padding": "6px 14px"
     },
@@ -882,10 +892,10 @@
       "line-height": "normal",
       "display": "block",
       "background-color": "rgb(255, 255, 255)",
-      "border-top": "1px solid rgb(197, 206, 214)",
-      "border-right": "1px solid rgb(197, 206, 214)",
-      "border-bottom": "1px solid rgb(197, 206, 214)",
-      "border-left": "1px solid rgb(197, 206, 214)",
+      "border-top": "1px solid rgb(141, 149, 157)",
+      "border-right": "1px solid rgb(141, 149, 157)",
+      "border-bottom": "1px solid rgb(141, 149, 157)",
+      "border-left": "1px solid rgb(141, 149, 157)",
       "border-radius": "5px",
       "padding": "6px 9px"
     },
@@ -907,10 +917,10 @@
       "line-height": "normal",
       "display": "block",
       "background-color": "rgb(255, 255, 255)",
-      "border-top": "1px solid rgb(197, 206, 214)",
-      "border-right": "1px solid rgb(197, 206, 214)",
-      "border-bottom": "1px solid rgb(197, 206, 214)",
-      "border-left": "1px solid rgb(197, 206, 214)",
+      "border-top": "1px solid rgb(141, 149, 157)",
+      "border-right": "1px solid rgb(141, 149, 157)",
+      "border-bottom": "1px solid rgb(141, 149, 157)",
+      "border-left": "1px solid rgb(141, 149, 157)",
       "border-radius": "5px",
       "padding": "6px 9px"
     },
@@ -927,10 +937,10 @@
       "line-height": "normal",
       "display": "block",
       "background-color": "rgb(255, 255, 255)",
-      "border-top": "1px solid rgb(197, 206, 214)",
-      "border-right": "1px solid rgb(197, 206, 214)",
-      "border-bottom": "1px solid rgb(197, 206, 214)",
-      "border-left": "1px solid rgb(197, 206, 214)",
+      "border-top": "1px solid rgb(141, 149, 157)",
+      "border-right": "1px solid rgb(141, 149, 157)",
+      "border-bottom": "1px solid rgb(141, 149, 157)",
+      "border-left": "1px solid rgb(141, 149, 157)",
       "border-radius": "5px",
       "padding": "6px 9px"
     },
@@ -952,10 +962,10 @@
       "line-height": "normal",
       "display": "block",
       "background-color": "rgb(255, 255, 255)",
-      "border-top": "1px solid rgb(197, 206, 214)",
-      "border-right": "1px solid rgb(197, 206, 214)",
-      "border-bottom": "1px solid rgb(197, 206, 214)",
-      "border-left": "1px solid rgb(197, 206, 214)",
+      "border-top": "1px solid rgb(141, 149, 157)",
+      "border-right": "1px solid rgb(141, 149, 157)",
+      "border-bottom": "1px solid rgb(141, 149, 157)",
+      "border-left": "1px solid rgb(141, 149, 157)",
       "border-radius": "5px",
       "padding": "6px 9px"
     },
@@ -972,10 +982,10 @@
       "line-height": "normal",
       "display": "block",
       "background-color": "rgb(255, 255, 255)",
-      "border-top": "1px solid rgb(197, 206, 214)",
-      "border-right": "1px solid rgb(197, 206, 214)",
-      "border-bottom": "1px solid rgb(197, 206, 214)",
-      "border-left": "1px solid rgb(197, 206, 214)",
+      "border-top": "1px solid rgb(141, 149, 157)",
+      "border-right": "1px solid rgb(141, 149, 157)",
+      "border-bottom": "1px solid rgb(141, 149, 157)",
+      "border-left": "1px solid rgb(141, 149, 157)",
       "border-radius": "5px",
       "padding": "6px 9px"
     },
@@ -997,10 +1007,10 @@
       "line-height": "normal",
       "display": "block",
       "background-color": "rgb(255, 255, 255)",
-      "border-top": "1px solid rgb(197, 206, 214)",
-      "border-right": "1px solid rgb(197, 206, 214)",
-      "border-bottom": "1px solid rgb(197, 206, 214)",
-      "border-left": "1px solid rgb(197, 206, 214)",
+      "border-top": "1px solid rgb(141, 149, 157)",
+      "border-right": "1px solid rgb(141, 149, 157)",
+      "border-bottom": "1px solid rgb(141, 149, 157)",
+      "border-left": "1px solid rgb(141, 149, 157)",
       "border-radius": "5px",
       "padding": "6px 9px"
     },
@@ -1017,10 +1027,10 @@
       "line-height": "normal",
       "display": "block",
       "background-color": "rgb(255, 255, 255)",
-      "border-top": "1px solid rgb(197, 206, 214)",
-      "border-right": "1px solid rgb(197, 206, 214)",
-      "border-bottom": "1px solid rgb(197, 206, 214)",
-      "border-left": "1px solid rgb(197, 206, 214)",
+      "border-top": "1px solid rgb(141, 149, 157)",
+      "border-right": "1px solid rgb(141, 149, 157)",
+      "border-bottom": "1px solid rgb(141, 149, 157)",
+      "border-left": "1px solid rgb(141, 149, 157)",
       "border-radius": "5px",
       "padding": "6px 9px"
     },
@@ -1041,10 +1051,10 @@
       "line-height": "normal",
       "display": "block",
       "background-color": "rgb(255, 255, 255)",
-      "border-top": "1px solid rgb(197, 206, 214)",
-      "border-right": "1px solid rgb(197, 206, 214)",
-      "border-bottom": "1px solid rgb(197, 206, 214)",
-      "border-left": "1px solid rgb(197, 206, 214)",
+      "border-top": "1px solid rgb(141, 149, 157)",
+      "border-right": "1px solid rgb(141, 149, 157)",
+      "border-bottom": "1px solid rgb(141, 149, 157)",
+      "border-left": "1px solid rgb(141, 149, 157)",
       "border-radius": "5px",
       "padding": "5px 8px"
     },
@@ -1060,10 +1070,10 @@
       "line-height": "normal",
       "display": "block",
       "background-color": "rgb(255, 255, 255)",
-      "border-top": "1px solid rgb(197, 206, 214)",
-      "border-right": "1px solid rgb(197, 206, 214)",
-      "border-bottom": "1px solid rgb(197, 206, 214)",
-      "border-left": "1px solid rgb(197, 206, 214)",
+      "border-top": "1px solid rgb(141, 149, 157)",
+      "border-right": "1px solid rgb(141, 149, 157)",
+      "border-bottom": "1px solid rgb(141, 149, 157)",
+      "border-left": "1px solid rgb(141, 149, 157)",
       "border-radius": "5px",
       "padding": "5px 8px"
     },
@@ -1085,10 +1095,10 @@
       "line-height": "normal",
       "display": "block",
       "background-color": "rgb(255, 255, 255)",
-      "border-top": "1px solid rgb(197, 206, 214)",
-      "border-right": "1px solid rgb(197, 206, 214)",
-      "border-bottom": "1px solid rgb(197, 206, 214)",
-      "border-left": "1px solid rgb(197, 206, 214)",
+      "border-top": "1px solid rgb(141, 149, 157)",
+      "border-right": "1px solid rgb(141, 149, 157)",
+      "border-bottom": "1px solid rgb(141, 149, 157)",
+      "border-left": "1px solid rgb(141, 149, 157)",
       "border-radius": "5px",
       "padding": "6px 9px"
     },
@@ -1105,10 +1115,10 @@
       "line-height": "normal",
       "display": "block",
       "background-color": "rgb(255, 255, 255)",
-      "border-top": "1px solid rgb(197, 206, 214)",
-      "border-right": "1px solid rgb(197, 206, 214)",
-      "border-bottom": "1px solid rgb(197, 206, 214)",
-      "border-left": "1px solid rgb(197, 206, 214)",
+      "border-top": "1px solid rgb(141, 149, 157)",
+      "border-right": "1px solid rgb(141, 149, 157)",
+      "border-bottom": "1px solid rgb(141, 149, 157)",
+      "border-left": "1px solid rgb(141, 149, 157)",
       "border-radius": "5px",
       "padding": "6px 9px"
     },
@@ -1125,15 +1135,15 @@
       "line-height": "normal",
       "display": "block",
       "background-color": "rgb(255, 255, 255)",
-      "border-top": "1px solid rgb(197, 206, 214)",
-      "border-right": "1px solid rgb(197, 206, 214)",
-      "border-bottom": "1px solid rgb(197, 206, 214)",
-      "border-left": "1px solid rgb(197, 206, 214)",
+      "border-top": "1px solid rgb(141, 149, 157)",
+      "border-right": "1px solid rgb(141, 149, 157)",
+      "border-bottom": "1px solid rgb(141, 149, 157)",
+      "border-left": "1px solid rgb(141, 149, 157)",
       "border-radius": "5px",
       "padding": "6px 9px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel.form-panel > div.form > p[paragraph].note": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "12px",
       "display": "block",
       "margin": "12px 0px"
@@ -1143,15 +1153,16 @@
       "gap": "8px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel.form-panel > div.form > div.actions > button[button].btn.primary \"Save plan\"": {
+      "color": "rgb(255, 255, 255)",
       "font-family": "Arial",
       "font-size": "13px",
       "line-height": "normal",
       "display": "block",
-      "background-color": "rgb(156, 196, 228)",
-      "border-top": "1px solid rgb(156, 196, 228)",
-      "border-right": "1px solid rgb(156, 196, 228)",
-      "border-bottom": "1px solid rgb(156, 196, 228)",
-      "border-left": "1px solid rgb(156, 196, 228)",
+      "background-color": "rgb(74, 123, 164)",
+      "border-top": "1px solid rgb(74, 123, 164)",
+      "border-right": "1px solid rgb(74, 123, 164)",
+      "border-bottom": "1px solid rgb(74, 123, 164)",
+      "border-left": "1px solid rgb(74, 123, 164)",
       "border-radius": "6px",
       "padding": "6px 14px"
     },

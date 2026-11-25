@@ -3,6 +3,7 @@
     import { api } from '#lib/api.js';
     import { TAGLINE } from '#lib/brand.js';
     import State from '#lib/components/State.svelte';
+    import Title from '#lib/components/Title.svelte';
 
     let username = $state('');
     let password = $state('');
@@ -52,10 +53,12 @@
     }
 </script>
 
+<Title name="Sign in" />
+
 <div class="login-wrap">
     <div class="panel login-panel">
         <div class="brand">
-            <div class="name">Tumult</div>
+            <h1 class="name">Tumult</h1>
             <div class="tag">{TAGLINE}</div>
         </div>
 
@@ -183,7 +186,7 @@
     }
     input[type='password'] {
         background: var(--bg-raised);
-        border: var(--border-width-sm) solid var(--border-strong);
+        border: var(--border-width-sm) solid var(--border-input);
         color: var(--text);
         border-radius: var(--radius-lg);
         padding: var(--space-1-5) 9px;

@@ -119,7 +119,7 @@
 </script>
 
 <div class="plans">
-    <Panel title="Plans">
+    <Panel title="Plans" scroll>
         {#if loadError}
             <State kind="error">{loadError}</State>
         {:else if !plans}

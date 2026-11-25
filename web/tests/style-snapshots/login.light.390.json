@@ -40,14 +40,14 @@
       "padding": "0px 0px 12px",
       "margin": "0px 0px 16px"
     },
-    "div.login-wrap > div.panel.login-panel > div.brand > div.name": {
+    "div.login-wrap > div.panel.login-panel > div.brand > h1[heading].name \"Tumult\"": {
       "font-size": "17px",
       "font-weight": "700",
       "letter-spacing": "0.4px",
       "display": "block"
     },
     "div.login-wrap > div.panel.login-panel > div.brand > div.tag": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "11px",
       "display": "block",
       "margin": "2px 0px 0px"
@@ -69,10 +69,10 @@
       "line-height": "normal",
       "display": "block",
       "background-color": "rgb(255, 255, 255)",
-      "border-top": "1px solid rgb(197, 206, 214)",
-      "border-right": "1px solid rgb(197, 206, 214)",
-      "border-bottom": "1px solid rgb(197, 206, 214)",
-      "border-left": "1px solid rgb(197, 206, 214)",
+      "border-top": "1px solid rgb(141, 149, 157)",
+      "border-right": "1px solid rgb(141, 149, 157)",
+      "border-bottom": "1px solid rgb(141, 149, 157)",
+      "border-left": "1px solid rgb(141, 149, 157)",
       "border-radius": "5px",
       "padding": "6px 9px"
     },
@@ -89,10 +89,10 @@
       "line-height": "normal",
       "display": "block",
       "background-color": "rgb(255, 255, 255)",
-      "border-top": "1px solid rgb(197, 206, 214)",
-      "border-right": "1px solid rgb(197, 206, 214)",
-      "border-bottom": "1px solid rgb(197, 206, 214)",
-      "border-left": "1px solid rgb(197, 206, 214)",
+      "border-top": "1px solid rgb(141, 149, 157)",
+      "border-right": "1px solid rgb(141, 149, 157)",
+      "border-bottom": "1px solid rgb(141, 149, 157)",
+      "border-left": "1px solid rgb(141, 149, 157)",
       "border-radius": "5px",
       "padding": "6px 9px"
     },
@@ -103,7 +103,7 @@
       "line-height": "normal",
       "display": "block",
       "opacity": "0.5",
-      "background-color": "rgb(156, 196, 228)",
+      "background-color": "rgb(74, 123, 164)",
       "border-top": "1px solid rgb(31, 111, 178)",
       "border-right": "1px solid rgb(31, 111, 178)",
       "border-bottom": "1px solid rgb(31, 111, 178)",
