@@ -80,6 +80,16 @@ test('a saved light theme is on the page at its first paint, before the app moun
     await expect(button).toContainText('auto');
 });
 
+test('the saved theme is kept when the early script does not load', async ({ page }) => {
+    await page.route('**/early-theme.js', (route) => route.abort());
+    await open(page, 'overview', 'light');
+    await expect(page.locator('button.theme'), 'the app mounts').toBeVisible();
+
+    const saved = await page.evaluate(() => localStorage.getItem('tumult.theme'));
+    expect(saved, 'the saved choice is not lost').toBe('light');
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+});
+
 test.describe('on a system in light mode', () => {
     test.use({ colorScheme: 'light' });
 

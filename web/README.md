@@ -87,7 +87,9 @@ The theme button keeps the choice (`dark`, `light` or `auto`) in
 `localStorage['tumult.theme']` and puts it on `<html data-theme>`. The app
 has no server render, so `app.html` loads `static/early-theme.js` in its
 head: it puts the saved theme there before the first paint, and the layout
-starts from it. A user who chose light never sees the dark default first.
+starts from it. When the script did not run, the layout reads the saved
+theme itself, so it is never lost. A user who chose light never sees the
+dark default first.
 It is a file and not inline code, so that a strict content security policy
 can allow it. `tests/first-paint.spec.ts` checks the first paint.
 
