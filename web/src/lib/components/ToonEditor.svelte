@@ -36,7 +36,8 @@
     }
 </script>
 
-<textarea class="toon" spellcheck="false" value={toon} oninput={onEdit}></textarea>
+<textarea class="toon" aria-label="Experiment TOON" spellcheck="false" value={toon} oninput={onEdit}
+></textarea>
 
 <div class="actions">
     <button class="primary" onclick={validate} disabled={validating || toon.trim() === ''}>

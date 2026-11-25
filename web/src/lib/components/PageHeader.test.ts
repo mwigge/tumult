@@ -4,8 +4,12 @@ import { describe, expect, it } from 'vitest';
 
 import PageHeader from './PageHeader.svelte';
 
-/** The markup without the comments Svelte leaves for hydration, and no space between tags. */
-const markup = (html: string) => html.replace(/<!--.*?-->/g, '').replace(/>\s+</g, '><');
+/** The markup without the comments Svelte leaves for hydration, and no space between or around tags. */
+const markup = (html: string) =>
+    html
+        .replace(/<!--.*?-->/g, '')
+        .replace(/>\s+</g, '><')
+        .trim();
 
 const controls = createRawSnippet(() => ({
     render: () => '<div class="controls"><button>New run</button></div>',
@@ -45,6 +49,12 @@ describe('the head of a page', () => {
             '<div class="page-head"><h1>Runs</h1><span class="sub">3 runs</span>' +
                 '<div class="controls"><button>New run</button></div></div>',
         );
+    });
+
+    it('names the browser tab after the title', () => {
+        const head = render(PageHeader, { props: { title: 'Runs' } }).head;
+
+        expect(markup(head)).toBe('<title>Runs · Krönika</title>');
     });
 
     it('shows an id as the title in the mono font', () => {

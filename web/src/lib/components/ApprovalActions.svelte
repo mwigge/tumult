@@ -149,7 +149,12 @@
 
         {#if runState === 'pending_approval' && canDecide}
             <div class="ap-actions">
-                <input type="text" placeholder="decision note…" bind:value={approvalNote} />
+                <input
+                    type="text"
+                    aria-label="Decision note"
+                    placeholder="decision note…"
+                    bind:value={approvalNote}
+                />
                 <button class="btn" onclick={() => decide(true)} disabled={approvalBusy}
                     >Approve</button
                 >
@@ -179,6 +184,7 @@
                 </p>
                 <textarea
                     rows="3"
+                    aria-label="Justification"
                     placeholder="justification (min 10 characters)…"
                     bind:value={breakGlassJustification}></textarea>
                 <div class="ap-actions">

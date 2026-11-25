@@ -331,7 +331,7 @@
       "margin": "0px 0px 14px",
       "gap": "10px"
     },
-    "div.shell > main[main].main > div.filters > input[searchbox] \"Search actions, plugins, descriptions…\"": {
+    "div.shell > main[main].main > div.filters > input[searchbox] \"Search actions\"": {
       "font-family": "Arial",
       "font-size": "13px",
       "line-height": "normal",
@@ -344,7 +344,7 @@
       "border-radius": "5px",
       "padding": "6px 9px"
     },
-    "div.shell > main[main].main > div.filters > select[combobox]": {
+    "div.shell > main[main].main > div.filters > select[combobox] \"Domain\"": {
       "font-family": "Arial",
       "font-size": "13px",
       "line-height": "normal",

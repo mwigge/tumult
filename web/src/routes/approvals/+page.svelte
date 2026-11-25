@@ -189,6 +189,7 @@
                             <td onclick={(e) => e.stopPropagation()}>
                                 <input
                                     type="text"
+                                    aria-label="Decision note"
                                     placeholder="decision note…"
                                     bind:value={notes[row.run_id]}
                                 />

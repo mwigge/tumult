@@ -336,7 +336,7 @@
       "margin": "0px 0px 0px auto",
       "gap": "8px"
     },
-    "div.shell > main[main].main > div.page-head > div.controls > select[combobox]": {
+    "div.shell > main[main].main > div.page-head > div.controls > select[combobox] \"Metric\"": {
       "font-family": "Arial",
       "font-size": "13px",
       "line-height": "normal",
@@ -349,7 +349,7 @@
       "border-radius": "5px",
       "padding": "6px 9px"
     },
-    "div.shell > main[main].main > div.page-head > div.controls > select[combobox] \"no attributes on this metric\"": {
+    "div.shell > main[main].main > div.page-head > div.controls > select[combobox] \"Group by\"": {
       "font-family": "Arial",
       "font-size": "13px",
       "line-height": "normal",
@@ -398,7 +398,7 @@
       "border-left": "1px solid rgb(51, 64, 76)",
       "padding": "5px 12px"
     },
-    "div.shell > main[main].main > div.page-head > div.controls > select[combobox] #2": {
+    "div.shell > main[main].main > div.page-head > div.controls > select[combobox] \"Interval\"": {
       "font-family": "Arial",
       "font-size": "13px",
       "line-height": "normal",

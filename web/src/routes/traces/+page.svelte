@@ -136,6 +136,7 @@
 >
     <div class="controls">
         <select
+            aria-label="Outcome"
             value={filters.outcome}
             onchange={(e) => setFilter('outcome', e.currentTarget.value)}
         >
@@ -150,6 +151,7 @@
         </select>
         <input
             type="search"
+            aria-label="Service"
             placeholder="service…"
             value={filters.service}
             oninput={(e) => setFilter('service', e.currentTarget.value)}
@@ -157,6 +159,7 @@
         <input
             type="number"
             min="0"
+            aria-label="Shortest duration in ms"
             placeholder="min ms"
             style="width: 90px"
             value={filters.min_duration_ms}

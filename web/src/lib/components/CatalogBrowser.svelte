@@ -34,8 +34,13 @@
 </script>
 
 <div class="filters">
-    <input type="search" placeholder="Search actions, plugins, descriptions…" bind:value={q} />
-    <select bind:value={domain}>
+    <input
+        type="search"
+        aria-label="Search actions"
+        placeholder="Search actions, plugins, descriptions…"
+        bind:value={q}
+    />
+    <select aria-label="Domain" bind:value={domain}>
         <option value="">All domains</option>
         {#each domains as d (d.domain)}
             <option value={d.domain}>{d.label}</option>

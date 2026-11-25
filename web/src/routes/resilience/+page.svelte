@@ -354,6 +354,7 @@
                                 }}
                             >
                                 <input
+                                    aria-label="Reason"
                                     placeholder="reason (why this is accepted)"
                                     bind:value={reason}
                                     required
@@ -364,7 +365,12 @@
                                     <input type="number" min="0" max="3650" bind:value={days} />
                                 </label>
                                 {#if authOpen}
-                                    <input placeholder="your name" bind:value={actor} required />
+                                    <input
+                                        aria-label="Your name"
+                                        placeholder="your name"
+                                        bind:value={actor}
+                                        required
+                                    />
                                 {/if}
                                 <button type="submit" disabled={submitting}>Accept</button>
                                 <button

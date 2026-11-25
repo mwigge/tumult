@@ -331,7 +331,7 @@
       "margin": "0px 0px 0px auto",
       "gap": "8px"
     },
-    "div.shell > main[main].main > div.page-head > div.controls > input[searchbox] \"search body…\"": {
+    "div.shell > main[main].main > div.page-head > div.controls > input[searchbox] \"Search body\"": {
       "font-family": "Arial",
       "font-size": "13px",
       "line-height": "normal",
@@ -344,7 +344,7 @@
       "border-radius": "5px",
       "padding": "6px 9px"
     },
-    "div.shell > main[main].main > div.page-head > div.controls > select[combobox]": {
+    "div.shell > main[main].main > div.page-head > div.controls > select[combobox] \"Severity\"": {
       "font-family": "Arial",
       "font-size": "13px",
       "line-height": "normal",
@@ -357,7 +357,7 @@
       "border-radius": "5px",
       "padding": "6px 9px"
     },
-    "div.shell > main[main].main > div.page-head > div.controls > input[searchbox] \"service…\"": {
+    "div.shell > main[main].main > div.page-head > div.controls > input[searchbox] \"Service\"": {
       "font-family": "Arial",
       "font-size": "13px",
       "line-height": "normal",

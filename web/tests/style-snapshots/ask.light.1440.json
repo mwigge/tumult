@@ -341,7 +341,7 @@
       "display": "flex",
       "gap": "10px"
     },
-    "div.shell > main[main].main > div.panel > form[form].askbar > input[textbox] \"Ask about experiments, outcomes, faults…\"": {
+    "div.shell > main[main].main > div.panel > form[form].askbar > input[textbox] \"Question\"": {
       "font-family": "Arial",
       "font-size": "13px",
       "line-height": "normal",

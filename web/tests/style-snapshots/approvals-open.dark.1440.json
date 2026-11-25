@@ -518,12 +518,12 @@
       "border-bottom": "1px solid rgb(36, 45, 54)",
       "padding": "7px 10px"
     },
-    "div.shell > main[main].main > div.panel > table[table].data > tr[row].clickable > td[cell] \"decision note…\"": {
+    "div.shell > main[main].main > div.panel > table[table].data > tr[row].clickable > td[cell] \"Decision note\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
       "padding": "7px 10px"
     },
-    "div.shell > main[main].main > div.panel > table[table].data > tr[row].clickable > td[cell] \"decision note…\" > input[textbox] \"decision note…\"": {
+    "div.shell > main[main].main > div.panel > table[table].data > tr[row].clickable > td[cell] \"Decision note\" > input[textbox] \"Decision note\"": {
       "font-family": "Arial",
       "line-height": "normal",
       "display": "inline-block",

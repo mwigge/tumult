@@ -155,6 +155,12 @@ link back (`.back`), the title, a sub line, and then the badges and the
 controls the page puts in it. `src/lib/page-head.test.ts` fails on a page
 head written by hand.
 
+The title also names the browser tab, as "Runs · Krönika", through
+`Title.svelte`. A page with no head, such as the login page, uses `Title`
+itself. Every field has a name: a `<label>` around it, or an `aria-label`
+where the page has no room for one. `src/lib/names-scan.test.ts` fails on
+a page with no title and on a field with no name.
+
 `src/lib/components/Panel.svelte` is the box of one part of a page, with
 its title in an `h2`. With `variant="meta"` it is the stat tile: the title
 is the small capital name above the value.

@@ -294,7 +294,7 @@
                                                 </div>
                                             {:else}
                                                 <div class="row">
-                                                    <select bind:value={roleEdit}>
+                                                    <select aria-label="Role" bind:value={roleEdit}>
                                                         {#each ROLES as r (r)}<option value={r}
                                                                 >{r}</option
                                                             >{/each}
@@ -311,6 +311,7 @@
                                             <div class="row">
                                                 <input
                                                     type="text"
+                                                    aria-label="Environment scopes"
                                                     placeholder="comma-separated; empty = all"
                                                     bind:value={scopeEdit}
                                                 />
@@ -326,6 +327,7 @@
                                             <div class="row">
                                                 <input
                                                     type="password"
+                                                    aria-label="New one-time password"
                                                     placeholder="new one-time password (min 12 chars)"
                                                     autocomplete="new-password"
                                                     bind:value={passwordEdit}

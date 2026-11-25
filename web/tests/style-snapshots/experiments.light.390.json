@@ -331,7 +331,7 @@
       "margin": "0px 0px 0px auto",
       "gap": "8px"
     },
-    "div.shell > main[main].main > div.page-head > div.controls > input[searchbox] \"search name or id…\"": {
+    "div.shell > main[main].main > div.page-head > div.controls > input[searchbox] \"Search name or id\"": {
       "font-family": "Arial",
       "font-size": "13px",
       "line-height": "normal",
@@ -344,7 +344,7 @@
       "border-radius": "5px",
       "padding": "6px 9px"
     },
-    "div.shell > main[main].main > div.page-head > div.controls > select[combobox]": {
+    "div.shell > main[main].main > div.page-head > div.controls > select[combobox] \"Outcome\"": {
       "font-family": "Arial",
       "font-size": "13px",
       "line-height": "normal",
@@ -357,7 +357,7 @@
       "border-radius": "5px",
       "padding": "6px 9px"
     },
-    "div.shell > main[main].main > div.page-head > div.controls > select[combobox] #2": {
+    "div.shell > main[main].main > div.page-head > div.controls > select[combobox] \"Fault\"": {
       "font-family": "Arial",
       "font-size": "13px",
       "line-height": "normal",
@@ -370,7 +370,7 @@
       "border-radius": "5px",
       "padding": "6px 9px"
     },
-    "div.shell > main[main].main > div.page-head > div.controls > select[combobox] #3": {
+    "div.shell > main[main].main > div.page-head > div.controls > select[combobox] \"Target\"": {
       "font-family": "Arial",
       "font-size": "13px",
       "line-height": "normal",
@@ -383,7 +383,7 @@
       "border-radius": "5px",
       "padding": "6px 9px"
     },
-    "div.shell > main[main].main > div.page-head > div.controls > select[combobox] #4": {
+    "div.shell > main[main].main > div.page-head > div.controls > select[combobox] \"Origin\"": {
       "font-family": "Arial",
       "font-size": "13px",
       "line-height": "normal",

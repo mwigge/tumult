@@ -173,7 +173,11 @@
         <Badge tone="neutral" label={selected.types[0]} />
     {/if}
     <div class="controls">
-        <select value={filters.name} onchange={(e) => setFilter('name', e.currentTarget.value)}>
+        <select
+            aria-label="Metric"
+            value={filters.name}
+            onchange={(e) => setFilter('name', e.currentTarget.value)}
+        >
             {#if !catalog}
                 <option value="">loading…</option>
             {:else}
@@ -183,6 +187,7 @@
             {/if}
         </select>
         <select
+            aria-label="Group by"
             value={filters.group_by}
             onchange={(e) => setFilter('group_by', e.currentTarget.value)}
             disabled={!selected || selected.dimensions.length === 0}
@@ -202,6 +207,7 @@
             onchange={(t) => setFilter('chart', t)}
         />
         <select
+            aria-label="Interval"
             value={filters.interval}
             onchange={(e) => setFilter('interval', e.currentTarget.value)}
         >

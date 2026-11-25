@@ -143,11 +143,13 @@
     <div class="controls">
         <input
             type="search"
+            aria-label="Search body"
             placeholder="search body…"
             value={filters.q}
             oninput={(e) => setFilter('q', e.currentTarget.value)}
         />
         <select
+            aria-label="Severity"
             value={filters.severity}
             onchange={(e) => setFilter('severity', e.currentTarget.value)}
         >
@@ -158,6 +160,7 @@
         </select>
         <input
             type="search"
+            aria-label="Service"
             placeholder="service…"
             value={filters.service}
             oninput={(e) => setFilter('service', e.currentTarget.value)}

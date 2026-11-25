@@ -66,6 +66,7 @@
         <input
             type="text"
             bind:value={question}
+            aria-label="Question"
             placeholder="Ask about experiments, outcomes, faults…"
             style="flex: 1"
         />

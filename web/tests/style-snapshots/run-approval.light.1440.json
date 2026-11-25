@@ -854,7 +854,7 @@
       "margin": "10px 0px 0px",
       "gap": "8px"
     },
-    "div.shell > main[main].main > div.panel #3 > div.ap-actions > input[textbox] \"decision note…\"": {
+    "div.shell > main[main].main > div.panel #3 > div.ap-actions > input[textbox] \"Decision note\"": {
       "font-family": "Arial",
       "font-size": "13px",
       "line-height": "normal",

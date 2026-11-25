@@ -477,22 +477,22 @@
     "div.shell > main[main].main > div.panel > table[table].data > tr[row].detail-row": {
       "display": "table-row"
     },
-    "div.shell > main[main].main > div.panel > table[table].data > tr[row].detail-row > td[cell] \"ROLE admin Save ENVIRONMENT SCOPES comma…\"": {
+    "div.shell > main[main].main > div.panel > table[table].data > tr[row].detail-row > td[cell] \"ROLE admin Save ENVIRONMENT SCOPES Envir…\"": {
       "display": "table-cell",
       "background-color": "rgb(255, 255, 255)",
       "border-bottom": "1px solid rgb(227, 232, 237)",
       "padding": "7px 10px"
     },
-    "div.shell > main[main].main > div.panel > table[table].data > tr[row].detail-row > td[cell] \"ROLE admin Save ENVIRONMENT SCOPES comma…\" > div.detail": {
+    "div.shell > main[main].main > div.panel > table[table].data > tr[row].detail-row > td[cell] \"ROLE admin Save ENVIRONMENT SCOPES Envir…\" > div.detail": {
       "display": "grid",
       "grid-template-columns": "1fr 1fr",
       "padding": "8px 4px",
       "gap": "16px"
     },
-    "div.shell > main[main].main > div.panel > table[table].data > tr[row].detail-row > td[cell] \"ROLE admin Save ENVIRONMENT SCOPES comma…\" > div.detail > div": {
+    "div.shell > main[main].main > div.panel > table[table].data > tr[row].detail-row > td[cell] \"ROLE admin Save ENVIRONMENT SCOPES Envir…\" > div.detail > div": {
       "display": "block"
     },
-    "div.shell > main[main].main > div.panel > table[table].data > tr[row].detail-row > td[cell] \"ROLE admin Save ENVIRONMENT SCOPES comma…\" > div.detail > h3[heading] \"ROLE\"": {
+    "div.shell > main[main].main > div.panel > table[table].data > tr[row].detail-row > td[cell] \"ROLE admin Save ENVIRONMENT SCOPES Envir…\" > div.detail > h3[heading] \"ROLE\"": {
       "color": "rgb(91, 103, 114)",
       "font-size": "12px",
       "font-weight": "600",
@@ -501,11 +501,11 @@
       "display": "block",
       "margin": "0px 0px 6px"
     },
-    "div.shell > main[main].main > div.panel > table[table].data > tr[row].detail-row > td[cell] \"ROLE admin Save ENVIRONMENT SCOPES comma…\" > div.detail > div.row": {
+    "div.shell > main[main].main > div.panel > table[table].data > tr[row].detail-row > td[cell] \"ROLE admin Save ENVIRONMENT SCOPES Envir…\" > div.detail > div.row": {
       "display": "flex",
       "gap": "8px"
     },
-    "div.shell > main[main].main > div.panel > table[table].data > tr[row].detail-row > td[cell] \"ROLE admin Save ENVIRONMENT SCOPES comma…\" > div.detail > div.row > select[combobox]": {
+    "div.shell > main[main].main > div.panel > table[table].data > tr[row].detail-row > td[cell] \"ROLE admin Save ENVIRONMENT SCOPES Envir…\" > div.detail > div.row > select[combobox] \"Role\"": {
       "font-family": "Arial",
       "line-height": "normal",
       "display": "block",
@@ -517,7 +517,7 @@
       "border-radius": "5px",
       "padding": "6px 9px"
     },
-    "div.shell > main[main].main > div.panel > table[table].data > tr[row].detail-row > td[cell] \"ROLE admin Save ENVIRONMENT SCOPES comma…\" > div.detail > div.row > button[button].btn \"Save\"": {
+    "div.shell > main[main].main > div.panel > table[table].data > tr[row].detail-row > td[cell] \"ROLE admin Save ENVIRONMENT SCOPES Envir…\" > div.detail > div.row > button[button].btn \"Save\"": {
       "font-family": "Arial",
       "line-height": "normal",
       "display": "block",
@@ -530,7 +530,7 @@
       "border-radius": "6px",
       "padding": "6px 14px"
     },
-    "div.shell > main[main].main > div.panel > table[table].data > tr[row].detail-row > td[cell] \"ROLE admin Save ENVIRONMENT SCOPES comma…\" > div.detail > h3[heading] \"ENVIRONMENT SCOPES\"": {
+    "div.shell > main[main].main > div.panel > table[table].data > tr[row].detail-row > td[cell] \"ROLE admin Save ENVIRONMENT SCOPES Envir…\" > div.detail > h3[heading] \"ENVIRONMENT SCOPES\"": {
       "color": "rgb(91, 103, 114)",
       "font-size": "12px",
       "font-weight": "600",
@@ -539,11 +539,11 @@
       "display": "block",
       "margin": "12px 0px 6px"
     },
-    "div.shell > main[main].main > div.panel > table[table].data > tr[row].detail-row > td[cell] \"ROLE admin Save ENVIRONMENT SCOPES comma…\" > div.detail > div.row #2": {
+    "div.shell > main[main].main > div.panel > table[table].data > tr[row].detail-row > td[cell] \"ROLE admin Save ENVIRONMENT SCOPES Envir…\" > div.detail > div.row #2": {
       "display": "flex",
       "gap": "8px"
     },
-    "div.shell > main[main].main > div.panel > table[table].data > tr[row].detail-row > td[cell] \"ROLE admin Save ENVIRONMENT SCOPES comma…\" > div.detail > div.row #2 > input[textbox] \"comma-separated; empty = all\"": {
+    "div.shell > main[main].main > div.panel > table[table].data > tr[row].detail-row > td[cell] \"ROLE admin Save ENVIRONMENT SCOPES Envir…\" > div.detail > div.row #2 > input[textbox] \"Environment scopes\"": {
       "font-family": "Arial",
       "line-height": "normal",
       "display": "block",
@@ -555,7 +555,7 @@
       "border-radius": "5px",
       "padding": "6px 9px"
     },
-    "div.shell > main[main].main > div.panel > table[table].data > tr[row].detail-row > td[cell] \"ROLE admin Save ENVIRONMENT SCOPES comma…\" > div.detail > div.row #2 > button[button].btn \"Save\"": {
+    "div.shell > main[main].main > div.panel > table[table].data > tr[row].detail-row > td[cell] \"ROLE admin Save ENVIRONMENT SCOPES Envir…\" > div.detail > div.row #2 > button[button].btn \"Save\"": {
       "font-family": "Arial",
       "line-height": "normal",
       "display": "block",
@@ -567,10 +567,10 @@
       "border-radius": "6px",
       "padding": "6px 14px"
     },
-    "div.shell > main[main].main > div.panel > table[table].data > tr[row].detail-row > td[cell] \"ROLE admin Save ENVIRONMENT SCOPES comma…\" > div.detail > div #2": {
+    "div.shell > main[main].main > div.panel > table[table].data > tr[row].detail-row > td[cell] \"ROLE admin Save ENVIRONMENT SCOPES Envir…\" > div.detail > div #2": {
       "display": "block"
     },
-    "div.shell > main[main].main > div.panel > table[table].data > tr[row].detail-row > td[cell] \"ROLE admin Save ENVIRONMENT SCOPES comma…\" > div.detail > h3[heading] \"RESET PASSWORD\"": {
+    "div.shell > main[main].main > div.panel > table[table].data > tr[row].detail-row > td[cell] \"ROLE admin Save ENVIRONMENT SCOPES Envir…\" > div.detail > h3[heading] \"RESET PASSWORD\"": {
       "color": "rgb(91, 103, 114)",
       "font-size": "12px",
       "font-weight": "600",
@@ -579,11 +579,11 @@
       "display": "block",
       "margin": "0px 0px 6px"
     },
-    "div.shell > main[main].main > div.panel > table[table].data > tr[row].detail-row > td[cell] \"ROLE admin Save ENVIRONMENT SCOPES comma…\" > div.detail > div.row #3": {
+    "div.shell > main[main].main > div.panel > table[table].data > tr[row].detail-row > td[cell] \"ROLE admin Save ENVIRONMENT SCOPES Envir…\" > div.detail > div.row #3": {
       "display": "flex",
       "gap": "8px"
     },
-    "div.shell > main[main].main > div.panel > table[table].data > tr[row].detail-row > td[cell] \"ROLE admin Save ENVIRONMENT SCOPES comma…\" > div.detail > div.row #3 > input[textbox] \"new one-time password (min 12 chars)\"": {
+    "div.shell > main[main].main > div.panel > table[table].data > tr[row].detail-row > td[cell] \"ROLE admin Save ENVIRONMENT SCOPES Envir…\" > div.detail > div.row #3 > input[textbox] \"New one-time password\"": {
       "color": "rgb(0, 0, 0)",
       "font-family": "Arial",
       "font-size": "13.3333px",
@@ -596,7 +596,7 @@
       "border-left": "2px inset rgb(118, 118, 118)",
       "padding": "1px 2px"
     },
-    "div.shell > main[main].main > div.panel > table[table].data > tr[row].detail-row > td[cell] \"ROLE admin Save ENVIRONMENT SCOPES comma…\" > div.detail > div.row #3 > button[button].btn \"Reset\"": {
+    "div.shell > main[main].main > div.panel > table[table].data > tr[row].detail-row > td[cell] \"ROLE admin Save ENVIRONMENT SCOPES Envir…\" > div.detail > div.row #3 > button[button].btn \"Reset\"": {
       "font-family": "Arial",
       "line-height": "normal",
       "display": "block",
@@ -609,13 +609,13 @@
       "border-radius": "6px",
       "padding": "6px 14px"
     },
-    "div.shell > main[main].main > div.panel > table[table].data > tr[row].detail-row > td[cell] \"ROLE admin Save ENVIRONMENT SCOPES comma…\" > div.detail > div.hint": {
+    "div.shell > main[main].main > div.panel > table[table].data > tr[row].detail-row > td[cell] \"ROLE admin Save ENVIRONMENT SCOPES Envir…\" > div.detail > div.hint": {
       "color": "rgb(139, 152, 165)",
       "font-size": "12px",
       "display": "block",
       "margin": "4px 0px 0px"
     },
-    "div.shell > main[main].main > div.panel > table[table].data > tr[row].detail-row > td[cell] \"ROLE admin Save ENVIRONMENT SCOPES comma…\" > div.detail > h3[heading] \"ACCOUNT\"": {
+    "div.shell > main[main].main > div.panel > table[table].data > tr[row].detail-row > td[cell] \"ROLE admin Save ENVIRONMENT SCOPES Envir…\" > div.detail > h3[heading] \"ACCOUNT\"": {
       "color": "rgb(91, 103, 114)",
       "font-size": "12px",
       "font-weight": "600",
@@ -624,7 +624,7 @@
       "display": "block",
       "margin": "12px 0px 6px"
     },
-    "div.shell > main[main].main > div.panel > table[table].data > tr[row].detail-row > td[cell] \"ROLE admin Save ENVIRONMENT SCOPES comma…\" > div.detail > button[button].btn.danger \"Disable account\"": {
+    "div.shell > main[main].main > div.panel > table[table].data > tr[row].detail-row > td[cell] \"ROLE admin Save ENVIRONMENT SCOPES Envir…\" > div.detail > button[button].btn.danger \"Disable account\"": {
       "color": "rgb(192, 57, 43)",
       "font-family": "Arial",
       "line-height": "normal",
