@@ -34,7 +34,7 @@ spec:
         seccompProfile: { type: RuntimeDefault }
       containers:
         - name: tumultd
-          image: ghcr.io/mwigge/tumultd:3.0.4
+          image: ghcr.io/mwigge/tumultd:3.0.5
           workingDir: /data
           # The image's default CMD runs the daemon (`tumultd` defaults to
           # `serve`); no args needed.

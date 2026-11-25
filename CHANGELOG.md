@@ -6,6 +6,79 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [3.0.5] - 2026-11-25
+
+This release gives Krönika, the web UI, one standard look. Every colour and
+size comes from one set of design tokens, and the CLI HTML report, the docs
+site and the landing page take their colours from the same set. Krönika
+meets WCAG 2.2 AA contrast in both themes, works on a phone and by
+keyboard, and has fewer, even sizes. Two new Concepts pages explain the
+kinds of testing and the regulations they give evidence for. The lake stays
+at schema v26, so there is no migration. Read the
+[3.0.5 release notes](docs/releases/3.0.5.md) to see what looks different.
+
+### Added
+
+- Krönika: design tokens in the W3C DTCG 2025.10 format, in `web/tokens/`, are the one source of colours, type, spacing, radii, border widths and layers, with a light and a dark theme and dark as the default. Every token says what it is for, and the pages and charts use them in place of raw values.
+- Krönika: `npm run build:tokens` writes the tokens into `tokens.css` for the pages, `tokens.gen.ts` for the charts, the colours of the CLI HTML report, of the docs site and of the landing page, and the swatches and the scale picture of the UI standard page. It fails with a clear message on an unknown alias, a loop of aliases, a missing type or a bad value, and CI fails when a committed output is not what the tokens give.
+- Krönika: a small set of components that every page uses: `Badge`, `PageHeader`, `Panel`, `Segmented`, `Tabs`, `Drawer` on a native `<dialog>`, and `State` for an empty, error or loading part. The rules that many pages shared, such as buttons, chips, hints, meta tiles and forms, live once in `web/src/lib/theme.css`. Scan tests fail on a part built by hand.
+- Krönika works on a phone. Below 900 px the side bar folds behind the Menu button of a top bar. Escape, a link in the menu or a tap outside it closes the menu. A wide table scrolls inside its panel, so no page scrolls sideways at 390 px, and tiles, cards and form fields go to fewer columns.
+- Krönika: a keyboard opens every row that a click opens. A row has a link or a button in the cell that names it.
+- Krönika: every field has a name that a screen reader says, every page names itself in the browser tab, such as "Runs · Krönika", the first Tab stop is a link past the navigation to the main content, and the navigation marks the page you are on.
+- Krönika: a field shows a ring in the accent colour when the keyboard moves the focus to it.
+- Krönika: a drawer closes on Escape and gives the focus back to what opened it. The DORA evidence drawer is modal: the page behind it waits until it closes.
+- Krönika: the Manual and Scores pages have real tabs. The arrow keys, Home and End move between them, and the URL keeps the tab.
+- Krönika: every group of buttons where one is chosen, such as the time range, has a name and says which button is pressed.
+- Krönika: an error on a page is an alert, so a screen reader says it at once, and a loading block is busy and holds the hidden word "Loading".
+- Krönika: what a colour said alone, words say too. An approval that lapses within the hour reads "soon", an RTO or RPO over its target reads "missed", and an Ok or Error span in the waterfall has a mark.
+- Krönika: the Reports page makes the DR test report (R4) of a target over 90 days, 1 year or 3 years, and the DR exercise report (R5) of a submitted or verified manual record.
+- Krönika: a manual DR test on the DR page links to its own record, and an open manual record names the plan scenarios it tested.
+- Docs: a UI standard page in the reference. It shows where the values of Krönika live, the colour roles with light and dark swatches, the contrast rule, the type, spacing and radius scale, the components, the states, keyboard and names, the phone layout and the checks a change must pass, with a picture for each part.
+- Docs: a Concepts page on the kinds of testing. It sets chaos, robustness, disaster recovery and load side by side: the question each asks, what it breaks and measures, when to run it and how Tumult runs it, with two combined examples.
+- Docs: a Concepts page on regulations and standards. It says what DORA, NIS2, ISO 22301, ISO 27001, SOC 2, PCI DSS and Basel ask, and which kind of test gives evidence for each, as a matrix.
+- Tests: a style snapshot of every Krönika page, in light and dark, 1440 and 390 px wide, and of 12 states that a click or the data opens. CI fails when a computed style moves, until the baseline is written again with `STYLE_SNAPSHOT_UPDATE=1`.
+- Tests: browser smoke tests for the nine pages that no browser test opened: Approvals, Ask, Author, a new experiment, Events, Login, Schedules, Users and Webhooks.
+- Tests: a contrast test checks each pair of colour tokens in both themes and names each pair under its bar with its ratio.
+- Tests: a style lint, `npm run lint:styles`, fails on a raw colour, size or spacing in `web/src/` that the allow list `web/style-literals-allow.txt` does not hold. The list holds 9 values, each with its reason, and only shrinks.
+
+### Changed
+
+- Krönika meets the contrast of WCAG 2.2 AA in both themes. Text is 4.5:1 or more on every surface, and fields, fills, bands and chart colours 3:1 or more on their panel. Faint text, the status colours of light, the fail colour of dark, field edges, badge tints, bands, two DORA statuses and six Star Map colours move just enough.
+- Krönika: a primary button and the chosen segment have white text on a mid blue in light, as in dark. Two colour roles are new: `on-accent` for the text on the accent fill and `border-input` for the edge of a field.
+- Krönika: dim text in the light theme is darker, `#3b4751` (was `#5b6772`), so text, dim text and faint text are three clear steps. The CLI HTML report, the docs site and the landing page take the same colour.
+- Krönika: a badge tint is mixed with the panel, so a badge has one colour on every surface and keeps its contrast on a hovered row.
+- Krönika has fewer sizes. Text has four body sizes (11, 12, 13 and 14 px) and three display sizes (18, 24 and 32 px), in place of eleven. Spacing is on one 4 px scale, and corners are 2, 4 or 6 px, a pill or round.
+- Krönika: every page moves a little on purpose. Body text and the links of the navigation are 13 px, badges are 12 px, and most gaps and paddings grow by 2 px.
+- Krönika: a word of one kind has one colour on every page. A `low` finding is grey (it was amber in the Star Map drawer), `medium` amber, `high` and `critical` red.
+- Krönika: the Events page colours an event named after a run state as that state: `aborted` is grey, `deviated` and `halted` red, `rollback_pending` amber. Before, `aborted` was red and the others grey.
+- Krönika: in the Star Map drawer an `inconclusive` objective and a `submitted` manual record are amber, as on the run page and the Manual page.
+- Krönika: the Logs page reads the OTel severity names. `ERR`, `ERROR2` to `ERROR4` and `FATAL2` to `FATAL4` are red, `WARN2` to `WARN4` amber and `INFO2` to `INFO4` green, on the Logs page and in the log lines of a trace.
+- Charts: in light, every series colour is 3:1 or more on the white panel. The first series is the accent of the theme, and the Okabe-Ito orange, sky blue and yellow are a darker shade. The Performance compare lines, the run evidence charts, the extra Metrics series and the light CLI HTML report change. Dark charts look as before.
+- Charts take the font of the page and their sizes and colours from the tokens, and follow the theme through one observer.
+- CLI HTML report: its colours come from the tokens, under the names of Krönika. In light the ok, warn and fail colours are a little darker, and in dark the fail colour is a little lighter. A Rust test fails on a chart colour name that the report does not have.
+- Docs site and landing page: their colours come from the tokens. Three code colours of the docs stay darker than the status colours of Krönika, for 4.5:1 on the code panel.
+- Krönika: the breakpoints of the layout have names (xl, lg, md, sm) in `theme.css`, and a test fails on a media query at any other width.
+- Krönika: the DR filters take the names of the periods from the same list as the Reports page.
+- Docs: the Concepts page has the words of 3.0, such as kind of test, verdict, DR test, RTO, RPO, manual record, DORA score and plan scenario, and points to the two new pages.
+- Docs: all 44 Krönika screenshots are taken again on the 3.0.5 look. The Krönika pages show the Overview in the dark theme, and say where the theme button is and that the side bar folds behind a Menu button on a small screen. `scripts/docs-shots/shots.json` takes `"theme": "dark"` for a picture in the dark theme.
+- `web/README.md` is shorter and true: how to build and test and where things are. It points to the UI standard page for the standard.
+- README and landing page: a "One look" section shows the colour swatches, the Overview in light and dark and the Runs page on a phone, and both link the two new Concepts pages.
+
+### Fixed
+
+- Krönika no longer shows the dark theme first to a user who chose light. A small static script puts the saved theme on the page before its first paint, and `auto` on a system in light mode is light from the first paint too.
+- Krönika: the plan scenario table of the DORA view fits a wide screen. A row header of a data table now reads as a cell and wraps. At 1440 px it cut the header of the third function.
+- Krönika: the DORA view names the rows of Delegated Regulation (EU) 2024/1774 "RTS 2024/1774" on the heatmap axis, in its tooltip, in the article list and in the heatmap table. It said "Art. rts1774".
+- Krönika: the note of the plan scenario table says "Row ... is scored" for one row. It said "Rows ... are" for one.
+- Krönika: the head of a GameDay says "MTTR target 30s for a run with no RTO target", as a run with its own `rto_target_s` is judged against that since 3.0.4.
+- Krönika: when a group of buttons wraps on a phone, each row starts with one line.
+- Krönika: the password fields of the Users page look like the other fields.
+- Krönika: on the Traces page, equal p95 and p99 lines no longer print one name over the other.
+
+### Security
+
+- `kube` 4.2.1 for RUSTSEC-2026-0600 (with the `openssl-tls` connector, a configured cluster CA did not limit which server certificates were trusted). Tumult builds kube with rustls, so it was not affected.
+
 ## [3.0.4] - 2026-11-25
 
 This release tests disaster recovery (DR) for real, with evidence and
