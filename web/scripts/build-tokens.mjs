@@ -510,6 +510,17 @@ const roles = (tokens) =>
     );
 
 /**
+ * The number and unit of a step of the scale: a dimension, or a number with
+ * the unit of the extension of Tumult, as 50%.
+ * @param {Token} token
+ * @returns {{ value: number, unit: string }}
+ */
+function stepOf(token) {
+    if (typeof token.value === 'number') return { value: token.value, unit: token.unit ?? '' };
+    return /** @type {{ value: number, unit: string }} */ (token.value);
+}
+
+/**
  * One group of the scale from `top`, at x: its title, then a row for each of
  * its steps with the name and the value, and the step drawn at its size.
  * The lines of the picture and the y below the group.
@@ -526,8 +537,9 @@ function scaleGroup(light, group, x, top, look) {
     let y = top + 36;
     for (const [path, token] of light) {
         if (!path.startsWith(group.prefix)) continue;
-        const { value, unit } = /** @type {{ value: number, unit: string }} */ (token.value);
-        const px = unit === 'rem' ? value * 16 : value;
+        const { value, unit } = stepOf(token);
+        // A percent is of the 35 px box that the radius group draws.
+        const px = unit === 'rem' ? value * 16 : unit === PERCENT ? (value / 100) * 35 : value;
         const row = group.row(px);
         const base = y + Math.round(row / 2) + 4;
         lines.push(`<text x="${x}" y="${base}" ${look.label}>${path} ${value}${unit}</text>`);

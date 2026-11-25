@@ -44,6 +44,6 @@
 <rect x="494.5" y="404.5" width="35" height="35" rx="6" fill="none" stroke="#8d959d"/>
 <text x="344" y="470" font-family="'SF Mono', 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace" font-size="12" fill="#3b4751">radius-pill 999px</text>
 <rect x="494.5" y="448.5" width="35" height="35" rx="999" fill="none" stroke="#8d959d"/>
-<text x="344" y="514" font-family="'SF Mono', 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace" font-size="12" fill="#3b4751">radius-round undefinedundefined</text>
-<rect x="494.5" y="492.5" width="35" height="35" rx="undefined" fill="none" stroke="#8d959d"/>
+<text x="344" y="514" font-family="'SF Mono', 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace" font-size="12" fill="#3b4751">radius-round 50%</text>
+<rect x="494.5" y="492.5" width="35" height="35" rx="17.5" fill="none" stroke="#8d959d"/>
 </svg>

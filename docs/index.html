@@ -77,23 +77,54 @@ image: /images/tumult-banner.png
 </section>
 
 <!-- ════════════════════════════════════════════════════ -->
+<!-- One look                                             -->
+<!-- ════════════════════════════════════════════════════ -->
+<section class="arch-section" style="padding-bottom: 1rem;">
+  <h2>One look, light or dark, on any screen</h2>
+  <p style="color: var(--text-dim); max-width: 720px; margin: 0 auto 1.5rem;">
+    New in 3.0.5: one set of design tokens for every colour and size. See the
+    <a href="/reference/ui-standard.html" style="color: var(--copper);">UI standard</a>.
+  </p>
+</section>
+<section class="shots">
+  <div class="shot-card">
+    <img src="/images/3.0/screenshots/overview.png" alt="The Overview in the light theme">
+    <div class="caption"><b>Light</b>Pick a theme in the sidebar.</div>
+  </div>
+  <div class="shot-card">
+    <img src="/images/3.0/screenshots/overview-dark.png" alt="The Overview in the dark theme">
+    <div class="caption"><b>Dark</b>The default.</div>
+  </div>
+  <div class="shot-card">
+    <img src="/images/3.0/ui-standard/phone-menu.png" alt="The Runs page on a phone, with the menu closed and open">
+    <div class="caption"><b>On a phone</b>The sidebar folds into a menu.</div>
+  </div>
+  <div class="shot-card">
+    <img src="/images/3.0/tokens/swatch-light-chart-series.svg" alt="The chart colours of the light theme">
+    <img src="/images/3.0/tokens/swatch-dark-chart-series.svg" alt="The chart colours of the dark theme">
+    <img src="/images/3.0/ui-standard/focus-ring.png" alt="The focus ring of a field">
+    <div class="caption"><b>Easy to read</b>Chart colours for each theme, WCAG 2.2 AA contrast and a focus ring.</div>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════ -->
 <!-- Disaster recovery                                    -->
 <!-- ════════════════════════════════════════════════════ -->
 <section class="arch-section" style="padding-bottom: 1rem;">
   <h2>Disaster recovery, tested for real</h2>
   <p style="color: var(--text-dim); max-width: 720px; margin: 0 auto 1.5rem;">
-    New in 3.0.4. Read the
+    Read the
     <a href="/guides/disaster-recovery.html" style="color: var(--copper);">disaster recovery guide</a>.
   </p>
 </section>
 <section class="shots">
   <div class="shot-card">
     <img src="/images/3.0/screenshots/run-dr.png" alt="A DR run: its RTO and RPO against their targets, its objectives and its steps">
-    <div class="caption"><b>A DR run</b>How long the target was down (RTO) and how much data it lost (RPO).</div>
+    <div class="caption"><b>A DR run</b>The time down (RTO) and the data lost (RPO).</div>
   </div>
   <div class="shot-card">
     <img src="/images/3.0/screenshots/dr.png" alt="The Disaster recovery page: the due register of each target, and its RTO and RPO over time">
-    <div class="caption"><b>DR page</b>When each target is due, and its RTO and RPO over time.</div>
+    <div class="caption"><b>DR page</b>When each target is due, and its RTO and RPO.</div>
   </div>
   <div class="shot-card">
     <img src="/images/3.0/screenshots/manual.png" alt="A manual failover drill: its recovery, steps, actions, file and sign-off">
@@ -110,58 +141,60 @@ image: /images/tumult-banner.png
 <!-- ════════════════════════════════════════════════════ -->
 <div class="section-heading">
   <h2>What you get</h2>
-  <p>Chaos testing is one source of evidence among several.</p>
+  <p>Chaos testing is one source of evidence among several. Read
+  <a href="/concepts/kinds-of-testing.html" style="color: var(--copper);">Kinds of testing</a> and
+  <a href="/concepts/regulations.html" style="color: var(--copper);">Regulations</a>.</p>
 </div>
 <section class="features" style="padding-top: 1.5rem;">
   <div class="feature-card">
     <span class="piece">Collect</span>
     <h3>Many kinds of evidence</h3>
-    <p>Chaos experiments, <a href="/guides/load-testing-guide.html" style="color: var(--copper);">load tests</a>, <a href="/guides/disaster-recovery.html" style="color: var(--copper);">DR tests</a>, <a href="/guides/otel-autoinstrumentation.html" style="color: var(--copper);">telemetry from your services</a>, <a href="/guides/entity-events.html" style="color: var(--copper);">entity events</a> and exercises run by hand.</p>
+    <p>Chaos, <a href="/guides/load-testing-guide.html" style="color: var(--copper);">load</a> and <a href="/guides/disaster-recovery.html" style="color: var(--copper);">DR tests</a>, <a href="/guides/otel-autoinstrumentation.html" style="color: var(--copper);">telemetry</a>, <a href="/guides/entity-events.html" style="color: var(--copper);">entity events</a> and drills by hand.</p>
   </div>
   <div class="feature-card">
     <span class="piece">Author &amp; run</span>
     <h3>Pick a fault, run it</h3>
-    <p>Choose from 99 actions in 16 plugins, for databases, Kafka, containers, Kubernetes, clouds, networks, hosts and clocks. A wizard writes the experiment file.</p>
+    <p>99 actions in 16 plugins: databases, Kafka, containers, Kubernetes, clouds, networks, hosts and clocks. A wizard writes the file.</p>
   </div>
   <div class="feature-card">
     <span class="piece">Govern</span>
     <h3>Approvals, stop and audit</h3>
-    <p>Every run gets a risk tier, T0 to T3. Risky runs wait for a second person. Two clicks stop everything. Every action goes into an audit trail that shows any change.</p>
+    <p>Risky runs wait for a second person. Two clicks stop everything. An audit trail shows any change.</p>
   </div>
   <div class="feature-card">
     <span class="piece">Store</span>
     <h3>One lake</h3>
-    <p>The daemon takes in traces, metrics and logs over OTLP and OTel-Arrow and keeps them in one DuckDB database. <a href="/guides/observability-setup.html" style="color: var(--copper);">Setup guide</a>.</p>
+    <p>The daemon keeps traces, metrics and logs from OTLP and OTel-Arrow in one DuckDB database. <a href="/guides/observability-setup.html" style="color: var(--copper);">Setup guide</a>.</p>
   </div>
   <div class="feature-card">
     <span class="piece">Score</span>
     <h3>Resilience, scores and DORA</h3>
-    <p>Ranked risks without running a fault. Scores per team and company. A <a href="/guides/dora-score.html" style="color: var(--copper);">DORA score</a> that shows what evidence exists. It does not say that you comply.</p>
+    <p>Ranked risks without running a fault. Scores per team and company. A <a href="/guides/dora-score.html" style="color: var(--copper);">DORA score</a> shows what evidence exists, not that you comply.</p>
   </div>
   <div class="feature-card">
     <span class="piece">Judge</span>
     <h3>Verdicts and a CI gate</h3>
-    <p>Met, breached or not enough data, for each objective. <a href="/guides/performance-regression.html" style="color: var(--copper);">Version against version</a> for performance. <code>tumult gate</code> gives pass, warn or fail to a pipeline.</p>
+    <p>Met, breached or not enough data, per objective. <a href="/guides/performance-regression.html" style="color: var(--copper);">Version against version</a> for performance. <code>tumult gate</code> passes, warns or fails a pipeline.</p>
   </div>
   <div class="feature-card">
     <span class="piece">Forecast</span>
     <h3>Forecasts and impact</h3>
-    <p>The <a href="/guides/forecasting.html" style="color: var(--copper);">expected range</a> of a metric, how far a fault pushed it, and how long it took to come back. Works offline.</p>
+    <p>The <a href="/guides/forecasting.html" style="color: var(--copper);">expected range</a> of a metric, how far a fault pushed it, and how long it took to recover. Works offline.</p>
   </div>
   <div class="feature-card">
     <span class="piece">See it whole</span>
     <h3>Star Map</h3>
-    <p>The <a href="/guides/star-map.html" style="color: var(--copper);">Star Map</a> shows organisation, systems, services and workloads as one graph. Colour it by evidence, risk or telemetry quality.</p>
+    <p>Organisation, systems, services and workloads as <a href="/guides/star-map.html" style="color: var(--copper);">one graph</a>. Colour it by evidence, risk or telemetry quality.</p>
   </div>
   <div class="feature-card">
     <span class="piece">Prove it</span>
     <h3>Reports</h3>
-    <p>PDF reports for management and audit, and an HTML page of each run with <code>tumult report</code>. Evidence mapped to DORA, NIS2, ISO 27001, SOC 2 and more. Reports summarise evidence; they do not certify compliance.</p>
+    <p>PDF reports for management and audit, and an HTML page per run with <code>tumult report</code>. Evidence mapped to <a href="/concepts/regulations.html" style="color: var(--copper);">DORA, NIS2, ISO 27001, SOC 2 and more</a>. They do not certify compliance.</p>
   </div>
   <div class="feature-card">
     <span class="piece">Close the loop</span>
     <h3>AI agents</h3>
-    <p>44 MCP tools let an agent run experiments, query results and suggest the next test. Tumult can also inject faults into AI agents themselves.</p>
+    <p>44 MCP tools let an agent run experiments, query results and suggest the next test. Tumult can also inject faults into AI agents.</p>
   </div>
 </section>
 
@@ -174,15 +207,11 @@ image: /images/tumult-banner.png
 <section class="features" style="padding-top: 1.5rem;">
   <div class="feature-card">
     <h3>Single binary</h3>
-    <p>The daemon holds the lake, the schedulers and the web UI in one file. The CLI is another. Built for macOS and Linux.</p>
+    <p>The daemon holds the lake, the schedulers and the web UI in one file. The CLI is another. For macOS and Linux.</p>
   </div>
   <div class="feature-card">
     <h3>Memory safe</h3>
-    <p>Safe Rust, with six small <code>unsafe</code> blocks, all for child processes. Strict lints and a dependency audit on every commit.</p>
-  </div>
-  <div class="feature-card">
-    <h3>Works with your stack</h3>
-    <p>An OpenTelemetry Collector in front, SigNoz or Grafana behind. No custom build.</p>
+    <p>Safe Rust, strict lints and a dependency audit on every commit.</p>
   </div>
 </section>
 
@@ -255,7 +284,7 @@ Targets:
 <section class="arch-section" style="padding-bottom: 1rem;">
   <h2>See it running</h2>
   <p style="color: var(--text-dim); max-width: 720px; margin: 0 auto 1.5rem;">
-    The web UI on the demo data. Take the full tour in the
+    The web UI on demo data. The full tour:
     <a href="/guides/platform-walkthrough.html" style="color: var(--copper);">platform walkthrough</a>.
   </p>
 </section>
@@ -270,7 +299,7 @@ Targets:
   </div>
   <div class="shot-card">
     <img src="/images/3.0/screenshots/scores-dora.png" alt="Scores page: DORA coverage and maturity">
-    <div class="caption"><b>Scores &amp; DORA</b>Coverage per article and a level from 1 to 5.</div>
+    <div class="caption"><b>Scores &amp; DORA</b>Coverage per article, and a level.</div>
   </div>
   <div class="shot-card">
     <img src="/images/3.0/screenshots/performance.png" alt="Performance page: two versions compared, with a verdict">
@@ -308,7 +337,7 @@ Targets:
 <section class="arch-section">
   <h2>Native observability</h2>
   <p style="color: var(--text-dim); max-width: 720px; margin: 0 auto 1.5rem;">
-    Every probe, action and rollback is a span. Set one variable, <code>OTEL_EXPORTER_OTLP_ENDPOINT</code>, to send them to your backend.
+    Every probe, action and rollback is a span. Set <code>OTEL_EXPORTER_OTLP_ENDPOINT</code> to send them to your backend, such as SigNoz or Grafana.
   </p>
   <img src="/images/signoz-traces.png" alt="SigNoz showing Tumult experiment trace waterfall">
 </section>
