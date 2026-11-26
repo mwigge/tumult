@@ -334,7 +334,7 @@ fn assert_upgrades_to_a_fresh_lake(name: &str, known: &[Known]) {
             difference.upgraded
         );
     }
-    let upgraded: String = upgraded
+    let mut lines: Vec<&str> = upgraded
         .lines()
         .map(|line| {
             known
@@ -342,8 +342,9 @@ fn assert_upgrades_to_a_fresh_lake(name: &str, known: &[Known]) {
                 .find(|difference| difference.upgraded == line)
                 .map_or(line, |difference| difference.fresh)
         })
-        .map(|line| format!("{line}\n"))
         .collect();
+    lines.push("");
+    let upgraded = lines.join("\n");
     let fresh = read(&kept_catalog());
     assert!(
         upgraded == fresh,
