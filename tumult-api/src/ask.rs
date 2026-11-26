@@ -510,6 +510,33 @@ mod tests {
     }
 
     #[test]
+    fn every_table_of_a_comma_list_is_confined_to_the_scopes() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("lake.duckdb");
+        let store = tumult_lake::Store::open(&db).unwrap();
+        store
+            .writer()
+            .unwrap()
+            .insert_spans(&[
+                env_span("exp-dev", "dev", 1_000_000_000),
+                env_span("exp-prod", "prod", 2_000_000_000),
+            ])
+            .unwrap();
+        drop(store);
+
+        let sql = apply_env_scopes(
+            "SELECT a.experiment_id AS a, b.experiment_id AS b FROM spans a, run_roots b",
+            &["dev".to_string()],
+        )
+        .unwrap();
+        let rows = LockedReader::open(&db)
+            .unwrap()
+            .query_json_rows(&sql)
+            .unwrap();
+        assert_eq!(rows, vec![json!({"a": "exp-dev", "b": "exp-dev"})], "{sql}");
+    }
+
+    #[test]
     fn execution_path_blocks_file_reads() {
         // Even if the guard were bypassed, the locked-down connection itself
         // refuses external access.
