@@ -223,6 +223,32 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn readyz_is_unavailable_while_the_lake_schema_is_not_the_current_one() {
+        let (_dir, state, _task) = live_state().await;
+        daemon_metrics::supervisor_tick();
+        Store::at(&state.db_path)
+            .writer()
+            .unwrap()
+            .execute(
+                "UPDATE schema_meta SET value = value - 1 WHERE key = 'version'",
+                [],
+            )
+            .unwrap();
+        let resp = readyz(State(state)).await;
+        assert_eq!(resp.status(), StatusCode::SERVICE_UNAVAILABLE);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let reason = String::from_utf8(body.to_vec()).unwrap();
+        let expected = format!(
+            "schema version {} (expected {})",
+            tumult_lake::CURRENT_SCHEMA_VERSION - 1,
+            tumult_lake::CURRENT_SCHEMA_VERSION
+        );
+        assert_eq!(reason, expected);
+    }
+
+    #[tokio::test]
     async fn metrics_renders_prometheus_text() {
         daemon_metrics::run_started();
         let resp = metrics().await;
