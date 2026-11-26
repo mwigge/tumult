@@ -1,0 +1,655 @@
+# The catalog of a fresh lake, as tests/lake_shapes.rs reads it. Every
+# shipped shape in tests/shapes upgrades to this text, but for the known
+# lines that test names. Change the schema, then write this file again
+# and read the difference:
+#   TUMULT_BLESS=1 cargo test -p tumult-lake --test lake_shapes
+table activity_results
+column activity_results 1 experiment_id VARCHAR NOT NULL
+column activity_results 2 name VARCHAR NOT NULL
+column activity_results 3 activity_type VARCHAR NOT NULL
+column activity_results 4 status VARCHAR NOT NULL
+column activity_results 5 started_at_ns BIGINT NOT NULL
+column activity_results 6 duration_ms UBIGINT NOT NULL
+column activity_results 7 output VARCHAR NULL
+column activity_results 8 error VARCHAR NULL
+column activity_results 9 phase VARCHAR NOT NULL
+table agentic_contract_outcomes
+column agentic_contract_outcomes 1 run_id VARCHAR NOT NULL
+column agentic_contract_outcomes 2 scenario VARCHAR NOT NULL
+column agentic_contract_outcomes 3 contract_type VARCHAR NOT NULL
+column agentic_contract_outcomes 4 passed BOOLEAN NOT NULL
+column agentic_contract_outcomes 5 reason VARCHAR NULL
+column agentic_contract_outcomes 6 severity DOUBLE NOT NULL
+table agentic_fault_applications
+column agentic_fault_applications 1 run_id VARCHAR NOT NULL
+column agentic_fault_applications 2 scenario VARCHAR NOT NULL
+column agentic_fault_applications 3 fault_type VARCHAR NOT NULL
+column agentic_fault_applications 4 applied BOOLEAN NOT NULL
+table agentic_replay_outcomes
+column agentic_replay_outcomes 1 run_id VARCHAR NOT NULL
+column agentic_replay_outcomes 2 replay_id VARCHAR NOT NULL
+column agentic_replay_outcomes 3 scenario VARCHAR NOT NULL
+column agentic_replay_outcomes 4 passed BOOLEAN NOT NULL
+table agentic_runs
+column agentic_runs 1 run_id VARCHAR NOT NULL
+column agentic_runs 2 experiment_id VARCHAR NOT NULL
+column agentic_runs 3 target_type VARCHAR NOT NULL
+column agentic_runs 4 scenario VARCHAR NOT NULL
+column agentic_runs 5 resilience_score DOUBLE NOT NULL
+column agentic_runs 6 trace_id VARCHAR NULL
+column agentic_runs 7 replay_id VARCHAR NULL
+constraint agentic_runs PRIMARY KEY(run_id)
+table approval_decisions
+column approval_decisions 1 run_id VARCHAR NOT NULL
+column approval_decisions 2 approver VARCHAR NOT NULL
+column approval_decisions 3 decision VARCHAR NOT NULL
+column approval_decisions 4 note VARCHAR NULL
+column approval_decisions 5 decided_at_ns BIGINT NOT NULL
+table approval_requests
+column approval_requests 1 run_id VARCHAR NOT NULL
+column approval_requests 2 tier VARCHAR NOT NULL
+column approval_requests 3 pin_hash VARCHAR NOT NULL
+column approval_requests 4 env VARCHAR NOT NULL
+column approval_requests 5 target VARCHAR NULL
+column approval_requests 6 quorum_required INTEGER NOT NULL
+column approval_requests 7 requested_by VARCHAR NOT NULL
+column approval_requests 8 requested_at_ns BIGINT NOT NULL
+column approval_requests 9 expires_at_ns BIGINT NOT NULL
+column approval_requests 10 consumed_at_ns BIGINT NULL
+column approval_requests 11 break_glass BOOLEAN NOT NULL DEFAULT false
+column approval_requests 12 break_glass_by VARCHAR NULL
+column approval_requests 13 break_glass_justification VARCHAR NULL
+table autopilot_change_events
+column autopilot_change_events 1 service_id VARCHAR NOT NULL
+column autopilot_change_events 2 at_ns BIGINT NOT NULL
+column autopilot_change_events 3 source VARCHAR NOT NULL
+column autopilot_change_events 4 detail VARCHAR NULL
+table autopilot_decisions
+column autopilot_decisions 1 id VARCHAR NOT NULL
+column autopilot_decisions 2 decided_at_ns BIGINT NOT NULL
+column autopilot_decisions 3 trigger VARCHAR NOT NULL
+column autopilot_decisions 4 service_id VARCHAR NOT NULL
+column autopilot_decisions 5 tier VARCHAR NULL
+column autopilot_decisions 6 plugin VARCHAR NOT NULL
+column autopilot_decisions 7 action VARCHAR NOT NULL
+column autopilot_decisions 8 article_id VARCHAR NOT NULL
+column autopilot_decisions 9 score DOUBLE NOT NULL
+column autopilot_decisions 10 reasons JSON NOT NULL
+column autopilot_decisions 11 confidence VARCHAR NOT NULL
+column autopilot_decisions 12 playbook VARCHAR NULL
+column autopilot_decisions 13 validator JSON NOT NULL
+column autopilot_decisions 14 verdict VARCHAR NOT NULL
+column autopilot_decisions 15 gate_rules JSON NOT NULL
+column autopilot_decisions 16 gate_detail JSON NOT NULL
+column autopilot_decisions 17 policy_hash VARCHAR NOT NULL
+column autopilot_decisions 18 autonomy_score DOUBLE NULL
+constraint autopilot_decisions PRIMARY KEY(id)
+table autopilot_events
+column autopilot_events 1 decision_id VARCHAR NOT NULL
+column autopilot_events 2 at_ns BIGINT NOT NULL
+column autopilot_events 3 kind VARCHAR NOT NULL
+column autopilot_events 4 detail JSON NOT NULL
+table entity_versions
+column entity_versions 1 entity_key VARCHAR NOT NULL
+column entity_versions 2 environment VARCHAR NOT NULL DEFAULT ''
+column entity_versions 3 entity_type VARCHAR NOT NULL
+column entity_versions 4 entity_id MAP(VARCHAR, VARCHAR) NOT NULL
+column entity_versions 5 state_hash VARCHAR NOT NULL
+column entity_versions 6 description JSON NULL
+column entity_versions 7 relationships JSON NULL
+column entity_versions 8 valid_from_ns BIGINT NOT NULL
+column entity_versions 9 last_seen_ns BIGINT NOT NULL
+column entity_versions 10 last_received_ns BIGINT NOT NULL
+column entity_versions 11 interval_s BIGINT NOT NULL DEFAULT 0
+column entity_versions 12 deleted_at_ns BIGINT NULL
+column entity_versions 13 delete_reason VARCHAR NULL
+column entity_versions 14 wire_form VARCHAR NOT NULL
+column entity_versions 15 observer VARCHAR NOT NULL
+column entity_versions 16 schema_url VARCHAR NULL
+table evidence_attachments
+column evidence_attachments 1 id VARCHAR NOT NULL
+column evidence_attachments 2 experiment_id VARCHAR NOT NULL
+column evidence_attachments 3 kind VARCHAR NOT NULL
+column evidence_attachments 4 uri VARCHAR NOT NULL
+column evidence_attachments 5 label VARCHAR NULL
+column evidence_attachments 6 file_hash VARCHAR NULL
+column evidence_attachments 7 added_by VARCHAR NOT NULL
+column evidence_attachments 8 added_at_ns BIGINT NOT NULL
+column evidence_attachments 9 media_type VARCHAR NULL
+column evidence_attachments 10 size_bytes BIGINT NULL
+constraint evidence_attachments PRIMARY KEY(id)
+table experiments
+column experiments 1 experiment_id VARCHAR NOT NULL
+column experiments 2 title VARCHAR NOT NULL
+column experiments 3 status VARCHAR NOT NULL
+column experiments 4 started_at_ns BIGINT NOT NULL
+column experiments 5 ended_at_ns BIGINT NOT NULL
+column experiments 6 duration_ms UBIGINT NOT NULL
+column experiments 7 method_step_count BIGINT NOT NULL
+column experiments 8 rollback_count BIGINT NOT NULL
+column experiments 9 hypothesis_before_met BOOLEAN NULL
+column experiments 10 hypothesis_after_met BOOLEAN NULL
+column experiments 11 estimate_accuracy DOUBLE NULL
+column experiments 12 resilience_score DOUBLE NULL
+column experiments 13 test_kind VARCHAR NULL
+column experiments 14 rto_target_s DOUBLE NULL
+column experiments 15 rpo_target_s DOUBLE NULL
+column experiments 16 rto_measured_s DOUBLE NULL
+column experiments 17 rpo_measured_s DOUBLE NULL
+column experiments 18 target_version VARCHAR NULL
+column experiments 19 version_source VARCHAR NULL
+column experiments 20 version_shares VARCHAR NULL
+column experiments 21 impact_observed BOOLEAN NULL
+column experiments 22 outage_started_at_ns BIGINT NULL
+column experiments 23 recovered_at_ns BIGINT NULL
+column experiments 24 mttr_s DOUBLE NULL
+column experiments 25 dora_scenarios VARCHAR NULL
+table forecasts
+column forecasts 1 series_key VARCHAR NOT NULL
+column forecasts 2 model VARCHAR NOT NULL
+column forecasts 3 model_version VARCHAR NOT NULL
+column forecasts 4 weights_hash VARCHAR NOT NULL
+column forecasts 5 context_start_ns BIGINT NOT NULL
+column forecasts 6 context_end_ns BIGINT NOT NULL
+column forecasts 7 context_points BIGINT NOT NULL
+column forecasts 8 insufficient_history BOOLEAN NOT NULL
+column forecasts 9 horizon BIGINT NOT NULL
+column forecasts 10 step_ns BIGINT NOT NULL
+column forecasts 11 quantile_levels DOUBLE[] NOT NULL
+column forecasts 12 quantiles DOUBLE[][] NOT NULL
+column forecasts 13 created_at_ns BIGINT NOT NULL
+column forecasts 14 degenerate_band BOOLEAN NULL DEFAULT false
+table graph_edges
+column graph_edges 1 src VARCHAR NOT NULL
+column graph_edges 2 rel VARCHAR NOT NULL
+column graph_edges 3 dst VARCHAR NOT NULL
+column graph_edges 4 run_id VARCHAR NOT NULL
+column graph_edges 5 ts BIGINT NOT NULL
+column graph_edges 6 attrs JSON NULL
+table graph_nodes
+column graph_nodes 1 id VARCHAR NOT NULL
+column graph_nodes 2 kind VARCHAR NOT NULL
+column graph_nodes 3 label VARCHAR NOT NULL
+column graph_nodes 4 attrs JSON NULL
+constraint graph_nodes PRIMARY KEY(id)
+table ict_function_services
+column ict_function_services 1 function_id VARCHAR NOT NULL
+column ict_function_services 2 kind VARCHAR NOT NULL
+column ict_function_services 3 pattern VARCHAR NOT NULL
+column ict_function_services 4 position BIGINT NOT NULL
+table ict_functions
+column ict_functions 1 function_id VARCHAR NOT NULL
+column ict_functions 2 register_code VARCHAR NOT NULL
+column ict_functions 3 lei VARCHAR NOT NULL
+column ict_functions 4 name VARCHAR NOT NULL
+column ict_functions 5 licensed_activity VARCHAR NOT NULL
+column ict_functions 6 tier VARCHAR NOT NULL
+column ict_functions 7 is_critical_or_important BOOLEAN NOT NULL
+column ict_functions 8 reasons VARCHAR NULL
+column ict_functions 9 last_assessed VARCHAR NULL
+column ict_functions 10 rto_s DOUBLE NULL
+column ict_functions 11 rpo_s DOUBLE NULL
+column ict_functions 12 impact VARCHAR NULL
+column ict_functions 13 org_unit VARCHAR NULL
+column ict_functions 14 declared VARCHAR NOT NULL
+column ict_functions 15 test_plan VARCHAR NOT NULL
+column ict_functions 16 active BOOLEAN NOT NULL
+column ict_functions 17 position BIGINT NOT NULL
+column ict_functions 18 registered_at_ns BIGINT NOT NULL
+column ict_functions 19 updated_at_ns BIGINT NOT NULL
+table ict_legal_entities
+column ict_legal_entities 1 lei VARCHAR NOT NULL
+column ict_legal_entities 2 name VARCHAR NOT NULL
+column ict_legal_entities 3 country VARCHAR NULL
+column ict_legal_entities 4 entity_type VARCHAR NULL
+column ict_legal_entities 5 competent_authority VARCHAR NULL
+column ict_legal_entities 6 profile VARCHAR NOT NULL
+column ict_legal_entities 7 flags VARCHAR NOT NULL
+column ict_legal_entities 8 feeds VARCHAR NOT NULL
+column ict_legal_entities 9 registry_signed_by VARCHAR NULL
+column ict_legal_entities 10 registry_signed_at VARCHAR NULL
+column ict_legal_entities 11 updated_at_ns BIGINT NOT NULL
+table import_batches
+column import_batches 1 id VARCHAR NOT NULL
+column import_batches 2 source VARCHAR NOT NULL
+column import_batches 3 imported_at_ns BIGINT NOT NULL
+column import_batches 4 rows INTEGER NOT NULL
+column import_batches 5 label VARCHAR NULL
+table load_results
+column load_results 1 experiment_id VARCHAR NOT NULL
+column load_results 2 tool VARCHAR NOT NULL
+column load_results 3 started_at_ns BIGINT NOT NULL
+column load_results 4 ended_at_ns BIGINT NOT NULL
+column load_results 5 duration_s DOUBLE NOT NULL
+column load_results 6 vus INTEGER NOT NULL
+column load_results 7 throughput_rps DOUBLE NOT NULL
+column load_results 8 latency_p50_ms DOUBLE NOT NULL
+column load_results 9 latency_p95_ms DOUBLE NOT NULL
+column load_results 10 latency_p99_ms DOUBLE NOT NULL
+column load_results 11 error_rate DOUBLE NOT NULL
+column load_results 12 total_requests UBIGINT NOT NULL
+column load_results 13 thresholds_met BOOLEAN NOT NULL
+column load_results 14 aborted BOOLEAN NULL
+column load_results 15 truncated BOOLEAN NULL
+column load_results 16 planned_windows INTEGER NULL
+column load_results 17 completed_windows INTEGER NULL
+column load_results 18 unanswered_windows INTEGER NULL
+column load_results 19 lost_to_unanswered INTEGER NULL
+column load_results 20 sampled_duration_s DOUBLE NULL
+column load_results 21 requests_sent BIGINT NULL
+column load_results 22 requests_ok BIGINT NULL
+column load_results 23 requests_timed_out BIGINT NULL
+column load_results 24 requests_transport BIGINT NULL
+column load_results 25 requests_http_4xx BIGINT NULL
+column load_results 26 requests_http_5xx BIGINT NULL
+column load_results 27 requests_http_other BIGINT NULL
+column load_results 28 requests_unclassified BIGINT NULL
+column load_results 29 censored_windows INTEGER NULL
+table logs
+column logs 1 ts_ns BIGINT NOT NULL
+column logs 2 severity_text VARCHAR NOT NULL
+column logs 3 body VARCHAR NOT NULL
+column logs 4 trace_id VARCHAR NULL
+column logs 5 span_id VARCHAR NULL
+column logs 6 service_name VARCHAR NOT NULL
+column logs 7 log_attrs MAP(VARCHAR, VARCHAR) NULL
+column logs 8 resource_attrs MAP(VARCHAR, VARCHAR) NULL
+column logs 9 event_name VARCHAR NULL
+column logs 10 scope_attrs MAP(VARCHAR, VARCHAR) NULL
+table manual_action_items
+column manual_action_items 1 id VARCHAR NOT NULL
+column manual_action_items 2 experiment_id VARCHAR NOT NULL
+column manual_action_items 3 ordinal INTEGER NOT NULL
+column manual_action_items 4 title VARCHAR NOT NULL
+column manual_action_items 5 owner VARCHAR NOT NULL
+column manual_action_items 6 due_at_ns BIGINT NULL
+column manual_action_items 7 ticket VARCHAR NULL
+column manual_action_items 8 status VARCHAR NOT NULL DEFAULT 'open'
+column manual_action_items 9 closed_at_ns BIGINT NULL
+column manual_action_items 10 closed_by VARCHAR NULL
+column manual_action_items 11 severity VARCHAR NULL
+column manual_action_items 12 retest_kind VARCHAR NULL
+column manual_action_items 13 retest_id VARCHAR NULL
+table manual_exercise_plans
+column manual_exercise_plans 1 id VARCHAR NOT NULL
+column manual_exercise_plans 2 name VARCHAR NOT NULL
+column manual_exercise_plans 3 exercise_type VARCHAR NOT NULL
+column manual_exercise_plans 4 target_system VARCHAR NULL
+column manual_exercise_plans 5 target_environment VARCHAR NULL
+column manual_exercise_plans 6 function_id VARCHAR NULL
+column manual_exercise_plans 7 scope VARCHAR NULL
+column manual_exercise_plans 8 owner VARCHAR NOT NULL
+column manual_exercise_plans 9 planned_at_ns BIGINT NULL
+column manual_exercise_plans 10 due_at_ns BIGINT NOT NULL
+column manual_exercise_plans 11 interval_days INTEGER NULL
+column manual_exercise_plans 12 rto_target_s DOUBLE NULL
+column manual_exercise_plans 13 rpo_target_s DOUBLE NULL
+column manual_exercise_plans 14 status VARCHAR NOT NULL DEFAULT 'planned'
+column manual_exercise_plans 15 created_by VARCHAR NOT NULL
+column manual_exercise_plans 16 created_at_ns BIGINT NOT NULL
+column manual_exercise_plans 17 updated_by VARCHAR NULL
+column manual_exercise_plans 18 updated_at_ns BIGINT NULL
+column manual_exercise_plans 19 content_hash VARCHAR NOT NULL
+table manual_exercise_steps
+column manual_exercise_steps 1 experiment_id VARCHAR NOT NULL
+column manual_exercise_steps 2 ordinal INTEGER NOT NULL
+column manual_exercise_steps 3 title VARCHAR NOT NULL
+column manual_exercise_steps 4 actor VARCHAR NULL
+column manual_exercise_steps 5 started_at_ns BIGINT NULL
+column manual_exercise_steps 6 ended_at_ns BIGINT NULL
+column manual_exercise_steps 7 result VARCHAR NULL
+column manual_exercise_steps 8 note VARCHAR NULL
+table manual_experiment_audit
+column manual_experiment_audit 1 id VARCHAR NOT NULL
+column manual_experiment_audit 2 experiment_id VARCHAR NOT NULL
+column manual_experiment_audit 3 changed_by VARCHAR NOT NULL
+column manual_experiment_audit 4 changed_at_ns BIGINT NOT NULL
+column manual_experiment_audit 5 action VARCHAR NOT NULL
+column manual_experiment_audit 6 diff JSON NULL
+column manual_experiment_audit 7 prev_hash VARCHAR NULL
+column manual_experiment_audit 8 new_hash VARCHAR NOT NULL
+column manual_experiment_audit 9 link_hash VARCHAR NULL
+constraint manual_experiment_audit PRIMARY KEY(id)
+table manual_experiment_links
+column manual_experiment_links 1 experiment_id VARCHAR NOT NULL
+column manual_experiment_links 2 ordinal INTEGER NOT NULL
+column manual_experiment_links 3 kind VARCHAR NOT NULL
+column manual_experiment_links 4 linked_id VARCHAR NOT NULL
+column manual_experiment_links 5 label VARCHAR NULL
+table manual_experiments
+column manual_experiments 1 id VARCHAR NOT NULL
+column manual_experiments 2 experiment_name VARCHAR NOT NULL
+column manual_experiments 3 exercise_type VARCHAR NOT NULL
+column manual_experiments 4 executed_at_ns BIGINT NOT NULL
+column manual_experiments 5 hypothesis VARCHAR NOT NULL
+column manual_experiments 6 method VARCHAR NOT NULL
+column manual_experiments 7 outcome_status VARCHAR NOT NULL
+column manual_experiments 8 hypothesis_met BOOLEAN NULL
+column manual_experiments 9 findings VARCHAR NULL
+column manual_experiments 10 action_items JSON NULL
+column manual_experiments 11 target_system VARCHAR NULL
+column manual_experiments 12 target_environment VARCHAR NULL
+column manual_experiments 13 blast_radius VARCHAR NULL
+column manual_experiments 14 recovery_time_s DOUBLE NULL
+column manual_experiments 15 duration_s DOUBLE NULL
+column manual_experiments 16 origin VARCHAR NOT NULL DEFAULT 'manual'
+column manual_experiments 17 entered_by VARCHAR NOT NULL
+column manual_experiments 18 entered_at_ns BIGINT NOT NULL
+column manual_experiments 19 attestation VARCHAR NOT NULL
+column manual_experiments 20 status VARCHAR NOT NULL DEFAULT 'draft'
+column manual_experiments 21 reviewed_by VARCHAR NULL
+column manual_experiments 22 reviewed_at_ns BIGINT NULL
+column manual_experiments 23 review_note VARCHAR NULL
+column manual_experiments 24 renewal_due_ns BIGINT NULL
+column manual_experiments 25 framework_refs VARCHAR[] NULL
+column manual_experiments 26 batch_id VARCHAR NULL
+column manual_experiments 27 content_hash VARCHAR NOT NULL
+column manual_experiments 28 rto_target_s DOUBLE NULL
+column manual_experiments 29 rpo_target_s DOUBLE NULL
+column manual_experiments 30 rpo_measured_s DOUBLE NULL
+column manual_experiments 31 data_verified BOOLEAN NULL
+column manual_experiments 32 participants JSON NULL
+column manual_experiments 33 plan_id VARCHAR NULL
+column manual_experiments 34 hash_version INTEGER NULL DEFAULT 1
+column manual_experiments 35 findings_severity VARCHAR NULL
+column manual_experiments 36 tester VARCHAR NULL
+column manual_experiments 37 tester_kind VARCHAR NULL
+column manual_experiments 38 tlpt_attestation_ref VARCHAR NULL
+column manual_experiments 39 tlpt_attested_at_ns BIGINT NULL
+column manual_experiments 40 tlpt_summary_ref VARCHAR NULL
+column manual_experiments 41 scenarios VARCHAR[] NULL
+table manual_plan_audit
+column manual_plan_audit 1 id VARCHAR NOT NULL
+column manual_plan_audit 2 plan_id VARCHAR NOT NULL
+column manual_plan_audit 3 changed_by VARCHAR NOT NULL
+column manual_plan_audit 4 changed_at_ns BIGINT NOT NULL
+column manual_plan_audit 5 action VARCHAR NOT NULL
+column manual_plan_audit 6 diff JSON NULL
+column manual_plan_audit 7 prev_hash VARCHAR NULL
+column manual_plan_audit 8 new_hash VARCHAR NOT NULL
+column manual_plan_audit 9 link_hash VARCHAR NULL
+table manual_signoffs
+column manual_signoffs 1 id VARCHAR NOT NULL
+column manual_signoffs 2 subject_id VARCHAR NOT NULL
+column manual_signoffs 3 subject_kind VARCHAR NOT NULL
+column manual_signoffs 4 role VARCHAR NOT NULL
+column manual_signoffs 5 signed_by VARCHAR NOT NULL
+column manual_signoffs 6 signed_at_ns BIGINT NOT NULL
+column manual_signoffs 7 decision VARCHAR NOT NULL
+column manual_signoffs 8 note VARCHAR NULL
+column manual_signoffs 9 signed_hash VARCHAR NOT NULL
+column manual_signoffs 10 prev_hash VARCHAR NULL
+column manual_signoffs 11 link_hash VARCHAR NOT NULL
+table maturity_daily
+column maturity_daily 1 as_of DATE NOT NULL
+column maturity_daily 2 lei VARCHAR NOT NULL
+column maturity_daily 3 level INTEGER NOT NULL
+column maturity_daily 4 index_value DOUBLE NOT NULL
+column maturity_daily 5 unknown_share DOUBLE NOT NULL
+column maturity_daily 6 source VARCHAR NOT NULL
+column maturity_daily 7 computed_at_ns BIGINT NOT NULL
+table metric_gauges
+column metric_gauges 1 ts_ns BIGINT NOT NULL
+column metric_gauges 2 metric_name VARCHAR NOT NULL
+column metric_gauges 3 value DOUBLE NOT NULL
+column metric_gauges 4 experiment_name VARCHAR NULL
+column metric_gauges 5 outcome_status VARCHAR NULL
+column metric_gauges 6 plugin_name VARCHAR NULL
+column metric_gauges 7 attrs MAP(VARCHAR, VARCHAR) NULL
+column metric_gauges 8 resource_attrs MAP(VARCHAR, VARCHAR) NULL
+table metric_histograms
+column metric_histograms 1 ts_ns BIGINT NOT NULL
+column metric_histograms 2 metric_name VARCHAR NOT NULL
+column metric_histograms 3 count UBIGINT NOT NULL
+column metric_histograms 4 sum DOUBLE NOT NULL
+column metric_histograms 5 min DOUBLE NULL
+column metric_histograms 6 max DOUBLE NULL
+column metric_histograms 7 bucket_counts BIGINT[] NULL
+column metric_histograms 8 explicit_bounds DOUBLE[] NULL
+column metric_histograms 9 attrs MAP(VARCHAR, VARCHAR) NULL
+column metric_histograms 10 resource_attrs MAP(VARCHAR, VARCHAR) NULL
+column metric_histograms 11 experiment_name VARCHAR NULL
+column metric_histograms 12 outcome_status VARCHAR NULL
+column metric_histograms 13 plugin_name VARCHAR NULL
+table metric_sums
+column metric_sums 1 ts_ns BIGINT NOT NULL
+column metric_sums 2 metric_name VARCHAR NOT NULL
+column metric_sums 3 value DOUBLE NOT NULL
+column metric_sums 4 experiment_name VARCHAR NULL
+column metric_sums 5 outcome_status VARCHAR NULL
+column metric_sums 6 plugin_name VARCHAR NULL
+column metric_sums 7 attrs MAP(VARCHAR, VARCHAR) NULL
+column metric_sums 8 resource_attrs MAP(VARCHAR, VARCHAR) NULL
+table nfr_verdicts
+column nfr_verdicts 1 experiment_id VARCHAR NOT NULL
+column nfr_verdicts 2 nfr_id VARCHAR NOT NULL
+column nfr_verdicts 3 kind VARCHAR NOT NULL
+column nfr_verdicts 4 metric VARCHAR NOT NULL
+column nfr_verdicts 5 operator VARCHAR NOT NULL
+column nfr_verdicts 6 threshold DOUBLE NOT NULL
+column nfr_verdicts 7 observed DOUBLE NULL
+column nfr_verdicts 8 state VARCHAR NOT NULL
+column nfr_verdicts 9 margin DOUBLE NULL
+column nfr_verdicts 10 criticality VARCHAR NOT NULL
+column nfr_verdicts 11 recovered BOOLEAN NULL
+column nfr_verdicts 12 reason VARCHAR NULL
+table perf_verdicts
+column perf_verdicts 1 target VARCHAR NOT NULL
+column perf_verdicts 2 probe VARCHAR NOT NULL
+column perf_verdicts 3 baseline_version VARCHAR NOT NULL
+column perf_verdicts 4 candidate_version VARCHAR NOT NULL
+column perf_verdicts 5 quantile VARCHAR NOT NULL
+column perf_verdicts 6 baseline_n BIGINT NOT NULL
+column perf_verdicts 7 candidate_n BIGINT NOT NULL
+column perf_verdicts 8 baseline_p50 DOUBLE NULL
+column perf_verdicts 9 baseline_p95 DOUBLE NULL
+column perf_verdicts 10 baseline_p99 DOUBLE NULL
+column perf_verdicts 11 candidate_p50 DOUBLE NULL
+column perf_verdicts 12 candidate_p95 DOUBLE NULL
+column perf_verdicts 13 candidate_p99 DOUBLE NULL
+column perf_verdicts 14 delta DOUBLE NULL
+column perf_verdicts 15 delta_pct DOUBLE NULL
+column perf_verdicts 16 ci_low DOUBLE NULL
+column perf_verdicts 17 ci_high DOUBLE NULL
+column perf_verdicts 18 confidence DOUBLE NOT NULL
+column perf_verdicts 19 margin DOUBLE NOT NULL
+column perf_verdicts 20 verdict VARCHAR NOT NULL
+column perf_verdicts 21 reasons JSON NOT NULL
+column perf_verdicts 22 computed_at_ns BIGINT NOT NULL
+column perf_verdicts 23 envs JSON NULL
+table probe_samples
+column probe_samples 1 experiment_id VARCHAR NOT NULL
+column probe_samples 2 probe_name VARCHAR NOT NULL
+column probe_samples 3 phase VARCHAR NOT NULL
+column probe_samples 4 ts_ns BIGINT NOT NULL
+column probe_samples 5 value DOUBLE NOT NULL
+column probe_samples 6 ok BOOLEAN NOT NULL
+column probe_samples 7 reading DOUBLE NULL
+table requirement_status_daily
+column requirement_status_daily 1 as_of DATE NOT NULL
+column requirement_status_daily 2 function_id VARCHAR NOT NULL
+column requirement_status_daily 3 requirement_id VARCHAR NOT NULL
+column requirement_status_daily 4 status VARCHAR NOT NULL
+column requirement_status_daily 5 value DOUBLE NULL
+column requirement_status_daily 6 source VARCHAR NOT NULL
+column requirement_status_daily 7 computed_at_ns BIGINT NOT NULL
+table risk_suppressions
+column risk_suppressions 1 id VARCHAR NOT NULL
+column risk_suppressions 2 risk_id VARCHAR NOT NULL
+column risk_suppressions 3 reason VARCHAR NOT NULL
+column risk_suppressions 4 actor VARCHAR NOT NULL
+column risk_suppressions 5 at_ns BIGINT NOT NULL
+column risk_suppressions 6 expires_at_ns BIGINT NULL
+column risk_suppressions 7 prev_hash VARCHAR NULL
+column risk_suppressions 8 new_hash VARCHAR NOT NULL
+table run_audit
+column run_audit 1 run_id VARCHAR NOT NULL
+column run_audit 2 at_ns BIGINT NOT NULL
+column run_audit 3 event VARCHAR NOT NULL
+column run_audit 4 detail VARCHAR NULL
+column run_audit 5 actor VARCHAR NULL
+column run_audit 6 prev_hash VARCHAR NULL
+column run_audit 7 new_hash VARCHAR NULL
+table run_execution_pins
+column run_execution_pins 1 run_id VARCHAR NOT NULL
+column run_execution_pins 2 execution_hash VARCHAR NOT NULL
+table run_recovery_plans
+column run_recovery_plans 1 run_id VARCHAR NOT NULL
+column run_recovery_plans 2 plan_json JSON NOT NULL
+table run_registry
+column run_registry 1 id VARCHAR NOT NULL
+column run_registry 2 name VARCHAR NOT NULL
+column run_registry 3 definition_toon VARCHAR NOT NULL
+column run_registry 4 content_hash VARCHAR NOT NULL
+column run_registry 5 registered_at_ns BIGINT NOT NULL
+column run_registry 6 registered_by VARCHAR NULL
+column run_registry 7 kind VARCHAR NULL
+table run_schedules
+column run_schedules 1 id VARCHAR NOT NULL
+column run_schedules 2 name VARCHAR NOT NULL
+column run_schedules 3 registry_id VARCHAR NOT NULL
+column run_schedules 4 interval_s BIGINT NOT NULL
+column run_schedules 5 vars_json VARCHAR NULL
+column run_schedules 6 env VARCHAR NOT NULL
+column run_schedules 7 target VARCHAR NULL
+column run_schedules 8 enabled BOOLEAN NOT NULL
+column run_schedules 9 next_run_at_ns BIGINT NOT NULL
+column run_schedules 10 last_run_at_ns BIGINT NULL
+column run_schedules 11 last_run_id VARCHAR NULL
+column run_schedules 12 created_by VARCHAR NULL
+column run_schedules 13 created_at_ns BIGINT NOT NULL
+table runs
+column runs 1 id VARCHAR NOT NULL
+column runs 2 registry_id VARCHAR NOT NULL
+column runs 3 state VARCHAR NOT NULL
+column runs 4 params_json JSON NULL
+column runs 5 experiment_id VARCHAR NULL
+column runs 6 rollback_status VARCHAR NULL
+column runs 7 error VARCHAR NULL
+column runs 8 queued_at_ns BIGINT NOT NULL
+column runs 9 started_at_ns BIGINT NULL
+column runs 10 ended_at_ns BIGINT NULL
+column runs 11 gameday_id VARCHAR NULL
+table schema_meta
+column schema_meta 1 key VARCHAR NOT NULL
+column schema_meta 2 value BIGINT NOT NULL
+constraint schema_meta PRIMARY KEY("key")
+table service_version_sightings
+column service_version_sightings 1 service_name VARCHAR NOT NULL
+column service_version_sightings 2 environment VARCHAR NULL
+column service_version_sightings 3 service_version VARCHAR NOT NULL
+column service_version_sightings 4 first_seen_ns BIGINT NOT NULL
+column service_version_sightings 5 last_seen_ns BIGINT NOT NULL
+column service_version_sightings 6 last_deployed_ns BIGINT NULL
+column service_version_sightings 7 deployments INTEGER NULL
+column service_version_sightings 8 sanitized BOOLEAN NULL
+column service_version_sightings 9 first_anchor_ns BIGINT NULL
+table sessions
+column sessions 1 id_hash VARCHAR NOT NULL
+column sessions 2 user_id VARCHAR NOT NULL
+column sessions 3 created_at_ns BIGINT NOT NULL
+column sessions 4 expires_at_ns BIGINT NOT NULL
+table sightings_backfill
+column sightings_backfill 1 done BOOLEAN NOT NULL
+column sightings_backfill 2 cursor_ns BIGINT NULL
+table spans
+column spans 1 ts_ns BIGINT NOT NULL
+column spans 2 trace_id VARCHAR NOT NULL
+column spans 3 span_id VARCHAR NOT NULL
+column spans 4 parent_span_id VARCHAR NULL
+column spans 5 span_name VARCHAR NOT NULL
+column spans 6 span_kind VARCHAR NOT NULL
+column spans 7 duration_ns BIGINT NOT NULL
+column spans 8 status_code VARCHAR NOT NULL
+column spans 9 status_message VARCHAR NOT NULL
+column spans 10 service_name VARCHAR NOT NULL
+column spans 11 service_version VARCHAR NULL
+column spans 12 experiment_id VARCHAR NULL
+column spans 13 experiment_name VARCHAR NULL
+column spans 14 outcome_status VARCHAR NULL
+column spans 15 fault_type VARCHAR NULL
+column spans 16 fault_subtype VARCHAR NULL
+column spans 17 fault_severity VARCHAR NULL
+column spans 18 blast_radius VARCHAR NULL
+column spans 19 target_system VARCHAR NULL
+column spans 20 target_technology VARCHAR NULL
+column spans 21 target_environment VARCHAR NULL
+column spans 22 plugin_name VARCHAR NULL
+column spans 23 hypothesis_met BOOLEAN NULL
+column spans 24 recovery_time_s DOUBLE NULL
+column spans 25 span_attrs MAP(VARCHAR, VARCHAR) NULL
+column spans 26 resource_attrs MAP(VARCHAR, VARCHAR) NULL
+column spans 27 events JSON NULL
+table tokens
+column tokens 1 id VARCHAR NOT NULL
+column tokens 2 user_id VARCHAR NOT NULL
+column tokens 3 name VARCHAR NOT NULL
+column tokens 4 token_hash VARCHAR NOT NULL
+column tokens 5 created_at_ns BIGINT NOT NULL
+column tokens 6 last_used_at_ns BIGINT NULL
+column tokens 7 revoked BOOLEAN NOT NULL
+column tokens 8 expires_at_ns BIGINT NULL
+table user_env_scopes
+column user_env_scopes 1 user_id VARCHAR NOT NULL
+column user_env_scopes 2 environment VARCHAR NOT NULL
+table users
+column users 1 id VARCHAR NOT NULL
+column users 2 username VARCHAR NOT NULL
+column users 3 password_hash VARCHAR NOT NULL
+column users 4 role VARCHAR NOT NULL
+column users 5 must_change BOOLEAN NOT NULL
+column users 6 disabled BOOLEAN NOT NULL
+column users 7 created_at_ns BIGINT NOT NULL
+table webhook_cursors
+column webhook_cursors 1 webhook_id VARCHAR NOT NULL
+column webhook_cursors 2 last_at_ns BIGINT NOT NULL
+table webhook_dead_letters
+column webhook_dead_letters 1 webhook_id VARCHAR NOT NULL
+column webhook_dead_letters 2 run_id VARCHAR NOT NULL
+column webhook_dead_letters 3 at_ns BIGINT NOT NULL
+column webhook_dead_letters 4 event VARCHAR NOT NULL
+column webhook_dead_letters 5 detail VARCHAR NULL
+column webhook_dead_letters 6 actor VARCHAR NULL
+column webhook_dead_letters 7 error VARCHAR NULL
+column webhook_dead_letters 8 attempts INTEGER NOT NULL
+column webhook_dead_letters 9 dead_at_ns BIGINT NOT NULL
+table webhooks
+column webhooks 1 id VARCHAR NOT NULL
+column webhooks 2 name VARCHAR NOT NULL
+column webhooks 3 url VARCHAR NOT NULL
+column webhooks 4 secret VARCHAR NOT NULL
+column webhooks 5 events VARCHAR NOT NULL
+column webhooks 6 enabled BOOLEAN NOT NULL
+column webhooks 7 created_by VARCHAR NULL
+column webhooks 8 created_at_ns BIGINT NOT NULL
+index idx_activities_experiment_id on activity_results | CREATE INDEX idx_activities_experiment_id ON activity_results(experiment_id);
+index idx_agentic_contracts_run_id on agentic_contract_outcomes | CREATE INDEX idx_agentic_contracts_run_id ON agentic_contract_outcomes(run_id);
+index idx_agentic_faults_run_id on agentic_fault_applications | CREATE INDEX idx_agentic_faults_run_id ON agentic_fault_applications(run_id);
+index idx_agentic_replay_run_id on agentic_replay_outcomes | CREATE INDEX idx_agentic_replay_run_id ON agentic_replay_outcomes(run_id);
+index idx_agentic_runs_experiment_id on agentic_runs | CREATE INDEX idx_agentic_runs_experiment_id ON agentic_runs(experiment_id);
+index autopilot_events_by_decision on autopilot_events | CREATE INDEX autopilot_events_by_decision ON autopilot_events(decision_id, at_ns);
+index idx_evidence_attachments_experiment on evidence_attachments | CREATE INDEX idx_evidence_attachments_experiment ON evidence_attachments(experiment_id);
+index idx_experiments_id on experiments | CREATE UNIQUE INDEX idx_experiments_id ON experiments(experiment_id);
+index idx_forecasts_series_key on forecasts | CREATE INDEX idx_forecasts_series_key ON forecasts(series_key);
+index idx_graph_edges_dst on graph_edges | CREATE INDEX idx_graph_edges_dst ON graph_edges(dst);
+index idx_graph_edges_run on graph_edges | CREATE INDEX idx_graph_edges_run ON graph_edges(run_id);
+index idx_graph_edges_src on graph_edges | CREATE INDEX idx_graph_edges_src ON graph_edges(src);
+index idx_graph_nodes_kind on graph_nodes | CREATE INDEX idx_graph_nodes_kind ON graph_nodes(kind);
+index idx_load_experiment_id on load_results | CREATE INDEX idx_load_experiment_id ON load_results(experiment_id);
+index idx_logs_ts_ns on logs | CREATE INDEX idx_logs_ts_ns ON logs(ts_ns);
+index idx_manual_audit_experiment on manual_experiment_audit | CREATE INDEX idx_manual_audit_experiment ON manual_experiment_audit(experiment_id);
+index idx_metric_gauges_name_ts on metric_gauges | CREATE INDEX idx_metric_gauges_name_ts ON metric_gauges(metric_name, ts_ns);
+index idx_metric_histograms_name_ts on metric_histograms | CREATE INDEX idx_metric_histograms_name_ts ON metric_histograms(metric_name, ts_ns);
+index idx_metric_sums_name_ts on metric_sums | CREATE INDEX idx_metric_sums_name_ts ON metric_sums(metric_name, ts_ns);
+index idx_nfr_verdicts_experiment_id on nfr_verdicts | CREATE INDEX idx_nfr_verdicts_experiment_id ON nfr_verdicts(experiment_id);
+index idx_perf_verdicts_target on perf_verdicts | CREATE INDEX idx_perf_verdicts_target ON perf_verdicts("target");
+index idx_probe_samples_experiment_id on probe_samples | CREATE INDEX idx_probe_samples_experiment_id ON probe_samples(experiment_id);
+index idx_spans_experiment_id on spans | CREATE INDEX idx_spans_experiment_id ON spans(experiment_id);
+index idx_spans_trace_id on spans | CREATE INDEX idx_spans_trace_id ON spans(trace_id);
+index idx_spans_ts_ns on spans | CREATE INDEX idx_spans_ts_ns ON spans(ts_ns);
+view dr_tests | WITH rto AS (SELECT experiment_id, bool_and(recovered) AS recovered FROM nfr_verdicts WHERE ((kind = 'rto') AND (nfr_id = 'rto')) GROUP BY experiment_id), roots AS (SELECT experiment_id, any_value(target_system) AS target_system, any_value(target_environment) AS target_environment FROM run_roots GROUP BY experiment_id), automated AS (SELECT 'automated' AS origin, e.experiment_id AS evidence_id, e.title AS experiment_name, NULL AS exercise_type, r.target_system, r.target_environment, e.started_at_ns AS executed_at_ns, lower(e.status) AS outcome, e.rto_target_s, COALESCE(e.rto_measured_s, e.mttr_s) AS rto_measured_s, COALESCE(v.recovered, CASE WHEN ((e.mttr_s IS NOT NULL)) THEN (true) ELSE NULL END) AS recovered, (NOT e.impact_observed) AS no_outage, e.rpo_target_s, e.rpo_measured_s, NULL AS data_verified, NULL AS reviewer, NULL AS plan_id FROM ((experiments AS e LEFT JOIN roots AS r ON ((e.experiment_id = r.experiment_id))) LEFT JOIN rto AS v ON ((e.experiment_id = v.experiment_id))) WHERE (e.test_kind = 'dr')), manual AS (SELECT 'manual' AS origin, m.id AS evidence_id, m.experiment_name, m.exercise_type, m.target_system, m.target_environment, m.executed_at_ns, m.outcome_status AS outcome, m.rto_target_s, m.recovery_time_s AS rto_measured_s, CASE WHEN ((m.recovery_time_s IS NOT NULL)) THEN (true) ELSE NULL END AS recovered, NULL AS no_outage, m.rpo_target_s, m.rpo_measured_s, m.data_verified, m.reviewed_by AS reviewer, m.plan_id FROM manual_experiments AS m WHERE ((m.status IN ('submitted', 'verified')) AND list_contains(list_value('backup', 'drill', 'failover', 'restore'), m.exercise_type))), tests AS ((SELECT * FROM automated) UNION ALL (SELECT * FROM manual)), judged AS (SELECT *, ((origin || ':') || evidence_id) AS test_id, CASE WHEN ((NOT recovered)) THEN ('not_recovered') WHEN (((rto_measured_s > rto_target_s) OR (rpo_measured_s > rpo_target_s))) THEN ('breached') WHEN (((COALESCE(rto_target_s, rpo_target_s) IS NOT NULL) AND ((rto_target_s IS NULL) OR (rto_measured_s IS NOT NULL)) AND ((rpo_target_s IS NULL) OR (rpo_measured_s IS NOT NULL)))) THEN ('met') ELSE 'not_measured' END AS verdict FROM tests) SELECT test_id, origin, experiment_name, exercise_type, target_system, target_environment, executed_at_ns, outcome, rto_target_s, rto_measured_s, recovered, no_outage, rpo_target_s, rpo_measured_s, data_verified, verdict, evidence_id, reviewer, plan_id FROM judged
+view entities_current | SELECT entity_key, environment, entity_type, entity_id, state_hash, description, relationships, valid_from_ns, last_seen_ns, last_received_ns, interval_s, deleted_at_ns, delete_reason, wire_form, observer, schema_url, CASE WHEN ((deleted_at_ns IS NOT NULL)) THEN ('gone') WHEN (((interval_s > 0) AND ((epoch_ns(now()) - last_received_ns) > ((3 * interval_s) * 1000000000)))) THEN ('expired') ELSE 'live' END AS liveness FROM entity_versions QUALIFY (row_number() OVER (PARTITION BY entity_key, environment ORDER BY valid_from_ns DESC) = 1)
+view experiment_runs | SELECT s.experiment_id, any_value(s.experiment_name) AS experiment_name, min(s.ts_ns) AS started_at_ns, max((s.ts_ns + s.duration_ns)) AS ended_at_ns, max(s.duration_ns) AS duration_ns, any_value(lower(COALESCE(s.outcome_status, l.log_attrs['status']))) AS outcome_status, any_value(s.hypothesis_met) AS hypothesis_met FROM (run_roots AS s LEFT JOIN run_completions AS l ON ((s.experiment_id = l.experiment_id))) GROUP BY s.experiment_id
+view run_completions | SELECT ts_ns, log_attrs, log_attrs['experiment_id'] AS experiment_id FROM logs WHERE (body = 'experiment.completed') QUALIFY (row_number() OVER (PARTITION BY log_attrs['experiment_id'] ORDER BY ts_ns DESC) = 1)
+view run_roots | (SELECT s.ts_ns, s.trace_id, s.span_id, s.parent_span_id, s.span_name, s.span_kind, s.duration_ns, s.status_code, s.status_message, s.service_name, s.service_version, s.experiment_id, s.experiment_name, s.outcome_status, s.fault_type, s.fault_subtype, s.fault_severity, s.blast_radius, s.target_system, s.target_technology, s.target_environment, s.plugin_name, s.hypothesis_met, s.recovery_time_s, s.span_attrs, s.resource_attrs, s.events, false AS journal_only FROM spans AS s WHERE (s.span_name = 'resilience.experiment')) UNION ALL (SELECT e.started_at_ns AS ts_ns, NULL AS trace_id, NULL AS span_id, NULL AS parent_span_id, 'resilience.experiment' AS span_name, 'Internal' AS span_kind, (e.ended_at_ns - e.started_at_ns) AS duration_ns, CASE WHEN ((lower(e.status) = 'completed')) THEN ('Ok') ELSE 'Error' END AS status_code, '' AS status_message, 'tumult' AS service_name, NULL AS service_version, e.experiment_id, e.title AS experiment_name, lower(e.status) AS outcome_status, NULL AS fault_type, NULL AS fault_subtype, NULL AS fault_severity, NULL AS blast_radius, json_extract_string(g.attrs, '$.target_system') AS target_system, json_extract_string(g.attrs, '$.target_technology') AS target_technology, json_extract_string(g.attrs, '$.target_environment') AS target_environment, NULL AS plugin_name, COALESCE(e.hypothesis_after_met, CASE WHEN ((NOT e.hypothesis_before_met)) THEN (false) ELSE NULL END) AS hypothesis_met, COALESCE(e.mttr_s, e.rto_measured_s) AS recovery_time_s, NULL AS span_attrs, NULL AS resource_attrs, NULL AS events, true AS journal_only FROM (experiments AS e LEFT JOIN graph_nodes AS g ON ((g.id = ('run:' || e.experiment_id)))) WHERE (NOT EXISTS(SELECT 1 FROM spans AS r WHERE ((r.span_name = 'resilience.experiment') AND (r.experiment_id = e.experiment_id)))))
+schema_meta version 26
