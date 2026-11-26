@@ -186,11 +186,13 @@ demo-test:
 	done
 
 # The checks of the CI jobs Format, Test, Demo crates, Cargo Deny and
-# Documentation checks (scripts/test-quality-gates.py keeps them equal to
-# ci.yml), then the mutation tests of the changed lines. It installs no
-# tools: it needs cargo-nextest, cargo-machete, cargo-deny, cargo-mutants,
-# protoc and the chromium of Playwright
-# (npm --prefix web exec -- playwright install chromium).
+# Documentation checks and the SQL lint (scripts/test-quality-gates.py keeps
+# them equal to ci.yml), then the mutation tests of the changed lines. It
+# installs no tools: it needs cargo-nextest, cargo-machete, cargo-deny,
+# cargo-mutants, protoc, the chromium of Playwright
+# (npm --prefix web exec -- playwright install chromium) and sqlfluff
+# (python3 -m venv .quality-venv, then
+# .quality-venv/bin/pip install -r requirements-quality.txt).
 TARGET_DIR = $(abspath $(or $(CARGO_TARGET_DIR),target))
 
 precommit:
@@ -210,6 +212,8 @@ precommit:
 	python3 scripts/check-kronika-pages.py
 	python3 scripts/check-citations.py
 	python3 scripts/check-prose.py
+	.quality-venv/bin/sqlfluff lint docker/init-postgres.sql
+	.quality-venv/bin/sqlfluff lint --config .sqlfluff-corpus */tests/golden/sql-corpus.sql
 	$(MAKE) mutants
 
 build:

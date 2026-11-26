@@ -341,7 +341,9 @@ jobs:
       - run: .quality-venv/bin/black --check scripts demo/proof
       - run: .quality-venv/bin/ruff check scripts demo/proof
       - run: .quality-venv/bin/sqlfluff lint docker/init-postgres.sql
-      - run: bash scripts/lint-embedded-sql.sh
+      # The SQL corpus of each crate: every statement the crate runs, as a
+      # test of the crate keeps it (CONTRIBUTING.md).
+      - run: .quality-venv/bin/sqlfluff lint --config .sqlfluff-corpus */tests/golden/sql-corpus.sql
       # Log events have a constant message, a stable name and vocabulary
       # field names (docs/guides/logging.md). Crates not converted yet are
       # listed in DEFERRED inside the script.
