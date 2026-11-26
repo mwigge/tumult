@@ -11,7 +11,7 @@
 //! 4. **Allow-listed tables** — every table a FROM clause names, at any
 //!    depth, must be in the caller's allow-list or a CTE in scope: the
 //!    source after `FROM`, after `JOIN` and after each comma of a FROM
-//!    list ([`table_refs`]). A FROM clause the guard cannot read fails
+//!    list (`table_refs`). A FROM clause the guard cannot read fails
 //!    closed.
 //! 5. **Allow-listed functions** — every function call (a name directly
 //!    followed by `(`) must be on a fixed allow-list of safe aggregate and
@@ -587,7 +587,7 @@ fn table_refs<S: AsRef<str>>(tokens: &[S]) -> Result<Vec<TableRef>, SqlGuardErro
 }
 
 /// Rewrite every base-table reference of a validated query (each table
-/// [`table_refs`] finds that is not a CTE) into a filtering subquery
+/// `table_refs` finds that is not a CTE) into a filtering subquery
 /// `(SELECT * FROM t WHERE <predicate>)`, so the caller can confine results
 /// to rows matching per-table predicates — the per-user environment scoping
 /// on `/api/ask`.
@@ -601,7 +601,7 @@ fn table_refs<S: AsRef<str>>(tokens: &[S]) -> Result<Vec<TableRef>, SqlGuardErro
 ///
 /// # Errors
 /// Returns [`SqlGuardError::TableNotScopable`] for the first referenced
-/// table that has no predicate, and the error of [`table_refs`] for a FROM
+/// table that has no predicate, and the error of `table_refs` for a FROM
 /// clause the walk cannot read (one [`validate_generated_sql`] refuses).
 pub fn scope_tables(sql: &str, predicates: &[(&str, &str)]) -> Result<String, SqlGuardError> {
     let tokens = tokenize_positions(sql);
