@@ -322,9 +322,20 @@ fn assert_upgrades_to_a_fresh_lake(name: &str, known: &[Known]) {
     Store::open(&db).unwrap();
 
     let after = rows(&Connection::open(&db).unwrap(), &shape_columns);
-    assert_eq!(
-        after, before,
-        "the rows of the shape {name} changed on the upgrade"
+    let changed: Vec<String> = before
+        .iter()
+        .filter(|(table, found)| after.get(*table) != Some(found))
+        .map(|(table, found)| {
+            format!(
+                "{table}\n  before: {found:?}\n  after:  {:?}",
+                after.get(table)
+            )
+        })
+        .collect();
+    assert!(
+        changed.is_empty(),
+        "the rows of the shape {name} changed on the upgrade\n{}",
+        changed.join("\n")
     );
     let upgraded = catalog(&db);
     for difference in known {
