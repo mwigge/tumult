@@ -22,7 +22,7 @@ tumult-exec = { path = "../tumult-exec" }
 tumult-otel = { path = "../tumult-otel" }
 tumult-auth = { path = "../tumult-auth" }
 axum.workspace = true
-axum-server = { version = "0.7", features = ["tls-rustls"] }
+axum-server = { version = "0.9", features = ["tls-rustls"] }
 # The workspace dependency graph compiles both rustls crypto providers
 # (ring + aws-lc-rs); tumultd installs aws-lc-rs as the process default so
 # ServerConfig construction is unambiguous.
