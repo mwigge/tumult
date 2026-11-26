@@ -329,3 +329,36 @@ pub(crate) fn bucket_of(column: &str, bucket_s: i64) -> String {
     let ns = bucket_s * 1_000_000_000;
     format!("({column} // {ns}) * {ns} // 1000000000")
 }
+
+/// The predicates of this module in the statements that read them, for the
+/// SQL corpus. The others are in the statements of the handlers.
+#[cfg(test)]
+pub(crate) fn sql_corpus() -> Vec<tumult_test_utils::sql_corpus::Statement> {
+    use tumult_test_utils::sql_fragment;
+    vec![
+        sql_fragment!(
+            "SELECT count(*) AS n FROM run_roots AS s \
+             LEFT JOIN run_completions AS l ON s.experiment_id = l.experiment_id WHERE {}",
+            run_outcome_where("incomplete", "s", "l").expect("an outcome")
+        ),
+        sql_fragment!(
+            "SELECT count(*) AS n FROM run_roots WHERE {}",
+            in_scopes(1, "target_environment")
+        ),
+        sql_fragment!("SELECT {} AS id FROM spans", id_segment_sql("service_name")),
+        sql_fragment!(
+            "SELECT {} AS env FROM spans",
+            env_segment_sql("target_environment")
+        ),
+        sql_fragment!(
+            "SELECT {} AS ts FROM spans AS s",
+            bucket_of("s.ts_ns", 3_600)
+        ),
+        sql_fragment!(
+            "SELECT count(*) AS n FROM logs WHERE {}",
+            attr_wheres(Some("k=v"), Some("a=b"), ("log_attrs", "resource_attrs"))
+                .expect("valid filters")
+                .join(" AND ")
+        ),
+    ]
+}

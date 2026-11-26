@@ -31,13 +31,31 @@ pub(crate) async fn authorize_run(
     let predicate = run_scope_sql(&principal.env_scopes);
     let id = id.to_string();
     let allowed = with_reader(&state.db_path, move |reader| {
-        reader.query_json_rows(&format!("SELECT r.id FROM runs r \
-            LEFT JOIN (SELECT experiment_id, any_value(target_environment) AS env FROM spans GROUP BY 1) e \
-            ON e.experiment_id = r.experiment_id WHERE r.id = {} AND ({predicate})", sql_string(&id)))
-            .map(|rows| !rows.is_empty()).map_err(|e| e.to_string())
-    }).await?;
+        reader
+            .query_json_rows(&run_in_scope_sql(&id, &predicate))
+            .map(|rows| !rows.is_empty())
+            .map_err(|e| e.to_string())
+    })
+    .await?;
     if !allowed {
         return Err(not_found("unknown run"));
     }
     Ok(())
+}
+
+/// The run `id` when the scope `predicate` holds for it.
+fn run_in_scope_sql(id: &str, predicate: &str) -> String {
+    format!("SELECT r.id FROM runs r \
+            LEFT JOIN (SELECT experiment_id, any_value(target_environment) AS env FROM spans GROUP BY 1) e \
+            ON e.experiment_id = r.experiment_id WHERE r.id = {} AND ({predicate})", sql_string(id))
+}
+
+/// The statements of the run scopes, for the SQL corpus.
+#[cfg(test)]
+pub(crate) fn sql_corpus() -> Vec<tumult_test_utils::sql_corpus::Statement> {
+    let predicate = run_scope_sql(&["prod".to_string()]);
+    tumult_test_utils::sql_statements![
+        run_in_scope_sql("run-1", &predicate),
+        run_in_scope_sql("run-1", &run_scope_sql(&[])),
+    ]
 }

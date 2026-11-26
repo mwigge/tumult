@@ -176,10 +176,10 @@ fn run_of(row: &Value) -> Option<Run> {
     })
 }
 
-/// The runs, in start order, with how their load was executed. A run
-/// ingested twice is read once.
-fn load_runs(reader: &Reader, asked: &Asked) -> Result<Vec<Run>, String> {
-    let sql = format!(
+/// The runs over `$1` to `$3`, in start order, with how their load was
+/// executed.
+fn runs_sql() -> String {
+    format!(
         "{} SELECT u.id, u.started, u.ended, u.env, u.status, u.version, \
          u.version_source, \
          CAST(l.aborted AS INTEGER) AS aborted, CAST(l.truncated AS INTEGER) AS truncated, \
@@ -189,7 +189,93 @@ fn load_runs(reader: &Reader, asked: &Asked) -> Result<Vec<Run>, String> {
          FROM runs AS u LEFT JOIN load_results AS l ON u.id = l.experiment_id \
          ORDER BY u.started, u.id",
         runs_cte()
-    );
+    )
+}
+
+/// Per run without a recorded version, the requests each version served
+/// in the run's window widened by the clock skew, and in its own window,
+/// over `$1` to `$4`.
+fn inside_sql() -> String {
+    let skew_ns = i64::try_from(VERSION_WINDOW_SKEW.as_nanos()).unwrap_or(i64::MAX);
+    format!(
+        "{} SELECT u.id AS id, s.service_version AS v, count(*) AS n, \
+         count(*) FILTER (WHERE s.ts_ns >= u.started AND s.ts_ns <= u.ended) AS own \
+         {UNRECORDED_JOIN} \
+         AND s.ts_ns >= u.started - {skew_ns} AND s.ts_ns <= u.ended + {skew_ns} \
+         AND {IS_REQUEST} \
+         GROUP BY u.id, s.service_version ORDER BY u.id, s.service_version",
+        runs_cte()
+    )
+}
+
+/// Per run without a recorded version, the last span of each version
+/// before the run's start, over `$1` to `$4`.
+fn before_sql() -> String {
+    format!(
+        "{} SELECT u.id AS id, s.service_version AS v, max(s.ts_ns) AS last {UNRECORDED_JOIN} \
+         AND s.ts_ns < u.started AND s.ts_ns >= u.started - {STALE_NS} \
+         GROUP BY u.id, s.service_version ORDER BY u.id, s.service_version",
+        runs_cte()
+    )
+}
+
+/// The versions the runs recorded, per environment, over `$1` to `$3`.
+fn recorded_sql() -> String {
+    format!(
+        "{} SELECT u.env AS env, u.version AS version, \
+         min(u.started) AS first, max(u.ended) AS last \
+         FROM runs AS u WHERE u.version IS NOT NULL \
+         AND coalesce(u.version_source, '') <> 'mixed' \
+         GROUP BY u.env, u.version ORDER BY u.env, u.version",
+        runs_cte()
+    )
+}
+
+/// The samples of the series `$4` of the runs over `$1` to `$3`, each with
+/// its window length and its request timeout.
+fn samples_sql() -> String {
+    let beside = |series: &str| {
+        format!(
+            "(SELECT experiment_id, ts_ns, max(value) AS value FROM mine \
+             WHERE probe_name = '{series}' GROUP BY experiment_id, ts_ns)"
+        )
+    };
+    format!(
+        "WITH mine AS (\
+         SELECT experiment_id, ts_ns, probe_name, value FROM probe_samples \
+         WHERE phase = 'during' AND experiment_id IN (\
+         SELECT experiment_id FROM spans WHERE {roots})) \
+         SELECT p.experiment_id AS id, p.value AS value, w.value AS weight, \
+         t.value AS timeout \
+         FROM mine AS p \
+         LEFT JOIN {window} AS w ON w.experiment_id = p.experiment_id AND w.ts_ns = p.ts_ns \
+         LEFT JOIN {timeout} AS t ON t.experiment_id = p.experiment_id AND t.ts_ns = p.ts_ns \
+         WHERE p.probe_name = $4 \
+         ORDER BY p.ts_ns, p.experiment_id, p.value",
+        roots = roots_where(),
+        window = beside(WINDOW_SERIES),
+        timeout = beside(TIMEOUT_SERIES),
+    )
+}
+
+/// The targets of the runs at or after `$1` in the scopes `$2`.
+fn targets_sql() -> String {
+    format!(
+        "SELECT target_system AS target, target_environment AS env, \
+         count(DISTINCT experiment_id) AS runs, max(ts_ns) AS last_run \
+         FROM spans WHERE span_name = 'resilience.experiment' \
+         AND target_system IS NOT NULL AND experiment_id IS NOT NULL \
+         AND ts_ns >= $1 AND {} \
+         GROUP BY target_system, target_environment \
+         ORDER BY target_system, target_environment NULLS LAST",
+        in_scopes(2, "target_environment")
+    )
+}
+
+/// The runs, in start order, with how their load was executed. A run
+/// ingested twice is read once.
+fn load_runs(reader: &Reader, asked: &Asked) -> Result<Vec<Run>, String> {
+    let sql = runs_sql();
     let mut seen = HashSet::new();
     Ok(rows(reader, &sql, &asked.runs())?
         .iter()
@@ -207,16 +293,7 @@ fn load_inside(
     reader: &Reader,
     asked: &Asked,
 ) -> Result<HashMap<String, Vec<(String, u64)>>, String> {
-    let skew_ns = i64::try_from(VERSION_WINDOW_SKEW.as_nanos()).unwrap_or(i64::MAX);
-    let sql = format!(
-        "{} SELECT u.id AS id, s.service_version AS v, count(*) AS n, \
-         count(*) FILTER (WHERE s.ts_ns >= u.started AND s.ts_ns <= u.ended) AS own \
-         {UNRECORDED_JOIN} \
-         AND s.ts_ns >= u.started - {skew_ns} AND s.ts_ns <= u.ended + {skew_ns} \
-         AND {IS_REQUEST} \
-         GROUP BY u.id, s.service_version ORDER BY u.id, s.service_version",
-        runs_cte()
-    );
+    let sql = inside_sql();
     // Per run and version: requests in the padded window, and in its own.
     let mut inside: HashMap<String, BTreeMap<String, (u64, u64)>> = HashMap::new();
     for row in &rows(reader, &sql, &asked.spans())? {
@@ -254,12 +331,7 @@ fn load_before(
     reader: &Reader,
     asked: &Asked,
 ) -> Result<HashMap<String, Vec<(String, i64)>>, String> {
-    let sql = format!(
-        "{} SELECT u.id AS id, s.service_version AS v, max(s.ts_ns) AS last {UNRECORDED_JOIN} \
-         AND s.ts_ns < u.started AND s.ts_ns >= u.started - {STALE_NS} \
-         GROUP BY u.id, s.service_version ORDER BY u.id, s.service_version",
-        runs_cte()
-    );
+    let sql = before_sql();
     let mut before: HashMap<String, BTreeMap<String, i64>> = HashMap::new();
     for row in &rows(reader, &sql, &asked.spans())? {
         let (Some(id), Some(v), Some(last)) = (
@@ -282,14 +354,7 @@ fn load_before(
 /// the first and the last of those runs — whenever they ran. A run two
 /// versions shared recorded neither.
 fn load_recorded(reader: &Reader, asked: &Asked) -> Result<Vec<RecordedVersion>, String> {
-    let sql = format!(
-        "{} SELECT u.env AS env, u.version AS version, \
-         min(u.started) AS first, max(u.ended) AS last \
-         FROM runs AS u WHERE u.version IS NOT NULL \
-         AND coalesce(u.version_source, '') <> 'mixed' \
-         GROUP BY u.env, u.version ORDER BY u.env, u.version",
-        runs_cte()
-    );
+    let sql = recorded_sql();
     Ok(rows(reader, &sql, &asked.whenever())?
         .iter()
         .filter_map(|row| {
@@ -318,28 +383,7 @@ fn sample_of(row: &Value, latency: bool) -> Option<Sample> {
 /// behind it and whether it is a request given up on at its timeout. The
 /// order is total, so the same lake always yields the same sequence.
 fn load_samples(reader: &Reader, asked: &Asked, probe: &str) -> Result<Vec<Sample>, String> {
-    let beside = |series: &str| {
-        format!(
-            "(SELECT experiment_id, ts_ns, max(value) AS value FROM mine \
-             WHERE probe_name = '{series}' GROUP BY experiment_id, ts_ns)"
-        )
-    };
-    let sql = format!(
-        "WITH mine AS (\
-         SELECT experiment_id, ts_ns, probe_name, value FROM probe_samples \
-         WHERE phase = 'during' AND experiment_id IN (\
-         SELECT experiment_id FROM spans WHERE {roots})) \
-         SELECT p.experiment_id AS id, p.value AS value, w.value AS weight, \
-         t.value AS timeout \
-         FROM mine AS p \
-         LEFT JOIN {window} AS w ON w.experiment_id = p.experiment_id AND w.ts_ns = p.ts_ns \
-         LEFT JOIN {timeout} AS t ON t.experiment_id = p.experiment_id AND t.ts_ns = p.ts_ns \
-         WHERE p.probe_name = $4 \
-         ORDER BY p.ts_ns, p.experiment_id, p.value",
-        roots = roots_where(),
-        window = beside(WINDOW_SERIES),
-        timeout = beside(TIMEOUT_SERIES),
-    );
+    let sql = samples_sql();
     let mut params = asked.runs();
     params.push(SqlParam::Text(probe.to_string()));
     let latency = probe.starts_with(LATENCY_PREFIX);
@@ -457,16 +501,7 @@ pub(crate) fn targets(
     scopes: &[String],
     since_ns: i64,
 ) -> Result<Vec<TargetSeen>, String> {
-    let sql = format!(
-        "SELECT target_system AS target, target_environment AS env, \
-         count(DISTINCT experiment_id) AS runs, max(ts_ns) AS last_run \
-         FROM spans WHERE span_name = 'resilience.experiment' \
-         AND target_system IS NOT NULL AND experiment_id IS NOT NULL \
-         AND ts_ns >= $1 AND {} \
-         GROUP BY target_system, target_environment \
-         ORDER BY target_system, target_environment NULLS LAST",
-        in_scopes(2, "target_environment")
-    );
+    let sql = targets_sql();
     let params = [SqlParam::Int(since_ns), scopes_param(scopes)];
     let mut targets: Vec<TargetSeen> = Vec::new();
     for row in &rows(reader, &sql, &params)? {
@@ -493,4 +528,17 @@ pub(crate) fn targets(
         }
     }
     Ok(targets)
+}
+
+/// The statements of the performance evidence, for the SQL corpus.
+#[cfg(test)]
+pub(super) fn sql_corpus() -> Vec<tumult_test_utils::sql_corpus::Statement> {
+    tumult_test_utils::sql_statements![
+        runs_sql(),
+        inside_sql(),
+        before_sql(),
+        recorded_sql(),
+        samples_sql(),
+        targets_sql(),
+    ]
 }

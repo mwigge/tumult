@@ -294,13 +294,7 @@ async fn load_samples(
     with_reader(&state.db_path, move |reader| {
         let scope_predicate = crate::auth::scopes::run_scope_sql(&scopes);
         let run = reader
-            .query_json_rows(&format!(
-                "SELECT r.experiment_id FROM runs r \
-                 LEFT JOIN (SELECT experiment_id, any_value(target_environment) AS env \
-                            FROM spans GROUP BY 1) e ON e.experiment_id = r.experiment_id \
-                 WHERE r.id = {} AND ({scope_predicate})",
-                sql_string(&run_id)
-            ))
+            .query_json_rows(&experiment_of_run_sql(&run_id, &scope_predicate))
             .map_err(|e| e.to_string())?
             .into_iter()
             .next();
@@ -311,11 +305,7 @@ async fn load_samples(
             return Ok(Some((String::new(), Vec::new())));
         };
         let rows = reader
-            .query_json_rows(&format!(
-                "SELECT probe_name, phase, ts_ns, value FROM probe_samples \
-                 WHERE experiment_id = {} ORDER BY ts_ns ASC",
-                sql_string(experiment_id)
-            ))
+            .query_json_rows(&samples_sql(experiment_id))
             .map_err(|e| e.to_string())?;
         Ok(Some((experiment_id.to_owned(), rows)))
     })
@@ -370,6 +360,37 @@ pub(crate) async fn run_impact(
         "provenance": provenance,
         "probes": probes,
     })))
+}
+
+/// The experiment of the run `run_id` when the scope `scope_predicate`
+/// holds for it.
+fn experiment_of_run_sql(run_id: &str, scope_predicate: &str) -> String {
+    format!(
+        "SELECT r.experiment_id FROM runs r \
+         LEFT JOIN (SELECT experiment_id, any_value(target_environment) AS env \
+                    FROM spans GROUP BY 1) e ON e.experiment_id = r.experiment_id \
+         WHERE r.id = {} AND ({scope_predicate})",
+        sql_string(run_id)
+    )
+}
+
+/// The probe samples of the experiment `experiment_id`, in time order.
+fn samples_sql(experiment_id: &str) -> String {
+    format!(
+        "SELECT probe_name, phase, ts_ns, value FROM probe_samples \
+         WHERE experiment_id = {} ORDER BY ts_ns ASC",
+        sql_string(experiment_id)
+    )
+}
+
+/// The statements of the run impact, for the SQL corpus.
+#[cfg(test)]
+pub(crate) fn sql_corpus() -> Vec<tumult_test_utils::sql_corpus::Statement> {
+    let predicate = crate::auth::scopes::run_scope_sql(&["prod".to_string()]);
+    tumult_test_utils::sql_statements![
+        experiment_of_run_sql("run-1", &predicate),
+        samples_sql("exp-1"),
+    ]
 }
 
 #[cfg(test)]

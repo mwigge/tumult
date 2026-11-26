@@ -120,6 +120,12 @@
 
 mod answer;
 mod evidence;
+/// The statements of the performance verdicts, for the SQL corpus.
+#[cfg(test)]
+pub(super) fn sql_corpus() -> Vec<tumult_test_utils::sql_corpus::Statement> {
+    evidence::sql_corpus()
+}
+
 #[cfg(test)]
 mod roundtrip_tests;
 mod select;

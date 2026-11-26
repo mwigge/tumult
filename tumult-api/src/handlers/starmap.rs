@@ -259,12 +259,10 @@ fn capped_rows(
     sql: &str,
     limit: usize,
 ) -> Result<Capped<Value>, String> {
-    let probe = limit.saturating_add(1);
-    let mut found =
-        rows(reader, &format!("{sql} ORDER BY ALL LIMIT {probe}")).map_err(|error| {
-            tracing::warn!(source, error.message = %error, "star map source read failed");
-            format!("star map source {source}: {error}")
-        })?;
+    let mut found = rows(reader, &capped_sql(sql, limit)).map_err(|error| {
+        tracing::warn!(source, error.message = %error, "star map source read failed");
+        format!("star map source {source}: {error}")
+    })?;
     let cut = found.len() > limit;
     if cut {
         tracing::warn!(
@@ -275,6 +273,31 @@ fn capped_rows(
     }
     found.truncate(limit);
     Ok((found, cut))
+}
+
+/// At most `limit` rows of `sql` and one more, in a stable order: the one
+/// more says that the read was cut.
+fn capped_sql(sql: &str, limit: usize) -> String {
+    let probe = limit.saturating_add(1);
+    format!("{sql} ORDER BY ALL LIMIT {probe}")
+}
+
+/// The framework references of the verified manual records of the window.
+fn manual_refs_sql(window: &Window) -> String {
+    let scope = scope::and(scope::in_list("m.target_environment", &window.envs));
+    format!(
+        "SELECT m.id AS id, unnest(m.framework_refs) AS reference \
+         FROM manual_experiments m \
+         WHERE m.status = 'verified' AND m.executed_at_ns >= {} \
+         AND m.executed_at_ns < {}{scope}",
+        window.from_ns, window.to_ns
+    )
+}
+
+/// The graph nodes of the kind `kind`, one of the fixed kinds the Star Map
+/// reads.
+fn nodes_of_kind_sql(kind: &str) -> String {
+    format!("SELECT id, label FROM graph_nodes WHERE kind = '{kind}'")
 }
 
 /// Q1, the service catalogue: one row per distinct resource-attribute
@@ -597,8 +620,7 @@ fn covers(reader: &Reader, window: &Window, limit: usize) -> Result<Capped<Cover
     let (edges, cut) = capped_rows(
         reader,
         "graph_edges.evidence",
-        "SELECT DISTINCT src, rel, dst FROM graph_edges \
-         WHERE rel IN ('evidences', 'maps_to_compliance')",
+        crate::sql::EVIDENCE_EDGES,
         limit,
     )?;
     let mut out: Vec<CoverRow> = edges
@@ -612,17 +634,7 @@ fn covers(reader: &Reader, window: &Window, limit: usize) -> Result<Capped<Cover
             })
         })
         .collect();
-    let scope = scope::and(scope::in_list("m.target_environment", &window.envs));
-    let manual = rows(
-        reader,
-        &format!(
-            "SELECT m.id AS id, unnest(m.framework_refs) AS reference \
-             FROM manual_experiments m \
-             WHERE m.status = 'verified' AND m.executed_at_ns >= {} \
-             AND m.executed_at_ns < {}{scope}",
-            window.from_ns, window.to_ns
-        ),
-    )?;
+    let manual = rows(reader, &manual_refs_sql(window))?;
     out.extend(manual.iter().filter_map(|row| {
         Some(CoverRow {
             from: CoverFrom::Manual(text(row, "id")?),
@@ -642,7 +654,7 @@ fn graph_nodes(
     let (found, cut) = capped_rows(
         reader,
         &format!("graph_nodes.{kind}"),
-        &format!("SELECT id, label FROM graph_nodes WHERE kind = '{kind}'"),
+        &nodes_of_kind_sql(kind),
         limit,
     )?;
     let nodes = found
@@ -679,7 +691,7 @@ fn depends(reader: &Reader, limit: usize) -> Result<Capped<DependsRow>, String> 
     let (found, cut) = capped_rows(
         reader,
         "graph_edges.depends_on",
-        "SELECT DISTINCT src, dst FROM graph_edges WHERE rel = 'depends_on'",
+        crate::sql::DEPENDS_ON_EDGES,
         limit,
     )?;
     let edges = found
@@ -905,6 +917,33 @@ pub(crate) async fn starmap(
     let read = |query, window| build(&state, query, window);
     let map = cached(&state.starmap_cache, &key, max_age, plan, read).await?;
     Ok(respond(&map, &headers))
+}
+
+/// The statements of the Star Map, for the SQL corpus.
+#[cfg(test)]
+pub(super) fn sql_corpus() -> Vec<tumult_test_utils::sql_corpus::Statement> {
+    let open = Window {
+        from_ns: 1_774_900_000_000_000_000,
+        to_ns: 1_774_986_400_000_000_000,
+        envs: vec![],
+    };
+    let prod = Window {
+        from_ns: open.from_ns,
+        to_ns: open.to_ns,
+        envs: vec!["prod".to_string()],
+    };
+    tumult_test_utils::sql_statements![
+        services_sql(&open),
+        services_sql(&prod),
+        calls_sql(&prod),
+        runs_sql(&open),
+        runs_sql(&prod),
+        capped_sql(crate::sql::EVIDENCE_EDGES, 5_000),
+        capped_sql(crate::sql::DEPENDS_ON_EDGES, 5_000),
+        manual_refs_sql(&prod),
+        capped_sql(&nodes_of_kind_sql("compliance_article"), 5_000),
+        capped_sql(&nodes_of_kind_sql("coverage_gap"), 5_000),
+    ]
 }
 
 #[cfg(test)]

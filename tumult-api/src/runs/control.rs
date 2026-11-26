@@ -193,27 +193,8 @@ pub async fn stop_all(
     };
     let scopes = principal.env_scopes.clone();
     let ids = with_reader(&state.db_path, move |reader| {
-        let state_list = HALTABLE_STATES
-            .iter()
-            .map(|s| sql_string(s))
-            .collect::<Vec<_>>()
-            .join(", ");
-        if scopes.is_empty() {
-            return reader
-                .query_json_rows(&format!(
-                    "SELECT id FROM runs WHERE state IN ({state_list})"
-                ))
-                .map_err(|e| e.to_string());
-        }
-        let scope_predicate = crate::auth::scopes::run_scope_sql(&scopes);
         reader
-            .query_json_rows(&format!(
-                "SELECT r.id FROM runs r \
-                 LEFT JOIN (SELECT experiment_id, any_value(target_environment) AS env \
-                            FROM spans GROUP BY 1) e ON e.experiment_id = r.experiment_id \
-                 WHERE r.state IN ({state_list}) \
-                   AND ({scope_predicate})"
-            ))
+            .query_json_rows(&haltable_sql(&scopes))
             .map_err(|e| e.to_string())
     })
     .await?;
@@ -280,6 +261,32 @@ where
 
 // ---------------------------------------------------------------------------
 // Tests
+
+/// The runs that can be halted in the environments `scopes`.
+fn haltable_sql(scopes: &[String]) -> String {
+    let state_list = HALTABLE_STATES
+        .iter()
+        .map(|s| sql_string(s))
+        .collect::<Vec<_>>()
+        .join(", ");
+    if scopes.is_empty() {
+        return format!("SELECT id FROM runs WHERE state IN ({state_list})");
+    }
+    let scope_predicate = crate::auth::scopes::run_scope_sql(scopes);
+    format!(
+        "SELECT r.id FROM runs r \
+         LEFT JOIN (SELECT experiment_id, any_value(target_environment) AS env \
+                    FROM spans GROUP BY 1) e ON e.experiment_id = r.experiment_id \
+         WHERE r.state IN ({state_list}) \
+           AND ({scope_predicate})"
+    )
+}
+
+/// The statements of the run controls, for the SQL corpus.
+#[cfg(test)]
+pub(super) fn sql_corpus() -> Vec<tumult_test_utils::sql_corpus::Statement> {
+    tumult_test_utils::sql_statements![haltable_sql(&[]), haltable_sql(&["prod".to_string()])]
+}
 
 #[cfg(test)]
 mod tests {

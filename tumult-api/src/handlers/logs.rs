@@ -58,6 +58,19 @@ fn log_wheres(
     let Some((cur, _)) = windows(range) else {
         return Err(invalid_range(range));
     };
+    wheres_in(cur, severity, service, q, attr, attr_not, scopes)
+}
+
+/// The clauses of [`log_wheres`] for the window `cur`.
+fn wheres_in(
+    cur: (i64, i64),
+    severity: Option<&str>,
+    service: Option<&str>,
+    q: Option<&str>,
+    attr: Option<&str>,
+    attr_not: Option<&str>,
+    scopes: &[String],
+) -> Result<Vec<String>, String> {
     let mut wheres = vec![w(cur.0, cur.1)];
     if let Some(env) = scope::in_list("se.target_environment", scopes) {
         wheres.push(format!(
@@ -109,12 +122,7 @@ pub(crate) async fn logs(
     )
     .map_err(bad)?;
     let limit = params.limit.unwrap_or(200).clamp(1, 1000);
-    let sql = format!(
-        "SELECT ts_ns, severity_text, body, trace_id, span_id, service_name, \
-         log_attrs['experiment_id'] AS experiment_id, log_attrs, resource_attrs \
-         FROM logs WHERE {} ORDER BY ts_ns DESC LIMIT {limit}",
-        wheres.join(" AND ")
-    );
+    let sql = logs_sql(&wheres, limit);
     let rows = with_reader(&state.db_path, move |reader| {
         reader.query_json_rows(&sql).map_err(|e| e.to_string())
     })
@@ -149,12 +157,7 @@ pub(crate) async fn logs_volume(
     )
     .map_err(bad)?;
     // One row per (bucket, severity); the UI pivots into stacked series.
-    let sql = format!(
-        "SELECT {} AS ts, COALESCE(severity_text, 'UNKNOWN') AS severity, COUNT(*) AS count \
-         FROM logs WHERE {} GROUP BY 1, 2 ORDER BY 1",
-        bucket_expr(bucket_s),
-        wheres.join(" AND ")
-    );
+    let sql = volume_sql(bucket_s, &wheres);
     let rows = with_reader(&state.db_path, move |reader| {
         reader.query_json_rows(&sql).map_err(|e| e.to_string())
     })
@@ -164,4 +167,55 @@ pub(crate) async fn logs_volume(
         "bucket_s": bucket_s,
         "rows": rows,
     })))
+}
+
+/// The newest `limit` logs that `wheres` keeps.
+fn logs_sql(wheres: &[String], limit: u32) -> String {
+    format!(
+        "SELECT ts_ns, severity_text, body, trace_id, span_id, service_name, \
+         log_attrs['experiment_id'] AS experiment_id, log_attrs, resource_attrs \
+         FROM logs WHERE {} ORDER BY ts_ns DESC LIMIT {limit}",
+        wheres.join(" AND ")
+    )
+}
+
+/// How many logs of each severity `wheres` keeps, per bucket of
+/// `bucket_s` seconds.
+fn volume_sql(bucket_s: i64, wheres: &[String]) -> String {
+    format!(
+        "SELECT {} AS ts, COALESCE(severity_text, 'UNKNOWN') AS severity, COUNT(*) AS count \
+         FROM logs WHERE {} GROUP BY 1, 2 ORDER BY 1",
+        bucket_expr(bucket_s),
+        wheres.join(" AND ")
+    )
+}
+
+/// The statements of the logs, for the SQL corpus.
+#[cfg(test)]
+pub(super) fn sql_corpus() -> Vec<tumult_test_utils::sql_corpus::Statement> {
+    let every = wheres_in(
+        (1_774_900_000_000_000_000, 1_774_986_400_000_000_000),
+        Some("ERROR"),
+        Some("checkout"),
+        Some("timeout"),
+        Some("http.method=GET"),
+        Some("k8s.pod.name=api-0"),
+        &["prod".to_string()],
+    )
+    .expect("valid filters");
+    let window = wheres_in(
+        (1_774_900_000_000_000_000, 1_774_986_400_000_000_000),
+        None,
+        None,
+        None,
+        None,
+        None,
+        &[],
+    )
+    .expect("a window");
+    tumult_test_utils::sql_statements![
+        logs_sql(&window, 200),
+        logs_sql(&every, 200),
+        volume_sql(3_600, &every),
+    ]
 }

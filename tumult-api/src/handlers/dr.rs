@@ -512,6 +512,12 @@ pub(crate) async fn view(
     Ok(Json(view))
 }
 
+/// The statements of the DR view, for the SQL corpus.
+#[cfg(test)]
+pub(super) fn sql_corpus() -> Vec<tumult_test_utils::sql_corpus::Statement> {
+    tumult_test_utils::sql_statements![RTO_AT_LEAST_SQL]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

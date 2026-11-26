@@ -71,17 +71,7 @@ pub(crate) async fn timeseries(
     let sql =
         tumult_metrics::to_sql_bucketed(def, bucket_s * 1_000_000_000, &[], Some((cur.0, cur.1)))
             .map_err(|e| internal(e.to_string()))?;
-    // Scope the source rows before aggregation: the SQL generator has no
-    // predicate hook, so the table reference becomes a filtered subquery
-    // (the source table is a validated `[a-z0-9_.]` identifier).
-    let sql = match scope::table_predicate(&def.source_table, &principal.env_scopes) {
-        Some(pred) => sql.replacen(
-            &format!("FROM {}", def.source_table),
-            &format!("FROM (SELECT * FROM {} WHERE {pred})", def.source_table),
-            1,
-        ),
-        None => sql,
-    };
+    let sql = scoped_series_sql(sql, &def.source_table, &principal.env_scopes);
     let description = def.description.clone();
     let unit = def.unit;
     let body = with_reader(&state.db_path, move |reader| {
@@ -133,14 +123,8 @@ fn load_catalog(reader: &Reader, scopes: &[String]) -> Result<Vec<Value>, String
         (Vec<String>, std::collections::BTreeSet<String>),
     > = std::collections::BTreeMap::new();
     for (table, kind) in METRIC_TABLES {
-        let env = scope::table_predicate(table, scopes)
-            .map_or_else(String::new, |pred| format!(" WHERE {pred}"));
         let rows = reader
-            .query_json_rows(&format!(
-                "SELECT metric_name, list_distinct(flatten(list(k))) AS k \
-                 FROM (SELECT DISTINCT metric_name, map_keys(attrs) AS k FROM {table}{env}) AS key_lists \
-                 GROUP BY metric_name"
-            ))
+            .query_json_rows(&catalog_sql(table, scopes))
             .map_err(|e| e.to_string())?;
         for row in rows {
             let Some(name) = row.get("metric_name").and_then(Value::as_str) else {
@@ -180,12 +164,8 @@ fn metric_table(
     scopes: &[String],
 ) -> Result<Option<(&'static str, &'static str)>, String> {
     for (table, kind) in METRIC_TABLES {
-        let env = scope::and(scope::table_predicate(table, scopes));
         let hit = reader
-            .query_json_rows_bound(
-                &format!("SELECT 1 AS hit FROM {table} WHERE metric_name = $1{env} LIMIT 1"),
-                &[name],
-            )
+            .query_json_rows_bound(&metric_hit_sql(table, scopes), &[name])
             .map_err(|e| e.to_string())?;
         if !hit.is_empty() {
             return Ok(Some((table, kind)));
@@ -305,12 +285,6 @@ pub(crate) async fn metrics_query(
         let Some((table, kind)) = metric_table(reader, &metric_name, &scopes)? else {
             return Ok(None);
         };
-        let grp_sel = group_by.as_ref().map_or(String::new(), |g| {
-            format!(", attrs[{}] AS grp", sql_string(g))
-        });
-        let window = w(cur.0, cur.1);
-        let name_sql = sql_string(&metric_name);
-        let env = scope::and(scope::table_predicate(table, &scopes));
 
         // Pivot (bucket, group) rows into one series per group.
         let mut groups: std::collections::BTreeMap<Option<String>, Vec<Value>> =
@@ -319,13 +293,15 @@ pub(crate) async fn metrics_query(
             // Fetch raw rows and aggregate in Rust: elementwise bucket sums
             // per (bucket, group), then interpolate p95. Bounds are assumed
             // stable per metric — mixed schemas degrade to first-seen.
+            let query = MetricQuery {
+                table,
+                name: &metric_name,
+                cur,
+                bucket_s,
+                group_by: group_by.as_deref(),
+            };
             let rows = reader
-                .query_json_rows(&format!(
-                    "SELECT {} AS ts, count, sum, bucket_counts, explicit_bounds{grp_sel} \
-                     FROM {table} WHERE metric_name = {name_sql} AND {window}{env} \
-                     ORDER BY 1 LIMIT 10000",
-                    bucket_expr(bucket_s)
-                ))
+                .query_json_rows(&histogram_sql(&query, &scopes))
                 .map_err(|e| e.to_string())?;
             let mut cells: std::collections::BTreeMap<(i64, Option<String>), HistAcc> =
                 std::collections::BTreeMap::new();
@@ -364,18 +340,15 @@ pub(crate) async fn metrics_query(
                 }));
             }
         } else {
-            let agg = if kind == "sum" {
-                "SUM(value)"
-            } else {
-                "AVG(value)"
+            let query = MetricQuery {
+                table,
+                name: &metric_name,
+                cur,
+                bucket_s,
+                group_by: group_by.as_deref(),
             };
-            let grp_by = if group_by.is_some() { ", 3" } else { "" };
             let rows = reader
-                .query_json_rows(&format!(
-                    "SELECT {} AS ts, {agg} AS v{grp_sel} FROM {table} \
-                     WHERE metric_name = {name_sql} AND {window}{env} GROUP BY 1{grp_by} ORDER BY 1",
-                    bucket_expr(bucket_s)
-                ))
+                .query_json_rows(&points_sql(&query, kind, &scopes))
                 .map_err(|e| e.to_string())?;
             for row in rows {
                 let Some(ts) = row.get("ts").and_then(Value::as_i64) else {
@@ -415,4 +388,162 @@ pub(crate) async fn metrics_query(
             .into_response()
             .into()),
     }
+}
+
+/// The SQL of a metric, `sql`, over the rows of `table` in the
+/// environments `scopes`. Scope the source rows before aggregation: the
+/// SQL generator has no predicate hook, so the table reference becomes a
+/// filtered subquery (the source table is a validated `[a-z0-9_.]`
+/// identifier).
+fn scoped_series_sql(sql: String, table: &str, scopes: &[String]) -> String {
+    match scope::table_predicate(table, scopes) {
+        Some(pred) => sql.replacen(
+            &format!("FROM {table}"),
+            &format!("FROM (SELECT * FROM {table} WHERE {pred})"),
+            1,
+        ),
+        None => sql,
+    }
+}
+
+/// The metric names of `table` in the environments `scopes`, each with the
+/// attribute keys of its points.
+fn catalog_sql(table: &str, scopes: &[String]) -> String {
+    let env = scope::table_predicate(table, scopes)
+        .map_or_else(String::new, |pred| format!(" WHERE {pred}"));
+    format!(
+        "SELECT metric_name, list_distinct(flatten(list(k))) AS k \
+         FROM (SELECT DISTINCT metric_name, map_keys(attrs) AS k FROM {table}{env}) AS key_lists \
+         GROUP BY metric_name"
+    )
+}
+
+/// Whether `table` has a point of the metric `$1` in the environments
+/// `scopes`.
+fn metric_hit_sql(table: &str, scopes: &[String]) -> String {
+    let env = scope::and(scope::table_predicate(table, scopes));
+    format!("SELECT 1 AS hit FROM {table} WHERE metric_name = $1{env} LIMIT 1")
+}
+
+/// What a query of one raw metric asks for.
+struct MetricQuery<'a> {
+    /// The table of the metric, one of [`METRIC_TABLES`].
+    table: &'a str,
+    name: &'a str,
+    /// The window, in unix nanoseconds.
+    cur: (i64, i64),
+    bucket_s: i64,
+    /// The attribute the points are grouped by, a valid key.
+    group_by: Option<&'a str>,
+}
+
+impl MetricQuery<'_> {
+    /// The group column of the SELECT, or nothing.
+    fn group_column(&self) -> String {
+        self.group_by.map_or(String::new(), |g| {
+            format!(", attrs[{}] AS grp", sql_string(g))
+        })
+    }
+}
+
+/// The histogram points of a query in the environments `scopes`.
+fn histogram_sql(query: &MetricQuery<'_>, scopes: &[String]) -> String {
+    let grp_sel = query.group_column();
+    let window = w(query.cur.0, query.cur.1);
+    let name_sql = sql_string(query.name);
+    let table = query.table;
+    let env = scope::and(scope::table_predicate(table, scopes));
+    format!(
+        "SELECT {} AS ts, count, sum, bucket_counts, explicit_bounds{grp_sel} \
+         FROM {table} WHERE metric_name = {name_sql} AND {window}{env} \
+         ORDER BY 1 LIMIT 10000",
+        bucket_expr(query.bucket_s)
+    )
+}
+
+/// The sum or gauge points of a query of the type `kind`, per bucket, in
+/// the environments `scopes`.
+fn points_sql(query: &MetricQuery<'_>, kind: &str, scopes: &[String]) -> String {
+    let grp_sel = query.group_column();
+    let window = w(query.cur.0, query.cur.1);
+    let name_sql = sql_string(query.name);
+    let table = query.table;
+    let env = scope::and(scope::table_predicate(table, scopes));
+    let agg = if kind == "sum" {
+        "SUM(value)"
+    } else {
+        "AVG(value)"
+    };
+    let grp_by = if query.group_by.is_some() { ", 3" } else { "" };
+    format!(
+        "SELECT {} AS ts, {agg} AS v{grp_sel} FROM {table} \
+         WHERE metric_name = {name_sql} AND {window}{env} GROUP BY 1{grp_by} ORDER BY 1",
+        bucket_expr(query.bucket_s)
+    )
+}
+
+/// The statements of the metrics, for the SQL corpus: each shipped metric
+/// definition over a day, and each raw metric table.
+#[cfg(test)]
+pub(super) fn sql_corpus() -> Vec<tumult_test_utils::sql_corpus::Statement> {
+    use tumult_test_utils::sql_corpus::Statement;
+    let prod = vec!["prod".to_string()];
+    let cur = (1_774_900_000_000_000_000, 1_774_986_400_000_000_000);
+    let shipped = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../metrics");
+    let defs = tumult_metrics::load_dir(&shipped).expect("the shipped metrics");
+    let mut out: Vec<Statement> = defs
+        .iter()
+        .map(|def| {
+            let sql = tumult_metrics::to_sql_bucketed(def, 3_600 * 1_000_000_000, &[], Some(cur))
+                .expect("the SQL of a shipped metric");
+            Statement::new(
+                format!("{}:scoped_series_sql({})", file!(), def.name),
+                scoped_series_sql(sql, &def.source_table, &prod),
+            )
+        })
+        .collect();
+    for (table, kind) in METRIC_TABLES {
+        let query = MetricQuery {
+            table,
+            name: "http.server.duration",
+            cur,
+            bucket_s: 3_600,
+            group_by: Some("http.route"),
+        };
+        let mut statements = vec![
+            Statement::new(
+                format!("{}:catalog_sql({table})", file!()),
+                catalog_sql(table, &prod),
+            ),
+            Statement::new(
+                format!("{}:metric_hit_sql({table})", file!()),
+                metric_hit_sql(table, &prod),
+            ),
+        ];
+        let (builder, points) = if kind == "histogram" {
+            ("histogram_sql", histogram_sql(&query, &prod))
+        } else {
+            ("points_sql", points_sql(&query, kind, &prod))
+        };
+        statements.push(Statement::new(
+            format!("{}:{builder}({table})", file!()),
+            points,
+        ));
+        out.extend(statements);
+    }
+    out.extend(tumult_test_utils::sql_statements![
+        catalog_sql("metric_sums", &[]),
+        points_sql(
+            &MetricQuery {
+                table: "metric_gauges",
+                name: "process.cpu",
+                cur,
+                bucket_s: 300,
+                group_by: None,
+            },
+            "gauge",
+            &[]
+        ),
+    ]);
+    out
 }

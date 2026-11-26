@@ -292,26 +292,11 @@ pub(crate) async fn overview(
             }));
         }
 
-        let per_day = series(
-            reader,
-            &format!(
-                "SELECT {} AS ts, COUNT(*) AS v FROM run_roots WHERE {}{} \
-                 GROUP BY 1 ORDER BY 1",
-                bucket_expr(86_400),
-                w(cur.0, cur.1),
-                and_root_env(&scopes)
-            ),
-        )?;
+        let per_day = series(reader, &sql_per_day(cur.0, cur.1, &scopes))?;
 
         // Every run of a target, and its run pass rate as the card counts it.
         let targets = reader
-            .query_json_rows(&format!(
-                "SELECT s.target_system AS target, count(*) AS experiments, \
-                 {} AS pass_rate {} AND s.target_system IS NOT NULL \
-                 GROUP BY 1 ORDER BY experiments DESC LIMIT 10",
-                run_pass_rate_sql("s", "l"),
-                runs_from(cur.0, cur.1, &scopes)
-            ))
+            .query_json_rows(&sql_targets(cur.0, cur.1, &scopes))
             .map_err(|e| e.to_string())?;
 
         let faults = reader
@@ -330,6 +315,59 @@ pub(crate) async fn overview(
     })
     .await?;
     Ok(Json(body))
+}
+
+/// The runs per day in `[f, t)` in the scopes.
+fn sql_per_day(f: i64, t: i64, scopes: &[String]) -> String {
+    format!(
+        "SELECT {} AS ts, COUNT(*) AS v FROM run_roots WHERE {}{} \
+         GROUP BY 1 ORDER BY 1",
+        bucket_expr(86_400),
+        w(f, t),
+        and_root_env(scopes)
+    )
+}
+
+/// The ten targets with the most runs in `[f, t)` in the scopes, with the
+/// run pass rate of each.
+fn sql_targets(f: i64, t: i64, scopes: &[String]) -> String {
+    format!(
+        "SELECT s.target_system AS target, count(*) AS experiments, \
+         {} AS pass_rate {} AND s.target_system IS NOT NULL \
+         GROUP BY 1 ORDER BY experiments DESC LIMIT 10",
+        run_pass_rate_sql("s", "l"),
+        runs_from(f, t, scopes)
+    )
+}
+
+/// The statements of the overview, for the SQL corpus: the value and the
+/// sparkline of each card, in every scope, then the lists of the page.
+#[cfg(test)]
+pub(super) fn sql_corpus() -> Vec<tumult_test_utils::sql_corpus::Statement> {
+    use tumult_test_utils::sql_corpus::Statement;
+    let (f, t) = (1_774_900_000_000_000_000, 1_774_986_400_000_000_000);
+    let mut out = Vec::new();
+    for (label, scopes) in [("all", Vec::new()), ("prod", vec!["prod".to_string()])] {
+        for kpi in KPIS {
+            let name = |part: &str| format!("{}:KPIS[{}].{part} in {label}", file!(), kpi.name);
+            out.push(Statement::new(name("value"), (kpi.value)(f, t, &scopes)));
+            out.push(Statement::new(
+                name("spark_num"),
+                (kpi.spark_num)(f, t, 3_600, &scopes),
+            ));
+            if let Some(den) = kpi.spark_den {
+                out.push(Statement::new(name("spark_den"), den(f, t, 3_600, &scopes)));
+            }
+        }
+    }
+    let prod = vec!["prod".to_string()];
+    out.extend(tumult_test_utils::sql_statements![
+        sql_per_day(f, t, &prod),
+        sql_targets(f, t, &prod),
+        sql_faults(f, t, &[]),
+        sql_faults(f, t, &prod),
+    ]);
+    out
 }
 
 #[cfg(test)]

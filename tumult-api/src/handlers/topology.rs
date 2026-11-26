@@ -79,61 +79,19 @@ pub(crate) async fn topology(
     let Some((cur, _)) = windows(range) else {
         return Err(bad(invalid_range(range)));
     };
-    let mut window = format!(" AND {}", w(cur.0, cur.1));
-    // Edge queries join spans to itself: qualify the window there, and
-    // bound the parent side too so the join never scans the whole table.
-    let mut cwindow = format!(
-        " AND c.ts_ns >= {} AND c.ts_ns < {to} AND p.ts_ns >= {} AND p.ts_ns < {to}",
-        cur.0,
-        cur.0 - PARENT_LOOKBACK_NS,
-        to = cur.1,
-    );
-    // Scoped principals see only the graph of their own environments.
-    window.push_str(&scope::and(env_trace_exists(
-        "spans",
-        &principal.env_scopes,
-    )));
-    cwindow.push_str(&scope::and(env_trace_exists("c", &principal.env_scopes)));
+    let (window, cwindow) = windows_sql(cur, &principal.env_scopes);
     let body = with_reader(&state.db_path, move |reader| {
         let query = |sql: &str| reader.query_json_rows(sql).map_err(|e| e.to_string());
         // Nodes: one per service and one per tumult target, with health
         // aggregates over their spans.
-        let target_id = target_id_sql();
-        let svc = service_id_sql("service_name");
-        let (psvc, csvc) = (
-            service_id_sql("p.service_name"),
-            service_id_sql("c.service_name"),
-        );
-        let mut nodes = query(&format!(
-            "SELECT {svc} AS id, service_name AS name, 'service' AS type, \
-             COUNT(*) AS runs, COUNT(*) FILTER (WHERE status_code = 'Error') AS errors, \
-             AVG(duration_ns) AS avg_duration_ns \
-             FROM spans WHERE service_name <> ''{window} GROUP BY 1, 2"
-        ))?;
-        nodes.extend(query(&format!(
-            "SELECT {target_id} AS id, COALESCE({COMPONENT}, {TARGET_NAME}) AS name, \
-             'target' AS type, COUNT(*) AS runs, \
-             COUNT(*) FILTER (WHERE status_code = 'Error') AS errors, \
-             AVG(duration_ns) AS avg_duration_ns \
-             FROM spans WHERE {TARGET_NAME} IS NOT NULL{window} GROUP BY 1, 2"
-        ))?);
+        let mut nodes = query(&service_nodes_sql(&window))?;
+        nodes.extend(query(&target_nodes_sql(&window))?);
 
         // Edges: parent→child service hops (a differing span name keeps
         // intra-service calls visible as self-loops), plus service→target
         // calls from the target attribute.
-        let mut edges = query(&format!(
-            "SELECT {psvc} AS from_id, {csvc} AS to_id, \
-             COUNT(*) AS weight \
-             FROM spans c JOIN spans p ON c.parent_span_id = p.span_id \
-             WHERE (p.service_name <> c.service_name OR p.span_name <> c.span_name){cwindow} \
-             GROUP BY 1, 2"
-        ))?;
-        edges.extend(query(&format!(
-            "SELECT {svc} AS from_id, {target_id} AS to_id, \
-             COUNT(*) AS weight \
-             FROM spans WHERE {TARGET_NAME} IS NOT NULL AND service_name <> ''{window} \
-             GROUP BY 1, 2"
-        ))?);
+        let mut edges = query(&service_edges_sql(&cwindow))?;
+        edges.extend(query(&target_edges_sql(&window))?);
 
         // Busiest first, capped at 100 nodes; edges to trimmed nodes drop.
         nodes
@@ -171,4 +129,92 @@ pub(crate) async fn topology(
     })
     .await?;
     Ok(Json(body))
+}
+
+/// The window `cur` in the environments `scopes`, as the conditions to
+/// append to a query of spans and to a query that joins child spans `c`
+/// to their parents `p`. Edge queries join spans to itself: qualify the
+/// window there, and bound the parent side too so the join never scans
+/// the whole table. Scoped principals see only the graph of their own
+/// environments.
+fn windows_sql(cur: (i64, i64), scopes: &[String]) -> (String, String) {
+    let mut window = format!(" AND {}", w(cur.0, cur.1));
+    let mut cwindow = format!(
+        " AND c.ts_ns >= {} AND c.ts_ns < {to} AND p.ts_ns >= {} AND p.ts_ns < {to}",
+        cur.0,
+        cur.0 - PARENT_LOOKBACK_NS,
+        to = cur.1,
+    );
+    window.push_str(&scope::and(env_trace_exists("spans", scopes)));
+    cwindow.push_str(&scope::and(env_trace_exists("c", scopes)));
+    (window, cwindow)
+}
+
+/// One node per service, with health aggregates over its spans in
+/// `window`.
+fn service_nodes_sql(window: &str) -> String {
+    let svc = service_id_sql("service_name");
+    format!(
+        "SELECT {svc} AS id, service_name AS name, 'service' AS type, \
+         COUNT(*) AS runs, COUNT(*) FILTER (WHERE status_code = 'Error') AS errors, \
+         AVG(duration_ns) AS avg_duration_ns \
+         FROM spans WHERE service_name <> ''{window} GROUP BY 1, 2"
+    )
+}
+
+/// One node per tumult target, with health aggregates over its spans in
+/// `window`.
+fn target_nodes_sql(window: &str) -> String {
+    let target_id = target_id_sql();
+    format!(
+        "SELECT {target_id} AS id, COALESCE({COMPONENT}, {TARGET_NAME}) AS name, \
+         'target' AS type, COUNT(*) AS runs, \
+         COUNT(*) FILTER (WHERE status_code = 'Error') AS errors, \
+         AVG(duration_ns) AS avg_duration_ns \
+         FROM spans WHERE {TARGET_NAME} IS NOT NULL{window} GROUP BY 1, 2"
+    )
+}
+
+/// The parent to child service hops in `cwindow`. A differing span name
+/// keeps intra-service calls visible as self-loops.
+fn service_edges_sql(cwindow: &str) -> String {
+    let (psvc, csvc) = (
+        service_id_sql("p.service_name"),
+        service_id_sql("c.service_name"),
+    );
+    format!(
+        "SELECT {psvc} AS from_id, {csvc} AS to_id, \
+         COUNT(*) AS weight \
+         FROM spans c JOIN spans p ON c.parent_span_id = p.span_id \
+         WHERE (p.service_name <> c.service_name OR p.span_name <> c.span_name){cwindow} \
+         GROUP BY 1, 2"
+    )
+}
+
+/// The service to target calls in `window`, from the target attribute.
+fn target_edges_sql(window: &str) -> String {
+    let svc = service_id_sql("service_name");
+    let target_id = target_id_sql();
+    format!(
+        "SELECT {svc} AS from_id, {target_id} AS to_id, \
+         COUNT(*) AS weight \
+         FROM spans WHERE {TARGET_NAME} IS NOT NULL AND service_name <> ''{window} \
+         GROUP BY 1, 2"
+    )
+}
+
+/// The statements of the topology, for the SQL corpus.
+#[cfg(test)]
+pub(super) fn sql_corpus() -> Vec<tumult_test_utils::sql_corpus::Statement> {
+    let cur = (1_774_900_000_000_000_000, 1_774_986_400_000_000_000);
+    let (window, cwindow) = windows_sql(cur, &["prod".to_string()]);
+    let (open, copen) = windows_sql(cur, &[]);
+    tumult_test_utils::sql_statements![
+        service_nodes_sql(&window),
+        target_nodes_sql(&window),
+        service_edges_sql(&cwindow),
+        target_edges_sql(&window),
+        service_edges_sql(&copen),
+        target_nodes_sql(&open),
+    ]
 }
