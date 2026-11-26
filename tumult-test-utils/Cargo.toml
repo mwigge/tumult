@@ -22,6 +22,8 @@ recorded = [
     "dep:opentelemetry-proto",
     "dep:serde_json",
 ]
+# The SQL corpus of a crate, prepared on a lake and kept in a file.
+sql-corpus = ["dep:duckdb"]
 
 [dependencies]
 tumult-core = { path = "../tumult-core", optional = true }
@@ -32,6 +34,7 @@ opentelemetry-proto = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
 tumult-lake = { workspace = true, optional = true }
 tumult-otlp = { workspace = true, optional = true }
+duckdb = { workspace = true, optional = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

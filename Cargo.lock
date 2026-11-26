@@ -8121,8 +8121,11 @@ version = "3.0.5"
 dependencies = [
  "serde",
  "serde_json",
+ "tempfile",
  "toml 1.2.1+spec-1.1.0",
  "tumult-core",
+ "tumult-lake",
+ "tumult-test-utils",
 ]
 
 [[package]]
@@ -8427,6 +8430,7 @@ dependencies = [
 name = "tumult-test-utils"
 version = "3.0.5"
 dependencies = [
+ "duckdb",
  "indexmap",
  "opentelemetry",
  "opentelemetry-proto",
