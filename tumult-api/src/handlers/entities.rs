@@ -317,6 +317,33 @@ fn history_page_sql(limit: u32, budget: usize) -> String {
     page_sql(&matched, HISTORY_ORDER, limit, budget)
 }
 
+/// How many entities the list filters keep.
+fn list_count_sql() -> String {
+    format!(
+        "SELECT count(*) AS total FROM entities_current WHERE {}",
+        list_filters()
+    )
+}
+
+/// How many versions of the entity `$1` each environment in the scopes
+/// `$2` holds.
+fn history_environments_sql() -> String {
+    format!(
+        "SELECT environment, count(*) AS versions FROM entity_versions \
+         WHERE entity_key = CAST($1 AS VARCHAR) AND {} \
+         GROUP BY environment ORDER BY environment",
+        in_scopes(2, "environment")
+    )
+}
+
+/// How many versions the history filters keep.
+fn history_count_sql() -> String {
+    format!(
+        "SELECT count(*) AS total FROM entity_versions WHERE {}",
+        history_filters()
+    )
+}
+
 /// The current row of every entity. `type` and `liveness` match exactly;
 /// `range` keeps the entities last received inside it and, left out,
 /// keeps them all. The order is by key and environment, in which a walk
@@ -337,10 +364,7 @@ pub(crate) async fn entities(
         since_param(params.range.as_deref()).map_err(bad_request)?,
         scopes_param(&principal.env_scopes),
     ];
-    let count_sql = format!(
-        "SELECT count(*) AS total FROM entities_current WHERE {}",
-        list_filters()
-    );
+    let count_sql = list_count_sql();
     let page_sql = list_page_sql(sort, row_limit(params.limit), MAX_PAGE_BYTES);
     let body = with_reader(&state.db_path, move |reader| {
         let total = total_of(reader, &count_sql, &filters)?;
@@ -386,16 +410,8 @@ pub(crate) async fn entity_history(
         scopes_param(&principal.env_scopes),
         text_param(params.environment),
     ];
-    let environments_sql = format!(
-        "SELECT environment, count(*) AS versions FROM entity_versions \
-         WHERE entity_key = CAST($1 AS VARCHAR) AND {} \
-         GROUP BY environment ORDER BY environment",
-        in_scopes(2, "environment")
-    );
-    let count_sql = format!(
-        "SELECT count(*) AS total FROM entity_versions WHERE {}",
-        history_filters()
-    );
+    let environments_sql = history_environments_sql();
+    let count_sql = history_count_sql();
     let page_sql = history_page_sql(row_limit(params.limit), MAX_PAGE_BYTES);
     let body = with_reader(&state.db_path, move |reader| {
         let environments = reader
@@ -510,6 +526,19 @@ pub(crate) async fn purge_entities(
         "entities": purged.entities,
         "versions": purged.versions,
     })))
+}
+
+/// The statements of the entities, for the SQL corpus.
+#[cfg(test)]
+pub(super) fn sql_corpus() -> Vec<tumult_test_utils::sql_corpus::Statement> {
+    tumult_test_utils::sql_statements![
+        list_count_sql(),
+        list_page_sql(Sort::Key, 100, MAX_PAGE_BYTES),
+        list_page_sql(Sort::Recent, 100, MAX_PAGE_BYTES),
+        history_environments_sql(),
+        history_count_sql(),
+        history_page_sql(100, MAX_PAGE_BYTES),
+    ]
 }
 
 #[cfg(test)]

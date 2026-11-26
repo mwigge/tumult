@@ -16,6 +16,7 @@ use serde_json::Value;
 
 use super::hash::{content_hash, now_ns, ulid};
 use super::ManualError;
+use crate::sql;
 use crate::StoreError;
 
 /// The audit trail of a record or of a plan.
@@ -227,10 +228,7 @@ pub(super) fn insert_signoff(
         prev_hash: prev_hash.as_deref(),
     });
     conn.execute(
-        "INSERT INTO manual_signoffs (
-            id, subject_id, subject_kind, role, signed_by, signed_at_ns, decision, note,
-            signed_hash, prev_hash, link_hash
-         ) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+        sql::manual::INSERT_SIGNOFF,
         params![
             id,
             new.subject_id,
@@ -246,4 +244,20 @@ pub(super) fn insert_signoff(
         ],
     )?;
     Ok(id)
+}
+
+/// The statements of the audit trails and the sign-offs, for the SQL
+/// corpus.
+#[cfg(test)]
+pub(super) fn sql_corpus() -> Vec<tumult_test_utils::sql_corpus::Statement> {
+    tumult_test_utils::sql_statements![
+        Trail::Record.insert_sql(),
+        Trail::Plan.insert_sql(),
+        Trail::Record.rows_sql(),
+        Trail::Plan.rows_sql(),
+        Trail::Record.last_sql(),
+        Trail::Plan.last_sql(),
+        SIGNOFFS_SQL,
+        LAST_SIGNOFF_SQL,
+    ]
 }

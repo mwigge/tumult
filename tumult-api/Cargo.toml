@@ -46,6 +46,7 @@ tumult-exec = { path = "../tumult-exec" }
 # and the recording of real runs.
 tumult-test-utils = { path = "../tumult-test-utils", default-features = false, features = [
     "recorded",
+    "sql-corpus",
 ] }
 
 [lints]

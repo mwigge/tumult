@@ -90,6 +90,24 @@ class Precommit(unittest.TestCase):
         self.assertFalse((ROOT / ".cargo/audit.toml").exists())
 
 
+class SqlLint(unittest.TestCase):
+    def test_precommit_lints_the_sql_as_ci_does(self):
+        text = recipe("precommit")
+        lints = [c for c in commands(job("scripts-quality")) if "sqlfluff lint" in c]
+        self.assertGreaterEqual(len(lints), 2, "the schema of Postgres and the corpus")
+        for command in lints:
+            with self.subTest(command=command):
+                self.assertTrue(command in text, "not in make precommit")
+
+    def test_ci_lints_the_sql_corpus_of_every_crate(self):
+        lints = [c for c in commands(job("scripts-quality")) if "sqlfluff lint" in c]
+        self.assertIn(
+            ".quality-venv/bin/sqlfluff lint --config .sqlfluff-corpus "
+            "*/tests/golden/sql-corpus.sql",
+            lints,
+        )
+
+
 class Prose(unittest.TestCase):
     def test_ci_checks_the_prose_of_the_lines_a_pull_request_adds(self):
         docs = job("docs-check")

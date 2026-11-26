@@ -13,6 +13,7 @@ use duckdb::params;
 use serde_json::Value;
 
 use crate::error::StoreError;
+use crate::sql;
 use crate::{Reader, Writer};
 
 /// One `run_schedules` row.
@@ -46,7 +47,7 @@ impl Writer {
     /// Returns an error if the insert fails.
     pub fn create_schedule(&self, s: &ScheduleRow) -> Result<(), StoreError> {
         self.conn.execute(
-            "INSERT INTO run_schedules VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            sql::schedules::INSERT,
             params![
                 s.id,
                 s.name,
@@ -71,10 +72,8 @@ impl Writer {
     /// # Errors
     /// Returns an error if the update fails.
     pub fn set_schedule_enabled(&self, id: &str, enabled: bool) -> Result<(), StoreError> {
-        self.conn.execute(
-            "UPDATE run_schedules SET enabled = ? WHERE id = ?",
-            params![enabled, id],
-        )?;
+        self.conn
+            .execute(sql::schedules::SET_ENABLED, params![enabled, id])?;
         Ok(())
     }
 
@@ -83,8 +82,7 @@ impl Writer {
     /// # Errors
     /// Returns an error if the delete fails.
     pub fn delete_schedule(&self, id: &str) -> Result<(), StoreError> {
-        self.conn
-            .execute("DELETE FROM run_schedules WHERE id = ?", params![id])?;
+        self.conn.execute(sql::schedules::DELETE, params![id])?;
         Ok(())
     }
 
@@ -100,8 +98,7 @@ impl Writer {
         next_run_at_ns: i64,
     ) -> Result<(), StoreError> {
         self.conn.execute(
-            "UPDATE run_schedules \
-             SET last_run_at_ns = ?, last_run_id = ?, next_run_at_ns = ? WHERE id = ?",
+            sql::schedules::FIRED,
             params![fired_at_ns, run_id, next_run_at_ns, id],
         )?;
         Ok(())
@@ -114,7 +111,7 @@ impl Reader {
     /// # Errors
     /// Returns an error if the query fails.
     pub fn list_schedules(&self) -> Result<Vec<ScheduleRow>, StoreError> {
-        let rows = self.query_json_rows("SELECT * FROM run_schedules ORDER BY name")?;
+        let rows = self.query_json_rows(sql::schedules::LIST)?;
         Ok(rows.iter().map(row_to_schedule).collect())
     }
 
@@ -123,10 +120,7 @@ impl Reader {
     /// # Errors
     /// Returns an error if the query fails.
     pub fn due_schedules(&self, now_ns: i64) -> Result<Vec<ScheduleRow>, StoreError> {
-        let rows = self.query_json_rows(&format!(
-            "SELECT * FROM run_schedules WHERE enabled AND next_run_at_ns <= {now_ns} \
-             ORDER BY next_run_at_ns"
-        ))?;
+        let rows = self.query_json_rows(&sql::schedules::due(now_ns))?;
         Ok(rows.iter().map(row_to_schedule).collect())
     }
 }

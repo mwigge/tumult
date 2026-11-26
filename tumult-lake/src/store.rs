@@ -10,6 +10,7 @@ use duckdb::{params, AccessMode, Config, Connection};
 use crate::error::StoreError;
 use crate::reader::Reader;
 use crate::schema;
+use crate::sql;
 use crate::writer::Writer;
 
 /// Total attempts an open makes before reporting the store as locked.
@@ -190,15 +191,16 @@ pub(crate) fn with_tx<T, E: From<StoreError>>(
     conn: &Connection,
     f: impl FnOnce() -> Result<T, E>,
 ) -> Result<T, E> {
-    conn.execute_batch("BEGIN TRANSACTION")
+    conn.execute_batch(sql::tx::BEGIN)
         .map_err(StoreError::from)?;
     match f() {
         Ok(v) => {
-            conn.execute_batch("COMMIT").map_err(StoreError::from)?;
+            conn.execute_batch(sql::tx::COMMIT)
+                .map_err(StoreError::from)?;
             Ok(v)
         }
         Err(e) => {
-            let _ = conn.execute_batch("ROLLBACK");
+            let _ = conn.execute_batch(sql::tx::ROLLBACK);
             Err(e)
         }
     }
@@ -212,15 +214,12 @@ pub(crate) fn with_tx<T, E: From<StoreError>>(
 /// an older build would fail on every write to a newer lake. The callers
 /// refuse to open one before [`migrate`] changes anything.
 pub(crate) fn newer_schema(conn: &Connection) -> Result<Option<i64>, duckdb::Error> {
-    let has_meta: bool = conn.query_row(
-        "SELECT count(*) > 0 FROM information_schema.tables WHERE table_name = 'schema_meta'",
-        params![],
-        |row| row.get(0),
-    )?;
+    let has_meta: bool =
+        conn.query_row(sql::store::SCHEMA_META_EXISTS, params![], |row| row.get(0))?;
     if !has_meta {
         return Ok(None);
     }
-    let mut stmt = conn.prepare("SELECT max(value) FROM schema_meta WHERE key = 'version'")?;
+    let mut stmt = conn.prepare(sql::store::NEWEST_SCHEMA_VERSION)?;
     let stored: Option<i64> = stmt.query_row(params![], |row| row.get(0))?;
     Ok(stored.filter(|version| *version > schema::CURRENT_SCHEMA_VERSION))
 }
@@ -241,7 +240,7 @@ pub(crate) fn migrate(conn: &Connection) -> Result<(), duckdb::Error> {
     // databases have no run tables to rebuild, and fresh ones got the v5
     // shape from CREATE_TABLES above.
     let stored: Option<i64> = {
-        let mut stmt = conn.prepare("SELECT value FROM schema_meta WHERE key = 'version'")?;
+        let mut stmt = conn.prepare(sql::store::SCHEMA_VERSION)?;
         stmt.query_row(params![], |row| row.get(0)).ok()
     };
     if stored == Some(4) {
@@ -267,10 +266,7 @@ pub(crate) fn migrate(conn: &Connection) -> Result<(), duckdb::Error> {
     // rebuild; fresh databases (stored = None) have no legacy rows and get
     // no legacy user.
     if stored.is_some_and(|v| v < 6) {
-        conn.execute(
-            "INSERT INTO users VALUES ('legacy', 'legacy', '!', 'viewer', false, true, 0)",
-            [],
-        )?;
+        conn.execute(sql::store::INSERT_LEGACY_USER, [])?;
     }
     // ChaosGraph node/edge tables (part of schema v3): DDL lives in
     // `tumult_graph::sql`. `IF NOT EXISTS` / `ADD COLUMN IF NOT EXISTS`
@@ -298,18 +294,18 @@ pub(crate) fn migrate(conn: &Connection) -> Result<(), duckdb::Error> {
             ],
         )?;
     }
-    let mut stmt = conn.prepare("SELECT value FROM schema_meta WHERE key = 'version'")?;
+    let mut stmt = conn.prepare(sql::store::SCHEMA_VERSION)?;
     let version: Option<i64> = stmt.query_row(params![], |row| row.get(0)).ok();
     match version {
         None => {
             conn.execute(
-                "INSERT INTO schema_meta (key, value) VALUES ('version', ?)",
+                sql::store::INSERT_SCHEMA_VERSION,
                 params![schema::CURRENT_SCHEMA_VERSION],
             )?;
         }
         Some(stored) if stored < schema::CURRENT_SCHEMA_VERSION => {
             conn.execute(
-                "UPDATE schema_meta SET value = ? WHERE key = 'version'",
+                sql::store::UPDATE_SCHEMA_VERSION,
                 params![schema::CURRENT_SCHEMA_VERSION],
             )?;
         }
@@ -366,7 +362,7 @@ pub(crate) fn query_json_rows_bound<P: duckdb::ToSql>(
     sql: &str,
     params: &[P],
 ) -> Result<Vec<serde_json::Value>, StoreError> {
-    let wrapped = format!("SELECT row_to_json(t) AS j FROM ({sql}) AS t");
+    let wrapped = json_rows_sql(sql);
     let mut stmt = conn.prepare(&wrapped)?;
     let rows = stmt.query_map(duckdb::params_from_iter(params.iter()), |r| {
         r.get::<usize, String>(0)
@@ -376,6 +372,17 @@ pub(crate) fn query_json_rows_bound<P: duckdb::ToSql>(
         out.push(serde_json::from_str(&row?)?);
     }
     Ok(out)
+}
+
+/// The rows of the query `sql`, each as one JSON object in the column `j`.
+fn json_rows_sql(sql: &str) -> String {
+    format!("SELECT row_to_json(t) AS j FROM ({sql}) AS t")
+}
+
+/// The statements of the store itself, for the SQL corpus.
+#[cfg(test)]
+pub(crate) fn sql_corpus() -> Vec<tumult_test_utils::sql_corpus::Statement> {
+    tumult_test_utils::sql_statements![json_rows_sql("SELECT id, state FROM runs")]
 }
 
 #[cfg(test)]

@@ -221,6 +221,9 @@ pub mod registry;
 pub mod runs;
 pub mod schedules;
 pub mod score;
+mod sql;
+#[cfg(test)]
+mod sql_corpus_tests;
 pub mod sql_util;
 pub mod webhooks;
 

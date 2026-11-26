@@ -279,6 +279,12 @@ fn chart_series(series: &RegularSeries, forecast: &Forecast, offset: usize) -> V
     })
 }
 
+/// The statements of the forecasts, for the SQL corpus.
+#[cfg(test)]
+pub(crate) fn sql_corpus() -> Vec<tumult_test_utils::sql_corpus::Statement> {
+    [metric::sql_corpus(), run_impact::sql_corpus()].concat()
+}
+
 #[cfg(test)]
 mod tests {
     use std::time::Instant;

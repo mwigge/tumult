@@ -59,11 +59,7 @@ impl Reader {
     /// # Errors
     /// Returns an error if the query fails.
     pub fn dr_tests(&self, scope: &DrScope) -> Result<Vec<Value>, StoreError> {
-        let sql = format!(
-            "SELECT * FROM ({}) AS t WHERE {} ORDER BY t.executed_at_ns, t.test_id",
-            dr_tests_sql(BOUND_TYPES),
-            in_envs("t.target_environment", 2)
-        );
+        let sql = tests_sql();
         self.query_json_rows_bound(&sql, &[scope.types(), scope.envs()])
     }
 
@@ -82,12 +78,7 @@ impl Reader {
         scope: &DrScope,
         as_of_ns: i64,
     ) -> Result<Vec<Value>, StoreError> {
-        let sql = format!(
-            "SELECT * FROM ({}) AS r WHERE {} \
-             ORDER BY r.target_system, r.target_environment NULLS FIRST",
-            dr_register_sql(BOUND_TYPES, "$2"),
-            in_envs("r.target_environment", 3)
-        );
+        let sql = due_register_sql();
         self.query_json_rows_bound(
             &sql,
             &[scope.types(), SqlParam::Int(as_of_ns), scope.envs()],
@@ -166,13 +157,7 @@ impl Reader {
         after: Option<&DrTestPosition>,
         limit: u32,
     ) -> Result<Vec<Value>, StoreError> {
-        let sql = format!(
-            "{} AND (CAST($6 AS BIGINT) IS NULL \
-             OR t.executed_at_ns < CAST($6 AS BIGINT) \
-             OR (t.executed_at_ns = CAST($6 AS BIGINT) AND t.test_id > CAST($7 AS VARCHAR))) \
-             ORDER BY t.executed_at_ns DESC, t.test_id LIMIT {limit}",
-            kept_tests_sql()
-        );
+        let sql = tests_page_sql(limit);
         let [target, from, to] = filter.params();
         let [at, id] = position_params(after);
         self.query_json_rows_bound(
@@ -192,11 +177,7 @@ impl Reader {
         scope: &DrScope,
         filter: &DrTestFilter,
     ) -> Result<Vec<Value>, StoreError> {
-        let sql = format!(
-            "SELECT k.origin, k.verdict, count(*) AS tests FROM ({}) AS k \
-             GROUP BY k.origin, k.verdict ORDER BY k.origin, k.verdict",
-            kept_tests_sql()
-        );
+        let sql = test_counts_sql();
         let [target, from, to] = filter.params();
         self.query_json_rows_bound(&sql, &[scope.types(), scope.envs(), target, from, to])
     }
@@ -217,29 +198,90 @@ impl Reader {
         target: Option<&str>,
         as_of_ns: i64,
     ) -> Result<Vec<Value>, StoreError> {
-        let sql = format!(
-            "SELECT r.target_system, r.target_environment, r.state, \
-             r.last_test_id, r.last_test_at_ns, \
-             t.origin AS last_test_origin, t.verdict AS last_test_verdict, \
-             r.next_due_at_ns, r.interval_days, r.interval_source, \
-             r.plan_id, r.plan_due_at_ns, \
-             coalesce(t.rto_target_s, p.rto_target_s) AS rto_target_s, \
-             coalesce(t.rpo_target_s, p.rpo_target_s) AS rpo_target_s, \
-             t.rto_measured_s, t.rpo_measured_s, t.recovered \
-             FROM ({register}) AS r \
-             LEFT JOIN ({tests}) AS t ON r.last_test_id = t.test_id \
-             LEFT JOIN manual_exercise_plans AS p ON r.plan_id = p.id \
-             WHERE ({envs}) \
-             AND (CAST($4 AS VARCHAR) IS NULL OR r.target_system = CAST($4 AS VARCHAR)) \
-             ORDER BY r.target_system, r.target_environment NULLS FIRST",
-            register = dr_register_sql(BOUND_TYPES, "$2"),
-            tests = dr_tests_sql(BOUND_TYPES),
-            envs = in_envs("r.target_environment", 3),
-        );
+        let sql = targets_sql();
         let target = target.map_or(SqlParam::Null, |t| SqlParam::Text(t.to_string()));
         self.query_json_rows_bound(
             &sql,
             &[scope.types(), SqlParam::Int(as_of_ns), scope.envs(), target],
         )
     }
+}
+
+/// The DR tests of a scope, over `$1` and `$2`: its manual types and its
+/// environments.
+fn tests_sql() -> String {
+    format!(
+        "SELECT * FROM ({}) AS t WHERE {} ORDER BY t.executed_at_ns, t.test_id",
+        dr_tests_sql(BOUND_TYPES),
+        in_envs("t.target_environment", 2)
+    )
+}
+
+/// The due register of a scope, over `$1` to `$3`: its manual types, the
+/// time it is as of and its environments.
+fn due_register_sql() -> String {
+    format!(
+        "SELECT * FROM ({}) AS r WHERE {} \
+         ORDER BY r.target_system, r.target_environment NULLS FIRST",
+        dr_register_sql(BOUND_TYPES, "$2"),
+        in_envs("r.target_environment", 3)
+    )
+}
+
+/// One page of [`kept_tests_sql`], after the position in `$6` and `$7`.
+fn tests_page_sql(limit: u32) -> String {
+    format!(
+        "{} AND (CAST($6 AS BIGINT) IS NULL \
+         OR t.executed_at_ns < CAST($6 AS BIGINT) \
+         OR (t.executed_at_ns = CAST($6 AS BIGINT) AND t.test_id > CAST($7 AS VARCHAR))) \
+         ORDER BY t.executed_at_ns DESC, t.test_id LIMIT {limit}",
+        kept_tests_sql()
+    )
+}
+
+/// How many tests of [`kept_tests_sql`] there are, per origin and verdict.
+fn test_counts_sql() -> String {
+    format!(
+        "SELECT k.origin, k.verdict, count(*) AS tests FROM ({}) AS k \
+         GROUP BY k.origin, k.verdict ORDER BY k.origin, k.verdict",
+        kept_tests_sql()
+    )
+}
+
+/// The due register with the last test of each target, over `$1` to `$4`:
+/// the manual types, the time it is as of, the environments and the
+/// target.
+fn targets_sql() -> String {
+    format!(
+        "SELECT r.target_system, r.target_environment, r.state, \
+         r.last_test_id, r.last_test_at_ns, \
+         t.origin AS last_test_origin, t.verdict AS last_test_verdict, \
+         r.next_due_at_ns, r.interval_days, r.interval_source, \
+         r.plan_id, r.plan_due_at_ns, \
+         coalesce(t.rto_target_s, p.rto_target_s) AS rto_target_s, \
+         coalesce(t.rpo_target_s, p.rpo_target_s) AS rpo_target_s, \
+         t.rto_measured_s, t.rpo_measured_s, t.recovered \
+         FROM ({register}) AS r \
+         LEFT JOIN ({tests}) AS t ON r.last_test_id = t.test_id \
+         LEFT JOIN manual_exercise_plans AS p ON r.plan_id = p.id \
+         WHERE ({envs}) \
+         AND (CAST($4 AS VARCHAR) IS NULL OR r.target_system = CAST($4 AS VARCHAR)) \
+         ORDER BY r.target_system, r.target_environment NULLS FIRST",
+        register = dr_register_sql(BOUND_TYPES, "$2"),
+        tests = dr_tests_sql(BOUND_TYPES),
+        envs = in_envs("r.target_environment", 3),
+    )
+}
+
+/// The statements of the DR readers, for the SQL corpus.
+#[cfg(test)]
+pub(crate) fn sql_corpus() -> Vec<tumult_test_utils::sql_corpus::Statement> {
+    tumult_test_utils::sql_statements![
+        tests_sql(),
+        due_register_sql(),
+        kept_tests_sql(),
+        tests_page_sql(50),
+        test_counts_sql(),
+        targets_sql(),
+    ]
 }

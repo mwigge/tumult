@@ -116,11 +116,7 @@ pub async fn validate(
 pub async fn list(State(state): State<ApiState>) -> Result<Json<Value>, ApiError> {
     let rows = with_reader(&state.db_path, |reader| {
         reader
-            .query_json_rows(
-                "SELECT id, name, content_hash, registered_at_ns, registered_by \
-                 FROM run_registry WHERE kind = 'gameday' \
-                 ORDER BY registered_at_ns DESC LIMIT 500",
-            )
+            .query_json_rows(crate::sql::GAMEDAYS)
             .map_err(|e| e.to_string())
     })
     .await?;
@@ -135,10 +131,7 @@ async fn gameday_or_404(state: &ApiState, id: &str) -> Result<Value, ApiError> {
     let lookup = id.to_string();
     let rows = with_reader(&state.db_path, move |reader| {
         reader
-            .query_json_rows(&format!(
-                "SELECT * FROM run_registry WHERE id = '{}' AND kind = 'gameday'",
-                lookup.replace('\'', "''")
-            ))
+            .query_json_rows(&gameday_sql(&lookup))
             .map_err(|e| e.to_string())
     })
     .await?;
@@ -296,4 +289,18 @@ pub async fn start_campaign(
         StatusCode::ACCEPTED,
         Json(json!({"run_id": run_id, "state": "queued", "steps": steps})),
     ))
+}
+
+/// The gameday definition `id`.
+fn gameday_sql(id: &str) -> String {
+    format!(
+        "SELECT * FROM run_registry WHERE id = '{}' AND kind = 'gameday'",
+        id.replace('\'', "''")
+    )
+}
+
+/// The statements of the gamedays, for the SQL corpus.
+#[cfg(test)]
+pub(crate) fn sql_corpus() -> Vec<tumult_test_utils::sql_corpus::Statement> {
+    tumult_test_utils::sql_statements![gameday_sql("gameday-1")]
 }

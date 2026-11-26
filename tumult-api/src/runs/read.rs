@@ -91,20 +91,11 @@ pub async fn list(
                 .runs(state_filter.as_deref(), limit)
                 .map_err(|e| e.to_string());
         }
-        // The `experiments` analytics table has no env column; spans do.
-        let scope_clause = if scopes.is_empty() {
-            String::from("TRUE")
-        } else {
-            crate::auth::scopes::run_scope_sql(&scopes)
-        };
         reader
-            .query_json_rows(&format!(
-                "SELECT r.*, g.name AS definition_name FROM runs r \
-                 LEFT JOIN run_registry g ON g.id = r.registry_id \
-                 LEFT JOIN (SELECT experiment_id, any_value(target_environment) AS env \
-                            FROM spans GROUP BY 1) e ON e.experiment_id = r.experiment_id \
-                 WHERE {scope_clause} {state_clause} {gameday_clause} {registry_clause} \
-                 ORDER BY r.queued_at_ns DESC LIMIT {limit}"
+            .query_json_rows(&runs_sql(
+                &scopes,
+                &[state_clause, gameday_clause, registry_clause],
+                limit,
             ))
             .map_err(|e| e.to_string())
     })
@@ -146,15 +137,7 @@ pub async fn detail(
         } else {
             let scope_predicate = crate::auth::scopes::run_scope_sql(&scopes);
             reader
-                .query_json_rows(&format!(
-                    "SELECT r.*, g.name AS definition_name FROM runs r \
-                     LEFT JOIN run_registry g ON g.id = r.registry_id \
-                     LEFT JOIN (SELECT experiment_id, any_value(target_environment) AS env \
-                                FROM spans GROUP BY 1) e ON e.experiment_id = r.experiment_id \
-                     WHERE r.id = {} \
-                       AND ({scope_predicate})",
-                    sql_string(&lookup)
-                ))
+                .query_json_rows(&run_sql(&lookup, &scope_predicate))
                 .map_err(|e| e.to_string())?
                 .into_iter()
                 .next()
@@ -209,14 +192,7 @@ pub async fn audit_verify(
         } else {
             let scope_predicate = crate::auth::scopes::run_scope_sql(&scopes);
             !reader
-                .query_json_rows(&format!(
-                    "SELECT r.id FROM runs r \
-                     LEFT JOIN (SELECT experiment_id, any_value(target_environment) AS env \
-                                FROM spans GROUP BY 1) e ON e.experiment_id = r.experiment_id \
-                     WHERE r.id = {} \
-                       AND ({scope_predicate})",
-                    sql_string(&lookup)
-                ))
+                .query_json_rows(&run_id_sql(&lookup, &scope_predicate))
                 .map_err(|e| e.to_string())?
                 .is_empty()
         };
@@ -236,4 +212,68 @@ pub async fn audit_verify(
         }))),
         None => Err(not_found(format!("unknown run id {id:?}"))),
     }
+}
+
+/// The runs in the environments `scopes` that the `AND` clauses `clauses`
+/// keep, newest first.
+fn runs_sql(scopes: &[String], clauses: &[String; 3], limit: u32) -> String {
+    // The `experiments` analytics table has no env column; spans do.
+    let scope_clause = if scopes.is_empty() {
+        String::from("TRUE")
+    } else {
+        crate::auth::scopes::run_scope_sql(scopes)
+    };
+    let [state_clause, gameday_clause, registry_clause] = clauses;
+    format!(
+        "SELECT r.*, g.name AS definition_name FROM runs r \
+         LEFT JOIN run_registry g ON g.id = r.registry_id \
+         LEFT JOIN (SELECT experiment_id, any_value(target_environment) AS env \
+                    FROM spans GROUP BY 1) e ON e.experiment_id = r.experiment_id \
+         WHERE {scope_clause} {state_clause} {gameday_clause} {registry_clause} \
+         ORDER BY r.queued_at_ns DESC LIMIT {limit}"
+    )
+}
+
+/// The run `id` with the name of its definition, when the scope
+/// `scope_predicate` holds for it.
+fn run_sql(id: &str, scope_predicate: &str) -> String {
+    format!(
+        "SELECT r.*, g.name AS definition_name FROM runs r \
+         LEFT JOIN run_registry g ON g.id = r.registry_id \
+         LEFT JOIN (SELECT experiment_id, any_value(target_environment) AS env \
+                    FROM spans GROUP BY 1) e ON e.experiment_id = r.experiment_id \
+         WHERE r.id = {} \
+           AND ({scope_predicate})",
+        sql_string(id)
+    )
+}
+
+/// The id of the run `id`, when the scope `scope_predicate` holds for it.
+fn run_id_sql(id: &str, scope_predicate: &str) -> String {
+    format!(
+        "SELECT r.id FROM runs r \
+         LEFT JOIN (SELECT experiment_id, any_value(target_environment) AS env \
+                    FROM spans GROUP BY 1) e ON e.experiment_id = r.experiment_id \
+         WHERE r.id = {} \
+           AND ({scope_predicate})",
+        sql_string(id)
+    )
+}
+
+/// The statements of the run readers, for the SQL corpus.
+#[cfg(test)]
+pub(super) fn sql_corpus() -> Vec<tumult_test_utils::sql_corpus::Statement> {
+    let clauses = [
+        equals_clause("r.state", Some("running")),
+        equals_clause("r.gameday_id", Some("run-0")),
+        equals_clause("r.registry_id", None),
+    ];
+    let prod = vec!["prod".to_string()];
+    let predicate = crate::auth::scopes::run_scope_sql(&prod);
+    tumult_test_utils::sql_statements![
+        runs_sql(&[], &clauses, 100),
+        runs_sql(&prod, &clauses, 100),
+        run_sql("run-1", &predicate),
+        run_id_sql("run-1", &predicate),
+    ]
 }

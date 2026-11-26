@@ -253,10 +253,7 @@ async fn gate_check(state: &ApiState, id: &str, run: &Value) -> Result<GateCheck
         let intro = introspect(&experiment);
         let now = now_ns();
         let runs_today = reader
-            .query_json_rows(&format!(
-                "SELECT COUNT(*) AS n FROM runs WHERE started_at_ns > {}",
-                now - 24 * 3_600 * 1_000_000_000
-            ))
+            .query_json_rows(&runs_since_sql(now - 24 * 3_600 * 1_000_000_000))
             .map_err(|e| e.to_string())?
             .first()
             .and_then(|r| r["n"].as_u64())
@@ -628,4 +625,15 @@ pub async fn break_glass(
     }
 
     dispatch_response(queue, &id, true).await
+}
+
+/// How many runs started after `since_ns`.
+fn runs_since_sql(since_ns: i64) -> String {
+    format!("SELECT COUNT(*) AS n FROM runs WHERE started_at_ns > {since_ns}")
+}
+
+/// The statements of the approval gate, for the SQL corpus.
+#[cfg(test)]
+pub(crate) fn sql_corpus() -> Vec<tumult_test_utils::sql_corpus::Statement> {
+    tumult_test_utils::sql_statements![runs_since_sql(1_774_900_000_000_000_000)]
 }

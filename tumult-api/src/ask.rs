@@ -347,6 +347,20 @@ fn internal(msg: String, sql: &str) -> Response {
         .into_response()
 }
 
+/// The statements of the curated answers, for the SQL corpus.
+#[cfg(test)]
+pub(crate) fn sql_corpus() -> Vec<tumult_test_utils::sql_corpus::Statement> {
+    GOLDEN
+        .iter()
+        .map(|(question, sql)| {
+            tumult_test_utils::sql_corpus::Statement::new(
+                format!("{}:GOLDEN[{question}]", file!()),
+                sql,
+            )
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

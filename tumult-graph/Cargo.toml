@@ -14,6 +14,10 @@ toml = { workspace = true }
 
 [dev-dependencies]
 tumult-core = { path = "../tumult-core" }
+# The SQL corpus of the graph is prepared on a fresh lake.
+tumult-lake = { path = "../tumult-lake" }
+tumult-test-utils = { path = "../tumult-test-utils", default-features = false, features = ["sql-corpus"] }
+tempfile = { workspace = true }
 
 [lints]
 workspace = true

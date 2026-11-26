@@ -580,6 +580,12 @@ pub(crate) fn sweep_uploads(
     Ok(removed)
 }
 
+/// The statements of the stored files, for the SQL corpus.
+#[cfg(test)]
+pub(super) fn sql_corpus() -> Vec<tumult_test_utils::sql_corpus::Statement> {
+    tumult_test_utils::sql_statements![FILE_HASHES_SQL]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

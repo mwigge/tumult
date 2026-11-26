@@ -438,6 +438,35 @@ pub(crate) async fn forecast(
     )))
 }
 
+/// The statements of the metric forecasts, for the SQL corpus: the series
+/// of each shipped metric definition, of one target in one environment.
+#[cfg(test)]
+pub(crate) fn sql_corpus() -> Vec<tumult_test_utils::sql_corpus::Statement> {
+    let shipped = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../metrics");
+    let defs = tumult_metrics::load_dir(&shipped).expect("the shipped metrics");
+    let asked = Asked {
+        metric: String::new(),
+        target: Some("checkout".to_string()),
+        envs: vec!["prod".to_string()],
+        range: "24h".to_string(),
+        secs: 86_400,
+        horizon: 24,
+    };
+    let window = || Window {
+        step_ns: 3_600 * 1_000_000_000,
+        from_ns: 1_774_900_000_000_000_000,
+        to_ns: 1_774_986_400_000_000_000,
+    };
+    defs.iter()
+        .map(|def| {
+            tumult_test_utils::sql_corpus::Statement::new(
+                format!("{}:series_sql({})", file!(), def.name),
+                series_sql(def, &asked, window()).expect("the SQL of a shipped metric"),
+            )
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

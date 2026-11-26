@@ -25,6 +25,7 @@ use serde_json::Value;
 use super::chain::{AuditLink, SignoffLink, Trail, SIGNOFFS_SQL};
 use super::files::{attachments_dir, stored_file};
 use super::hash::{content_hash, fetch_plan_row, fetch_row, plan_seal_of, seal_of};
+use crate::sql;
 use crate::{Reader, StoreError};
 
 /// One thing the verify found wrong, and the row it is in.
@@ -462,11 +463,7 @@ pub(crate) fn verify_record(
     let signoffs = crate::query_json_rows_bound(conn, SIGNOFFS_SQL, &["record", id])?;
     check_signoffs(&signoffs, &seals_of(&audit), &mut problems);
     check_signoff_rows(&audit, &signoffs, &mut problems);
-    let attachments = crate::query_json_rows_bound(
-        conn,
-        "SELECT * FROM evidence_attachments WHERE experiment_id = ? ORDER BY added_at_ns, id",
-        &[id],
-    )?;
+    let attachments = crate::query_json_rows_bound(conn, sql::manual::ATTACHMENTS_IN_ORDER, &[id])?;
     check_attachments(files, &audit, &attachments, &mut problems);
     Ok(Some(verdict(problems, Some(version), legacy)))
 }

@@ -313,6 +313,17 @@ pub(crate) async fn conformance(
     })))
 }
 
+/// The statements of the conformance view, for the SQL corpus.
+#[cfg(test)]
+pub(super) fn sql_corpus() -> Vec<tumult_test_utils::sql_corpus::Statement> {
+    let scope = scope::and(scope::in_list("target_environment", &["prod".to_string()]));
+    tumult_test_utils::sql_statements![
+        sql(1_774_900_000_000_000_000, ""),
+        sql(1_774_900_000_000_000_000, &scope),
+        entity_ids_sql(1_774_900_000_000_000_000, &scope),
+    ]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

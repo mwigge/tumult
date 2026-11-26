@@ -6,6 +6,7 @@ use duckdb::Connection;
 
 use crate::error::StoreError;
 use crate::rows::ExperimentRun;
+use crate::sql;
 use crate::store::{query_json_rows, query_json_rows_bound};
 
 /// The read side of the store (read-only `DuckDB` connection).
@@ -21,11 +22,7 @@ impl Reader {
     /// # Errors
     /// Returns an error if the view cannot be queried.
     pub fn experiment_runs(&self) -> Result<Vec<ExperimentRun>, StoreError> {
-        let mut stmt = self.conn.prepare(
-            "SELECT experiment_id, experiment_name, started_at_ns, ended_at_ns,
-                    duration_ns, outcome_status, hypothesis_met
-             FROM experiment_runs ORDER BY started_at_ns",
-        )?;
+        let mut stmt = self.conn.prepare(sql::reader::EXPERIMENT_RUNS)?;
         let rows = stmt.query_map([], |r| {
             Ok(ExperimentRun {
                 experiment_id: r.get(0)?,

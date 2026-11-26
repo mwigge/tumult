@@ -5,6 +5,7 @@ use duckdb::params;
 
 use crate::error::AnalyticsError;
 use crate::query_row::QueryRow;
+use crate::sql;
 use crate::telemetry;
 
 use super::{AnalyticsStore, StoreStats};
@@ -93,7 +94,7 @@ impl AnalyticsStore {
     /// Returns an error if the count query fails.
     #[must_use = "callers must use the returned experiment count"]
     pub fn experiment_count(&self) -> Result<usize, AnalyticsError> {
-        let mut stmt = self.conn.prepare("SELECT count(*) FROM experiments")?;
+        let mut stmt = self.conn.prepare(sql::analytics::COUNT_EXPERIMENTS)?;
         let count: i64 = stmt.query_row(params![], |row| row.get(0))?;
         // DuckDB count(*) is never negative; i64 → usize is safe on 64-bit targets.
         #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
@@ -106,7 +107,7 @@ impl AnalyticsStore {
     #[must_use = "callers must use the returned store statistics"]
     pub fn stats(&self) -> Result<StoreStats, AnalyticsError> {
         let exp_count = self.experiment_count()?;
-        let mut stmt = self.conn.prepare("SELECT count(*) FROM activity_results")?;
+        let mut stmt = self.conn.prepare(sql::analytics::COUNT_ACTIVITIES)?;
         let act_count: i64 = stmt.query_row(params![], |row| row.get(0))?;
         Ok(StoreStats {
             experiment_count: exp_count,

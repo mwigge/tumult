@@ -58,35 +58,62 @@ pub async fn list(
     let limit = params.limit.unwrap_or(100).clamp(1, 200);
     let scopes = principal.env_scopes.clone();
     let rows = with_reader(&state.db_path, move |reader| {
-        let mut clauses = Vec::new();
-        if let Some(run_id) = params.run_id.as_deref().filter(|s| !s.is_empty()) {
-            clauses.push(format!("a.run_id = {}", sql_string(run_id)));
-        }
-        if let Some(event) = params.event.as_deref().filter(|s| !s.is_empty()) {
-            clauses.push(format!("a.event = {}", sql_string(event)));
-        }
-        if let Some(before) = params.before {
-            clauses.push(format!("a.at_ns < {before}"));
-        }
-        if !scopes.is_empty() {
-            clauses.push(crate::auth::scopes::run_scope_sql(&scopes));
-        }
-        let where_clause = if clauses.is_empty() {
-            String::new()
-        } else {
-            format!("WHERE {}", clauses.join(" AND "))
-        };
         reader
-            .query_json_rows(&format!(
-                "SELECT a.*, g.name AS definition_name FROM run_audit a \
-                 LEFT JOIN runs r ON r.id = a.run_id \
-                 LEFT JOIN run_registry g ON g.id = r.registry_id \
-                 LEFT JOIN (SELECT experiment_id, any_value(target_environment) AS env \
-                            FROM spans GROUP BY 1) e ON e.experiment_id = r.experiment_id \
-                 {where_clause} ORDER BY a.at_ns DESC LIMIT {limit}"
-            ))
+            .query_json_rows(&events_sql(&params, &scopes, limit))
             .map_err(|e| e.to_string())
     })
     .await?;
     Ok(Json(json!({"count": rows.len(), "events": rows})))
+}
+
+/// The audit events `params` asks for in the environments `scopes`,
+/// newest first.
+fn events_sql(params: &ListParams, scopes: &[String], limit: u32) -> String {
+    let mut clauses = Vec::new();
+    if let Some(run_id) = params.run_id.as_deref().filter(|s| !s.is_empty()) {
+        clauses.push(format!("a.run_id = {}", sql_string(run_id)));
+    }
+    if let Some(event) = params.event.as_deref().filter(|s| !s.is_empty()) {
+        clauses.push(format!("a.event = {}", sql_string(event)));
+    }
+    if let Some(before) = params.before {
+        clauses.push(format!("a.at_ns < {before}"));
+    }
+    if !scopes.is_empty() {
+        clauses.push(crate::auth::scopes::run_scope_sql(scopes));
+    }
+    let where_clause = if clauses.is_empty() {
+        String::new()
+    } else {
+        format!("WHERE {}", clauses.join(" AND "))
+    };
+    format!(
+        "SELECT a.*, g.name AS definition_name FROM run_audit a \
+         LEFT JOIN runs r ON r.id = a.run_id \
+         LEFT JOIN run_registry g ON g.id = r.registry_id \
+         LEFT JOIN (SELECT experiment_id, any_value(target_environment) AS env \
+                    FROM spans GROUP BY 1) e ON e.experiment_id = r.experiment_id \
+         {where_clause} ORDER BY a.at_ns DESC LIMIT {limit}"
+    )
+}
+
+/// The statements of the audit events, for the SQL corpus.
+#[cfg(test)]
+pub(crate) fn sql_corpus() -> Vec<tumult_test_utils::sql_corpus::Statement> {
+    let every = ListParams {
+        run_id: Some("run-1".into()),
+        event: Some("enqueued".into()),
+        limit: Some(100),
+        before: Some(1_774_986_400_000_000_000),
+    };
+    let none = ListParams {
+        run_id: None,
+        event: None,
+        limit: None,
+        before: None,
+    };
+    tumult_test_utils::sql_statements![
+        events_sql(&none, &[], 100),
+        events_sql(&every, &["prod".to_string()], 100),
+    ]
 }

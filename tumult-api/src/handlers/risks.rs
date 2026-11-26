@@ -86,6 +86,45 @@ fn in_list(ids: &[String]) -> String {
         .join(", ")
 }
 
+/// The kinds and recovery targets of the automated runs `ids`.
+fn automated_kinds_sql(ids: &[String]) -> String {
+    format!(
+        "SELECT experiment_id, test_kind, rto_target_s, rto_measured_s, rpo_target_s, \
+         rpo_measured_s FROM experiments WHERE experiment_id IN ({})",
+        in_list(ids)
+    )
+}
+
+/// The types and recovery targets of the manual records `ids`.
+fn manual_kinds_sql(ids: &[String]) -> String {
+    format!(
+        "SELECT id, exercise_type, recovery_time_s, rto_target_s, rpo_target_s, \
+         rpo_measured_s FROM manual_experiments WHERE id IN ({})",
+        in_list(ids)
+    )
+}
+
+/// The objective verdicts of the runs `ids`.
+fn verdicts_sql(ids: &[String]) -> String {
+    format!(
+        "SELECT experiment_id, nfr_id, kind, state, criticality, threshold, observed, margin, \
+         recovered FROM nfr_verdicts WHERE experiment_id IN ({}) ORDER BY nfr_id",
+        in_list(ids)
+    )
+}
+
+/// The callee services of the call graph in the environments `envs`.
+fn dependencies_sql(envs: &[String]) -> String {
+    let scope = scope::and(env_trace_exists("c", envs));
+    format!(
+        "SELECT c.service_name AS service, COUNT(DISTINCT p.service_name) AS callers, \
+         COUNT(*) AS calls \
+         FROM spans c JOIN spans p ON c.parent_span_id = p.span_id \
+         WHERE p.service_name <> c.service_name AND c.service_name <> ''{scope} \
+         GROUP BY 1 ORDER BY 1"
+    )
+}
+
 /// Discipline of an automated run from its stored kind: chaos when the
 /// run recorded none.
 fn run_kind(test_kind: Option<String>) -> String {
@@ -117,11 +156,7 @@ fn kinds_by_evidence(
         .filter_map(|e| e.evidence_id.clone())
         .collect();
     if !automated.is_empty() {
-        let sql = format!(
-            "SELECT experiment_id, test_kind, rto_target_s, rto_measured_s, rpo_target_s, \
-             rpo_measured_s FROM experiments WHERE experiment_id IN ({})",
-            in_list(&automated)
-        );
+        let sql = automated_kinds_sql(&automated);
         for row in reader.query_json_rows(&sql).map_err(|e| e.to_string())? {
             let Some(id) = str_of(&row, "experiment_id") else {
                 continue;
@@ -144,11 +179,7 @@ fn kinds_by_evidence(
         .filter_map(|e| e.evidence_id.clone())
         .collect();
     if !manual.is_empty() {
-        let sql = format!(
-            "SELECT id, exercise_type, recovery_time_s, rto_target_s, rpo_target_s, \
-             rpo_measured_s FROM manual_experiments WHERE id IN ({})",
-            in_list(&manual)
-        );
+        let sql = manual_kinds_sql(&manual);
         for row in reader.query_json_rows(&sql).map_err(|e| e.to_string())? {
             let Some(id) = str_of(&row, "id") else {
                 continue;
@@ -184,11 +215,7 @@ fn verdicts_by_evidence(
     if ids.is_empty() {
         return Ok(out);
     }
-    let sql = format!(
-        "SELECT experiment_id, nfr_id, kind, state, criticality, threshold, observed, margin, \
-         recovered FROM nfr_verdicts WHERE experiment_id IN ({}) ORDER BY nfr_id",
-        in_list(&ids)
-    );
+    let sql = verdicts_sql(&ids);
     for row in reader.query_json_rows(&sql).map_err(|e| e.to_string())? {
         let Some(id) = str_of(&row, "experiment_id") else {
             continue;
@@ -279,14 +306,7 @@ fn targets_from(
 /// Callee services in the span call graph with how many distinct services
 /// call them and how often: the "untested dependency" rule's input.
 fn dependencies(reader: &Reader, envs: &[String]) -> Result<Vec<Dependency>, String> {
-    let scope = scope::and(env_trace_exists("c", envs));
-    let sql = format!(
-        "SELECT c.service_name AS service, COUNT(DISTINCT p.service_name) AS callers, \
-         COUNT(*) AS calls \
-         FROM spans c JOIN spans p ON c.parent_span_id = p.span_id \
-         WHERE p.service_name <> c.service_name AND c.service_name <> ''{scope} \
-         GROUP BY 1 ORDER BY 1"
-    );
+    let sql = dependencies_sql(envs);
     let rows = reader.query_json_rows(&sql).map_err(|e| e.to_string())?;
     Ok(rows
         .iter()
@@ -302,9 +322,7 @@ fn dependencies(reader: &Reader, envs: &[String]) -> Result<Vec<Dependency>, Str
 
 /// Registered experiment definitions (not GameDays) with their run count.
 fn definitions(reader: &Reader) -> Result<Vec<Definition>, String> {
-    let sql = "SELECT rg.id, rg.name, \
-               (SELECT COUNT(*) FROM runs r WHERE r.registry_id = rg.id) AS runs \
-               FROM run_registry rg WHERE rg.kind IS DISTINCT FROM 'gameday' ORDER BY rg.name";
+    let sql = crate::sql::DEFINITIONS;
     let rows = reader.query_json_rows(sql).map_err(|e| e.to_string())?;
     Ok(rows
         .iter()
@@ -611,6 +629,19 @@ pub(crate) async fn suppress(
             "new_hash": row.new_hash,
         })),
     ))
+}
+
+/// The statements of the risks, for the SQL corpus.
+#[cfg(test)]
+pub(super) fn sql_corpus() -> Vec<tumult_test_utils::sql_corpus::Statement> {
+    let ids = vec!["run-1".to_string(), "run-2".to_string()];
+    tumult_test_utils::sql_statements![
+        automated_kinds_sql(&ids),
+        manual_kinds_sql(&ids),
+        verdicts_sql(&ids),
+        dependencies_sql(&[]),
+        dependencies_sql(&["prod".to_string()]),
+    ]
 }
 
 #[cfg(test)]

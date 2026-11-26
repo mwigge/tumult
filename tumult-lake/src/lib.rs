@@ -83,6 +83,8 @@ pub mod scope;
 #[cfg(feature = "duckdb")]
 mod sightings;
 #[cfg(feature = "duckdb")]
+mod sql;
+#[cfg(feature = "duckdb")]
 mod store;
 pub mod telemetry;
 #[cfg(feature = "duckdb")]

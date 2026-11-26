@@ -13,6 +13,7 @@
 //! restores with no files.
 use crate::file_integrity::{checksum, entry_exists};
 use crate::manual::files::{bring_back, carry, FILE_HASHES_SQL};
+use crate::sql;
 use crate::{attachments_dir, Store, StoreError};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -44,7 +45,7 @@ pub struct BackupReport {
 }
 fn schema_version(reader: &crate::Reader) -> Result<i64, StoreError> {
     reader
-        .query_json_rows("SELECT value AS v FROM schema_meta WHERE key = 'version'")?
+        .query_json_rows(sql::store::SCHEMA_VERSION_AS_V)?
         .first()
         .and_then(|row| row["v"].as_i64())
         .ok_or_else(|| StoreError::Internal("missing schema version".into()))
@@ -86,7 +87,7 @@ pub fn create(source: &Path, directory: &Path) -> Result<BackupReport, StoreErro
     }
     let snapshot = directory.join("store.duckdb");
     let conn = duckdb::Connection::open_in_memory()?;
-    conn.execute_batch(&format!("ATTACH '{}' AS source_store (READ_ONLY); ATTACH '{}' AS backup_store; COPY FROM DATABASE source_store TO backup_store; CHECKPOINT backup_store; DETACH backup_store; DETACH source_store;", quote(source), quote(&snapshot)))?;
+    conn.execute_batch(&snapshot_sql(&quote(source), &quote(&snapshot)))?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -197,4 +198,20 @@ pub fn restore(directory: &Path, destination: &Path) -> Result<usize, StoreError
         tracing::error!(error = %cleanup, "failed to remove restore temporary file");
     }
     result.map(|()| files)
+}
+
+/// Copy the database at `source` into a new one at `snapshot`, both paths
+/// quoted.
+fn snapshot_sql(source: &str, snapshot: &str) -> String {
+    format!("ATTACH '{source}' AS source_store (READ_ONLY); ATTACH '{snapshot}' AS backup_store; COPY FROM DATABASE source_store TO backup_store; CHECKPOINT backup_store; DETACH backup_store; DETACH source_store;")
+}
+
+/// The statements of a backup, for the SQL corpus.
+#[cfg(test)]
+pub(crate) fn sql_corpus() -> Vec<tumult_test_utils::sql_corpus::Statement> {
+    vec![
+        tumult_test_utils::sql_statement!(snapshot_sql("lake.duckdb", "backup/store.duckdb"))
+            .unprepared("it attaches two stores and copies one into the other")
+            .unlinted("sqlfluff has no grammar for ATTACH, COPY FROM DATABASE and DETACH"),
+    ]
 }

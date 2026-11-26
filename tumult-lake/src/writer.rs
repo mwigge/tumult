@@ -4,6 +4,7 @@ use duckdb::{params, Connection};
 
 use crate::error::StoreError;
 use crate::rows::{ImportBatch, LogRow, MetricGaugeRow, MetricHistogramRow, MetricSumRow, SpanRow};
+use crate::sql;
 use crate::store::{attrs_json, migrate, newer_schema, query_json_rows, with_tx};
 
 /// The write side of the store. Hold at most one per process (the ingest
@@ -41,9 +42,7 @@ impl Writer {
     /// # Errors
     /// Returns an error if the metadata table cannot be read.
     pub fn schema_version(&self) -> Result<i64, StoreError> {
-        let mut stmt = self
-            .conn
-            .prepare("SELECT value FROM schema_meta WHERE key = 'version'")?;
+        let mut stmt = self.conn.prepare(sql::store::SCHEMA_VERSION)?;
         stmt.query_row(params![], |row| row.get(0))
             .map_err(StoreError::from)
     }
@@ -54,13 +53,7 @@ impl Writer {
     /// Returns an error if the batch fails to insert (the transaction is rolled back).
     pub fn insert_spans(&self, rows: &[SpanRow]) -> Result<(), StoreError> {
         with_tx(&self.conn, || {
-            let mut stmt = self.conn.prepare(
-                "INSERT INTO spans VALUES (
-                    ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,
-                    CAST(json(?) AS MAP(VARCHAR,VARCHAR)),
-                    CAST(json(?) AS MAP(VARCHAR,VARCHAR)),
-                    CAST(? AS JSON))",
-            )?;
+            let mut stmt = self.conn.prepare(sql::writer::INSERT_SPAN)?;
             for r in rows {
                 // An empty events string is not valid JSON; normalize to `[]`.
                 let events = if r.events.is_empty() {
@@ -113,15 +106,7 @@ impl Writer {
 
     /// The body of [`Writer::insert_logs`], inside the caller's transaction.
     pub(crate) fn put_logs(&self, rows: &[LogRow]) -> Result<(), StoreError> {
-        let mut stmt = self.conn.prepare(
-            "INSERT INTO logs (ts_ns, severity_text, body, trace_id, span_id,
-                    service_name, log_attrs, resource_attrs, event_name, scope_attrs)
-                 VALUES (?,?,?,?,?,?,
-                    CAST(json(?) AS MAP(VARCHAR,VARCHAR)),
-                    CAST(json(?) AS MAP(VARCHAR,VARCHAR)),
-                    ?,
-                    CAST(json(?) AS MAP(VARCHAR,VARCHAR)))",
-        )?;
+        let mut stmt = self.conn.prepare(sql::writer::INSERT_LOG)?;
         for r in rows {
             stmt.execute(params![
                 r.ts_ns,
@@ -168,11 +153,7 @@ impl Writer {
 
     /// [`Self::insert_metric_sums`] inside the caller's transaction.
     fn put_metric_sums(&self, rows: &[MetricSumRow]) -> Result<(), StoreError> {
-        let mut stmt = self.conn.prepare(
-            "INSERT INTO metric_sums VALUES (?,?,?,?,?,?,
-                CAST(json(?) AS MAP(VARCHAR,VARCHAR)),
-                CAST(json(?) AS MAP(VARCHAR,VARCHAR)))",
-        )?;
+        let mut stmt = self.conn.prepare(sql::writer::INSERT_METRIC_SUM)?;
         for r in rows {
             stmt.execute(params![
                 r.ts_ns,
@@ -198,11 +179,7 @@ impl Writer {
 
     /// [`Self::insert_metric_gauges`] inside the caller's transaction.
     fn put_metric_gauges(&self, rows: &[MetricGaugeRow]) -> Result<(), StoreError> {
-        let mut stmt = self.conn.prepare(
-            "INSERT INTO metric_gauges VALUES (?,?,?,?,?,?,
-                CAST(json(?) AS MAP(VARCHAR,VARCHAR)),
-                CAST(json(?) AS MAP(VARCHAR,VARCHAR)))",
-        )?;
+        let mut stmt = self.conn.prepare(sql::writer::INSERT_METRIC_GAUGE)?;
         for r in rows {
             stmt.execute(params![
                 r.ts_ns,
@@ -228,13 +205,7 @@ impl Writer {
 
     /// [`Self::insert_metric_histograms`] inside the caller's transaction.
     fn put_metric_histograms(&self, rows: &[MetricHistogramRow]) -> Result<(), StoreError> {
-        let mut stmt = self.conn.prepare(
-            "INSERT INTO metric_histograms VALUES (?,?,?,?,?,?,
-                CAST(? AS BIGINT[]), CAST(? AS DOUBLE[]),
-                CAST(json(?) AS MAP(VARCHAR,VARCHAR)),
-                CAST(json(?) AS MAP(VARCHAR,VARCHAR)),
-                ?,?,?)",
-        )?;
+        let mut stmt = self.conn.prepare(sql::writer::INSERT_METRIC_HISTOGRAM)?;
         for r in rows {
             stmt.execute(params![
                 r.ts_ns,
@@ -261,7 +232,7 @@ impl Writer {
     /// Returns an error if the row fails to insert.
     pub fn record_import_batch(&self, batch: &ImportBatch) -> Result<(), StoreError> {
         self.conn.execute(
-            "INSERT INTO import_batches VALUES (?,?,?,?,?)",
+            sql::writer::INSERT_IMPORT_BATCH,
             params![
                 batch.id,
                 batch.source,

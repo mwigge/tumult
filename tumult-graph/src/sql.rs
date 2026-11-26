@@ -203,4 +203,45 @@ mod tests {
         assert!(ego_nodes(false).contains("reach"));
         assert!(ego_nodes(false).contains("graph_nodes"));
     }
+
+    /// Every statement of the graph, as the lake runs it.
+    fn sql_corpus() -> Vec<tumult_test_utils::sql_corpus::Statement> {
+        tumult_test_utils::sql_statements![
+            CREATE_TABLES,
+            MIGRATE_EDGES_ADD_ATTRS,
+            UPSERT_NODE,
+            UPSERT_NODE_MERGE_ATTRS,
+            DELETE_EDGES_FOR_RUN,
+            DELETE_NODES_BY_KIND,
+            DELETE_NODE,
+            INSERT_EDGE,
+            INJECTED_FAULTS,
+            NODE_EXISTS,
+            nodes_by_kind(false),
+            nodes_by_kind(true),
+            edges_by_rels(1),
+            edges_by_rels(3),
+            NODE_ATTRS_BY_KIND,
+            ego_nodes(false),
+            ego_nodes(true),
+            ego_edges(false),
+            ego_edges(true),
+        ]
+    }
+
+    #[test]
+    fn every_statement_of_the_sql_corpus_prepares_on_a_fresh_lake_and_is_kept() {
+        let dir = tempfile::tempdir().unwrap();
+        let lake = dir.path().join("kronika.duckdb");
+        tumult_lake::Store::open(&lake).unwrap();
+        let kept =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden/sql-corpus.sql");
+
+        tumult_test_utils::sql_corpus::assert_corpus(
+            &kept,
+            env!("CARGO_PKG_NAME"),
+            &lake,
+            &sql_corpus(),
+        );
+    }
 }

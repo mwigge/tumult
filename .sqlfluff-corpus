@@ -1,0 +1,83 @@
+# The settings of sqlfluff for the SQL corpus of each crate, read on top of
+# .sqlfluff:
+#   .quality-venv/bin/sqlfluff lint --config .sqlfluff-corpus */tests/golden/sql-corpus.sql
+# A test of each crate writes its corpus: every statement the crate runs on
+# the lake, as its code renders it (CONTRIBUTING.md, "The SQL corpus"). A
+# statement sqlfluff cannot parse (ATTACH, DETACH, COPY FROM DATABASE, the
+# MAP literal) is held there as comment lines, with its reason, because
+# sqlfluff stops reading a file at the first statement it cannot parse.
+
+[sqlfluff]
+dialect = duckdb
+templater = placeholder
+# A corpus is one file per crate, far over the 20000 bytes that sqlfluff
+# otherwise skips without a failure.
+large_file_skip_byte_limit = 0
+# The rules the corpus does not follow, each with its reason. The SQL was
+# written before the corpus existed; a rule comes back when its statements
+# are changed to follow it.
+#
+# Layout. The statements are laid out for the Rust code that holds them:
+# on one line or broken with `\`, keywords mid-line, lines of any length.
+# Layout does not change what a statement does.
+#   LT01 spacing, LT02 indentation, LT05 line length, LT08 blank line after
+#   a CTE, LT09 select targets on their own lines, LT11 set operators on
+#   their own lines, LT14 keywords on a new line.
+#
+# Capitalisation. DuckDB reads names and literals in any case.
+#   CP02 the COPY option `FORMAT PARQUET` reads to sqlfluff as a name in
+#   capitals, CP03 function names are written in both cases across the
+#   crates, CP04 `true`, `false` and `null` are written in both cases.
+#
+# Aliasing.
+#   AL01 a table alias written without AS is as clear as one with it.
+#   AL03 a value read by its position (`count(*)` read by `row.get(0)`)
+#   needs no name.
+#   AL04 a nested query may reuse the alias of the outer one; DuckDB binds
+#   each in its own scope.
+#   AL05 an alias kept for a later join or for a reader is not unused.
+#   AL09 a column aliased to its own name keeps the key a reader asks for.
+#   AL10 an unnested struct (`unnest(...) AS u`) is a column, not a table.
+#
+# Ambiguity.
+#   AM03 an ORDER BY with a direction on some columns only sorts the rest
+#   ascending, as SQL says.
+#   AM04 `SELECT *` is on purpose: a reader reads every column of a row as
+#   JSON, and a rebuild copies a table by the position of its columns.
+#   AM05 a plain JOIN is an inner join.
+#   AM06 GROUP BY and ORDER BY name a column by its position where its
+#   expression is long, and by its name elsewhere.
+#   AM09 a LIMIT without ORDER BY reads one row by its id or a table of one
+#   row, asks whether a row exists, or takes no row (`LIMIT 0`).
+#
+# References.
+#   RF01 a field of a struct column (`u.entity_key`) reads to sqlfluff as a
+#   table it cannot find; DuckDB prepares every statement of the corpus.
+#   RF02 and RF03 columns are qualified where a name could be read two ways;
+#   DuckDB refuses an ambiguous name when it prepares the statement.
+#
+# Structure.
+#   ST05 a subquery in a FROM or a JOIN is kept where it is read once.
+#   ST06 the order of the select targets is the order of the columns a
+#   reader or an appender takes them in.
+#   ST09 the order of the two sides of a join condition does not change it.
+#   ST11 a join is kept for the scope predicate, which an empty scope leaves
+#   out.
+#
+# Convention.
+#   CV01 `<>` and `!=` are both written; DuckDB reads them the same.
+exclude_rules = LT01, LT02, LT05, LT08, LT09, LT11, LT14, CP02, CP03, CP04, AL01, AL03, AL04, AL05, AL09, AL10, AM03, AM04, AM05, AM06, AM09, RF01, RF02, RF03, ST05, ST06, ST09, ST11, CV01
+
+[sqlfluff:templater:placeholder]
+# Two styles of bound parameter are in use: `?` and `$1`, `$2`, ... One
+# pattern reads both. A `$n` is read as the number n, a `?` as the value
+# of the key `?` below.
+param_regex = (?<![:\w\x5c])(?:\$(?P<param_name>\d+)|(?P<param_name>\?))
+? = 1
+
+[sqlfluff:rules:references.keywords]
+# Names that sqlfluff counts as keywords but the lake uses as names: column
+# names of the schema (`value`, `name`, `version`) and column aliases that
+# are keys of the API, since a reader reads each row as JSON by its names.
+# Renaming one would break a stored lake or a client of the API.
+ignore_words = first, last, name, point, server, system, target, type, value, version

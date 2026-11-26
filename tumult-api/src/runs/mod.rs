@@ -104,3 +104,9 @@ pub(crate) fn preview_experiment(
         .collect::<std::collections::HashMap<_, _>>();
     apply_template_vars(&raw, vars, &config, &secrets).map_err(error)
 }
+
+/// The statements of the runs, for the SQL corpus.
+#[cfg(test)]
+pub(crate) fn sql_corpus() -> Vec<tumult_test_utils::sql_corpus::Statement> {
+    [control::sql_corpus(), read::sql_corpus()].concat()
+}

@@ -13,6 +13,7 @@
 //! | [`MetricCapture`] | `otel` | a private meter provider whose counters, gauges and histograms can be read back |
 //! | [`action`], [`background_action`], [`minimal_experiment`] | `builders` (default) | experiment fixtures for runner tests |
 //! | [`recorded::load`] | `recorded` | the telemetry and journals of real runs, put into a store the way the daemon does |
+//! | [`sql_corpus::assert_corpus`], [`sql_statements!`], [`sql_fragment!`] | `sql-corpus` | every SQL statement of a crate, prepared on a fresh lake and kept in a file for the linter |
 //!
 //! `builders` depends on `tumult-core`. Crates below `tumult-core` in the
 //! dependency graph take this crate with `default-features = false`.
@@ -27,6 +28,8 @@ mod golden;
 mod otel;
 #[cfg(feature = "recorded")]
 pub mod recorded;
+#[cfg(feature = "sql-corpus")]
+pub mod sql_corpus;
 
 #[cfg(feature = "builders")]
 pub use builders::{action, background_action, minimal_experiment};

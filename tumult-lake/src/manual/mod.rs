@@ -711,6 +711,19 @@ impl NewManualExperiment {
     }
 }
 
+/// The statements of the manual records and plans, for the SQL corpus.
+#[cfg(test)]
+pub(crate) fn sql_corpus() -> Vec<tumult_test_utils::sql_corpus::Statement> {
+    [
+        chain::sql_corpus(),
+        files::sql_corpus(),
+        plans::sql_corpus(),
+        reader::sql_corpus(),
+        writer::sql_corpus(),
+    ]
+    .concat()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

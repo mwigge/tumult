@@ -23,6 +23,7 @@ use sha2::{Digest, Sha256};
 
 use super::reader::{ACTIONS_SQL, LINKS_SQL, STEPS_SQL};
 use super::{ManualError, PlanError};
+use crate::sql;
 use crate::StoreError;
 
 /// The form new seals are computed in.
@@ -249,12 +250,7 @@ pub(crate) fn fetch_row(
     conn: &Connection,
     id: &str,
 ) -> Result<Option<serde_json::Value>, StoreError> {
-    fetch_one(
-        conn,
-        "SELECT row_to_json(t) AS j FROM \
-         (SELECT * FROM manual_experiments WHERE id = ?) AS t",
-        id,
-    )
+    fetch_one(conn, sql::manual::RECORD_ROW, id)
 }
 
 /// One plan as a JSON object (column → value).
@@ -262,12 +258,7 @@ pub(crate) fn fetch_plan_row(
     conn: &Connection,
     id: &str,
 ) -> Result<Option<serde_json::Value>, StoreError> {
-    fetch_one(
-        conn,
-        "SELECT row_to_json(t) AS j FROM \
-         (SELECT * FROM manual_exercise_plans WHERE id = ?) AS t",
-        id,
-    )
+    fetch_one(conn, sql::manual::PLAN_ROW, id)
 }
 
 pub(crate) fn status_of(row: &serde_json::Value) -> String {
@@ -388,10 +379,7 @@ pub(crate) fn seal_of(
 /// version of the form, and return the hash.
 pub(crate) fn reseal(conn: &Connection, id: &str) -> Result<String, ManualError> {
     let hash = rehash(conn, id)?;
-    conn.execute(
-        "UPDATE manual_experiments SET content_hash = ?, hash_version = ? WHERE id = ?",
-        params![hash, HASH_VERSION, id],
-    )?;
+    conn.execute(sql::manual::RESEAL_RECORD, params![hash, HASH_VERSION, id])?;
     Ok(hash)
 }
 
@@ -433,10 +421,7 @@ pub(crate) fn plan_seal_of(id: &str, row: &serde_json::Value) -> String {
 /// Seal plan `id` again from what is stored, and return the seal.
 pub(crate) fn reseal_plan(conn: &Connection, id: &str) -> Result<String, ManualError> {
     let hash = rehash_plan(conn, id)?;
-    conn.execute(
-        "UPDATE manual_exercise_plans SET content_hash = ? WHERE id = ?",
-        params![hash, id],
-    )?;
+    conn.execute(sql::manual::RESEAL_PLAN, params![hash, id])?;
     Ok(hash)
 }
 

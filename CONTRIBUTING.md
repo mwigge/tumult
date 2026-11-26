@@ -44,7 +44,7 @@ These jobs run on every pull request to `main`.
 | Documentation | `cargo doc` with warnings as errors |
 | Documentation checks | `scripts/check-docs.py`, `scripts/check-citations.py`, `scripts/check-prose.py` |
 | Web UI | Prettier, ESLint, `npm audit`, svelte-check, Vitest, the build, the report script in sync with its source, Playwright |
-| Python, SQL and distribution checks | Black, Ruff, SQLFluff, the lake SQL lint, the log message check, the [test hygiene guard](#the-test-hygiene-guard) and the tests of the scripts |
+| Python, SQL and distribution checks | Black, Ruff, SQLFluff on the schema of Postgres and on the [SQL corpus](#the-sql-corpus), the log message check, the [test hygiene guard](#the-test-hygiene-guard) and the tests of the scripts |
 | Forecast sidecar | Ruff and the unit tests of `forecastd` with a stub model |
 | Mutation tests | [Mutation tests](#mutation-tests) of the Rust lines that changed |
 | Pull request body | The [six headings](#prose-and-the-pull-request-body) |
@@ -56,7 +56,8 @@ lab) and the Chaos Lab. Coverage runs on `main` and every night, with a floor
 of 90 %.
 
 `make precommit` runs the checks of Format, Test, Demo crates, Cargo Deny and
-Documentation checks, then the mutation tests of the changed lines.
+Documentation checks and the SQL lint, then the mutation tests of the
+changed lines.
 `scripts/test-quality-gates.py` keeps it equal to `ci.yml`. The Clippy lints
 are in `[workspace.lints]` of `Cargo.toml`, and every crate reads them.
 
@@ -103,6 +104,25 @@ Kept files: `tumult_test_utils::assert_kept(path, text)` compares a whole
 report with its file and names the first line that differs.
 `TUMULT_BLESS=1 cargo test -p <crate>` writes the files again: read the
 difference before you commit it.
+
+### The SQL corpus
+
+Every SQL statement a crate runs on the lake is in its SQL corpus,
+`tests/golden/sql-corpus.sql`, under the file and the item that hold it.
+
+- A statement is a named const, or a function that builds it. It is never a
+  literal passed straight to `execute` or a query. In `tumult-lake` the
+  consts live in the `sql` module.
+- Each file lists its statements in a `sql_corpus()` function, with
+  `tumult_test_utils::sql_statements!`: a builder with fixed sample
+  arguments, a fragment inside a statement with `sql_fragment!`.
+- A test of the crate prepares every statement on a fresh lake, so a wrong
+  table or column fails with the name of its statement. It then compares
+  the text with the kept file: `TUMULT_BLESS=1 cargo test -p <crate> --
+  sql_corpus` writes it again.
+- CI and `make precommit` lint the files with sqlfluff and the settings in
+  `.sqlfluff-corpus`. A rule that the corpus does not follow is left out
+  there, with its reason.
 
 Time and isolation:
 

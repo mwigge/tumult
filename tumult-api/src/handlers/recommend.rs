@@ -223,11 +223,7 @@ async fn register_scaffold(
 async fn find_registered(state: &ApiState, name: &str) -> Result<Registered, ApiError> {
     let needle = name.to_string();
     let row = with_reader(&state.db_path, move |reader| {
-        let sql = format!(
-            "SELECT id, name, definition_toon FROM run_registry WHERE name = {} \
-             ORDER BY registered_at_ns DESC LIMIT 1",
-            crate::sql_util::sql_string(&needle)
-        );
+        let sql = registered_sql(&needle);
         reader
             .query_json_rows(&sql)
             .map(|rows| rows.into_iter().next())
@@ -435,6 +431,21 @@ pub(crate) async fn recommend(
             "decision": decision,
         })),
     ))
+}
+
+/// The newest registered definition with the name `name`.
+fn registered_sql(name: &str) -> String {
+    format!(
+        "SELECT id, name, definition_toon FROM run_registry WHERE name = {} \
+         ORDER BY registered_at_ns DESC LIMIT 1",
+        crate::sql_util::sql_string(name)
+    )
+}
+
+/// The statements of the recommendations, for the SQL corpus.
+#[cfg(test)]
+pub(super) fn sql_corpus() -> Vec<tumult_test_utils::sql_corpus::Statement> {
+    tumult_test_utils::sql_statements![registered_sql("checkout-latency")]
 }
 
 #[cfg(test)]

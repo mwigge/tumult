@@ -12,6 +12,7 @@ use super::{
     AttachmentKind, ExerciseDetail, LinkKind, ManualError, NewManualExperiment, Severity, SignOff,
     SignOffDecision, SignOffOutcome, StepResult, TlptDetail,
 };
+use crate::sql;
 use crate::{with_tx, StoreError, Writer};
 
 /// The statements that remove the steps, actions and links of a record.
@@ -50,9 +51,7 @@ fn insert_children(
 ) -> Result<(), ManualError> {
     for (ordinal, step) in (1_i64..).zip(&detail.steps) {
         conn.execute(
-            "INSERT INTO manual_exercise_steps (
-                experiment_id, ordinal, title, actor, started_at_ns, ended_at_ns, result, note
-             ) VALUES (?,?,?,?,?,?,?,?)",
+            sql::manual::INSERT_STEP,
             params![
                 id,
                 ordinal,
@@ -67,10 +66,7 @@ fn insert_children(
     }
     for (ordinal, action) in (1_i64..).zip(&detail.actions) {
         conn.execute(
-            "INSERT INTO manual_action_items (
-                id, experiment_id, ordinal, title, owner, due_at_ns, ticket,
-                severity, retest_kind, retest_id
-             ) VALUES (?,?,?,?,?,?,?,?,?,?)",
+            sql::manual::INSERT_ACTION,
             params![
                 ulid(),
                 id,
@@ -87,9 +83,7 @@ fn insert_children(
     }
     for (ordinal, link) in (1_i64..).zip(&detail.links) {
         conn.execute(
-            "INSERT INTO manual_experiment_links (
-                experiment_id, ordinal, kind, linked_id, label
-             ) VALUES (?,?,?,?,?)",
+            sql::manual::INSERT_LINK,
             params![id, ordinal, link.kind.as_str(), link.linked_id, link.label],
         )?;
     }
@@ -129,19 +123,7 @@ fn insert_draft(
     let id = ulid();
     let detail = &new.exercise;
     conn.execute(
-        "INSERT INTO manual_experiments (
-            id, experiment_name, exercise_type, executed_at_ns, hypothesis, method,
-            outcome_status, hypothesis_met, findings, action_items,
-            target_system, target_environment, blast_radius,
-            recovery_time_s, duration_s, origin,
-            entered_by, entered_at_ns, attestation, status,
-            renewal_due_ns, framework_refs, batch_id, content_hash,
-            rto_target_s, rpo_target_s, rpo_measured_s, data_verified, participants,
-            plan_id, findings_severity, tester, tester_kind,
-            tlpt_attestation_ref, tlpt_attested_at_ns, tlpt_summary_ref, scenarios
-         ) VALUES (?,?,?,?,?,?,?,?,?,CAST(? AS JSON),?,?,?,?,?,?,
-                   ?,?,?,?,?, CAST(? AS VARCHAR[]),?,?,?,?,?,?,CAST(? AS JSON),?,
-                   ?,?,?,?,?,?, CAST(? AS VARCHAR[]))",
+        sql::manual::INSERT_DRAFT,
         params![
             id,
             new.experiment_name,
@@ -272,19 +254,7 @@ impl Writer {
                 .to_string();
             check_plan(&self.conn, new)?;
             self.conn.execute(
-                "UPDATE manual_experiments SET
-                    experiment_name = ?, exercise_type = ?, executed_at_ns = ?,
-                    hypothesis = ?, method = ?, outcome_status = ?,
-                    hypothesis_met = ?, findings = ?, action_items = CAST(? AS JSON),
-                    target_system = ?, target_environment = ?, blast_radius = ?,
-                    recovery_time_s = ?, duration_s = ?, attestation = ?,
-                    renewal_due_ns = ?, framework_refs = CAST(? AS VARCHAR[]),
-                    rto_target_s = ?, rpo_target_s = ?, rpo_measured_s = ?,
-                    data_verified = ?, participants = CAST(? AS JSON), plan_id = ?,
-                    findings_severity = ?, tester = ?, tester_kind = ?,
-                    tlpt_attestation_ref = ?, tlpt_attested_at_ns = ?, tlpt_summary_ref = ?,
-                    scenarios = CAST(? AS VARCHAR[])
-                 WHERE id = ?",
+                sql::manual::UPDATE_DRAFT,
                 params![
                     new.experiment_name,
                     new.exercise_type.as_str(),
@@ -390,11 +360,8 @@ impl Writer {
                     "submit requires a non-empty attestation".into(),
                 ));
             }
-            self.conn.execute(
-                "UPDATE manual_experiments SET status = 'submitted', attestation = ? \
-                 WHERE id = ?",
-                params![effective, id],
-            )?;
+            self.conn
+                .execute(sql::manual::SUBMIT, params![effective, id])?;
             let hash = reseal(&self.conn, id)?;
             append_audit(
                 &self.conn,
@@ -482,12 +449,9 @@ impl Writer {
             let text = |k: &str| row.get(k).and_then(serde_json::Value::as_str);
             let seal = text("content_hash").unwrap_or_default().to_string();
             let required = required(text("exercise_type").unwrap_or_default()).max(1);
-            let approved_before: i64 = self.conn.query_row(
-                "SELECT COUNT(*) FROM manual_signoffs WHERE subject_kind = 'record' \
-                 AND subject_id = ? AND decision = 'approved'",
-                params![id],
-                |r| r.get(0),
-            )?;
+            let approved_before: i64 =
+                self.conn
+                    .query_row(sql::manual::COUNT_APPROVALS, params![id], |r| r.get(0))?;
             let approvals = u32::try_from(approved_before)
                 .unwrap_or(u32::MAX)
                 .saturating_add(u32::from(approve));
@@ -527,8 +491,7 @@ impl Writer {
             }
             let to_status = if approve { "verified" } else { "rejected" };
             self.conn.execute(
-                "UPDATE manual_experiments SET status = ?, reviewed_by = ?, \
-                 reviewed_at_ns = ?, review_note = ? WHERE id = ?",
+                sql::manual::REVIEW,
                 params![to_status, sign_off.by, now_ns(), sign_off.note, id],
             )?;
             let hash = reseal(&self.conn, id)?;
@@ -570,19 +533,17 @@ impl Writer {
             .get("entered_by")
             .and_then(serde_json::Value::as_str)
             .unwrap_or_default();
-        let contributed: i64 = self.conn.query_row(
-            "SELECT COUNT(*) FROM manual_experiment_audit WHERE experiment_id = ? AND changed_by = ? AND action IN ('create', 'edit', 'submit', 'attach')",
-            params![id, by], |row| row.get(0),
-        )?;
+        let contributed: i64 =
+            self.conn
+                .query_row(sql::manual::COUNT_AUTHORED, params![id, by], |row| {
+                    row.get(0)
+                })?;
         if by == entered_by || contributed > 0 {
             return Err(ManualError::SelfReview);
         }
-        let signed: i64 = self.conn.query_row(
-            "SELECT COUNT(*) FROM manual_signoffs WHERE subject_kind = 'record' \
-             AND subject_id = ? AND signed_by = ?",
-            params![id, by],
-            |row| row.get(0),
-        )?;
+        let signed: i64 =
+            self.conn
+                .query_row(sql::manual::COUNT_SIGNED, params![id, by], |row| row.get(0))?;
         if signed > 0 {
             return Err(ManualError::AlreadySigned(by.to_string()));
         }
@@ -632,9 +593,7 @@ impl Writer {
                 .to_string();
             let attachment_id = ulid();
             self.conn.execute(
-                "INSERT INTO evidence_attachments (
-                    id, experiment_id, kind, uri, label, file_hash, added_by, added_at_ns
-                 ) VALUES (?,?,?,?,?,?,?,?)",
+                sql::manual::INSERT_ATTACHMENT,
                 params![
                     attachment_id,
                     experiment_id,
@@ -700,10 +659,7 @@ impl Writer {
                 format!("/api/manual/experiments/{experiment_id}/attachments/{attachment_id}/file");
             let size = i64::try_from(file.size_bytes()).unwrap_or(i64::MAX);
             self.conn.execute(
-                "INSERT INTO evidence_attachments (
-                    id, experiment_id, kind, uri, label, file_hash, added_by, added_at_ns,
-                    media_type, size_bytes
-                 ) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                sql::manual::INSERT_FILE,
                 params![
                     attachment_id,
                     experiment_id,
@@ -768,8 +724,7 @@ impl Writer {
         with_tx(&self.conn, || {
             let batch_id = format!("manual-import-{}", ulid());
             self.conn.execute(
-                "INSERT INTO import_batches (id, source, imported_at_ns, rows, label) \
-                 VALUES (?,?,?,?,?)",
+                sql::manual::INSERT_IMPORT_BATCH,
                 params![
                     batch_id,
                     "manual-api",
@@ -799,4 +754,10 @@ impl Writer {
             Ok((batch_id, ids))
         })
     }
+}
+
+/// The statements of the writer of records, for the SQL corpus.
+#[cfg(test)]
+pub(super) fn sql_corpus() -> Vec<tumult_test_utils::sql_corpus::Statement> {
+    tumult_test_utils::sql_statements![DELETE_CHILDREN[0], DELETE_CHILDREN[1], DELETE_CHILDREN[2]]
 }

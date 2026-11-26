@@ -135,7 +135,12 @@ fn rows_of_run(
     limit: usize,
 ) -> Result<Vec<Value>, String> {
     let params = [SqlParam::Text(experiment_id.to_string())];
-    rows(reader, &format!("{select} LIMIT {limit}"), &params)
+    rows(reader, &limited_sql(select, limit), &params)
+}
+
+/// The statement `select`, `limit` rows at most.
+fn limited_sql(select: &str, limit: usize) -> String {
+    format!("{select} LIMIT {limit}")
 }
 
 /// The windows of a load, from the values of their series: the values of
@@ -167,37 +172,46 @@ fn load(reader: &Reader, experiment_id: &str) -> Result<Value, String> {
     else {
         return Ok(Value::Null);
     };
-    let values = rows(
-        reader,
-        &format!(
-            "SELECT ts_ns, probe_name, value FROM probe_samples \
-             WHERE experiment_id = $1 AND {IS_LOAD_SERIES} \
-             ORDER BY ts_ns, rowid LIMIT {MAX_WINDOW_VALUES}"
-        ),
-        &sample_params(experiment_id),
-    )?;
+    let values = rows(reader, &load_values_sql(), &sample_params(experiment_id))?;
     load["windows"] = Value::Array(windows(values));
     Ok(load)
+}
+
+/// The values of the load windows of the run `$1`, by their start.
+fn load_values_sql() -> String {
+    format!(
+        "SELECT ts_ns, probe_name, value FROM probe_samples \
+         WHERE experiment_id = $1 AND {IS_LOAD_SERIES} \
+         ORDER BY ts_ns, rowid LIMIT {MAX_WINDOW_VALUES}"
+    )
+}
+
+/// The samples of the probes of the run `$1`, as the FROM and WHERE of a
+/// statement.
+fn of_probes_sql() -> String {
+    format!("FROM probe_samples WHERE experiment_id = $1 AND NOT {IS_LOAD_SERIES}")
+}
+
+/// The samples of the probes of the run `$1`, the earliest first.
+fn probe_samples_sql() -> String {
+    format!(
+        "SELECT probe_name AS probe, phase, ts_ns, value AS duration_ms, ok {} \
+         ORDER BY ts_ns, probe_name, rowid LIMIT {MAX_PROBE_SAMPLES}",
+        of_probes_sql()
+    )
+}
+
+/// How many samples of the probes the run `$1` has.
+fn probe_count_sql() -> String {
+    format!("SELECT count(*) AS n {}", of_probes_sql())
 }
 
 /// The samples of the probes of the run, the earliest first, and how many
 /// the run has.
 fn probe_samples(reader: &Reader, experiment_id: &str) -> Result<(Vec<Value>, Value), String> {
-    let of_probes = format!("FROM probe_samples WHERE experiment_id = $1 AND NOT {IS_LOAD_SERIES}");
     let params = sample_params(experiment_id);
-    let samples = rows(
-        reader,
-        &format!(
-            "SELECT probe_name AS probe, phase, ts_ns, value AS duration_ms, ok {of_probes} \
-             ORDER BY ts_ns, probe_name, rowid LIMIT {MAX_PROBE_SAMPLES}"
-        ),
-        &params,
-    )?;
-    let total = rows(
-        reader,
-        &format!("SELECT count(*) AS n {of_probes}"),
-        &params,
-    )?;
+    let samples = rows(reader, &probe_samples_sql(), &params)?;
+    let total = rows(reader, &probe_count_sql(), &params)?;
     let total = total.first().map_or(json!(0), |row| row["n"].clone());
     Ok((samples, total))
 }
@@ -218,4 +232,18 @@ pub(crate) fn of_run(reader: &Reader, experiment_id: &str) -> Result<Value, Stri
     evidence["probe_samples"] = samples.into();
     evidence["probe_samples_total"] = total;
     Ok(evidence)
+}
+
+/// The statements of the evidence of a run, for the SQL corpus.
+#[cfg(test)]
+pub(crate) fn sql_corpus() -> Vec<tumult_test_utils::sql_corpus::Statement> {
+    tumult_test_utils::sql_statements![
+        limited_sql(SUMMARY, 1),
+        limited_sql(STEPS, MAX_ROWS),
+        limited_sql(OBJECTIVES, MAX_ROWS),
+        limited_sql(LOAD, 1),
+        load_values_sql(),
+        probe_samples_sql(),
+        probe_count_sql(),
+    ]
 }

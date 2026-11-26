@@ -9,6 +9,7 @@ use duckdb::params;
 use serde_json::Value;
 
 use crate::error::StoreError;
+use crate::sql;
 use crate::{Reader, Writer};
 
 /// One `risk_suppressions` row.
@@ -39,16 +40,16 @@ impl Writer {
         at_ns: i64,
         expires_at_ns: Option<i64>,
     ) -> Result<RiskSuppressionRow, StoreError> {
-        let prev_hash: Option<String> = match self.conn.query_row(
-            "SELECT new_hash FROM risk_suppressions WHERE risk_id = ? \
-             ORDER BY at_ns DESC, rowid DESC LIMIT 1",
-            params![risk_id],
-            |row| row.get::<_, Option<String>>(0),
-        ) {
-            Ok(hash) => hash,
-            Err(duckdb::Error::QueryReturnedNoRows) => None,
-            Err(error) => return Err(error.into()),
-        };
+        let prev_hash: Option<String> =
+            match self
+                .conn
+                .query_row(sql::risk::LAST_SUPPRESSION_HASH, params![risk_id], |row| {
+                    row.get::<_, Option<String>>(0)
+                }) {
+                Ok(hash) => hash,
+                Err(duckdb::Error::QueryReturnedNoRows) => None,
+                Err(error) => return Err(error.into()),
+            };
         let detail = serde_json::json!({
             "id": id,
             "reason": reason,
@@ -64,9 +65,7 @@ impl Writer {
             prev_hash.as_deref(),
         );
         self.conn.execute(
-            "INSERT INTO risk_suppressions \
-             (id, risk_id, reason, actor, at_ns, expires_at_ns, prev_hash, new_hash) \
-             VALUES (?,?,?,?,?,?,?,?)",
+            sql::risk::INSERT_SUPPRESSION,
             params![
                 id,
                 risk_id,
@@ -98,8 +97,7 @@ impl Reader {
     /// # Errors
     /// Returns an error if the query fails.
     pub fn list_risk_suppressions(&self) -> Result<Vec<RiskSuppressionRow>, StoreError> {
-        let rows =
-            self.query_json_rows("SELECT * FROM risk_suppressions ORDER BY at_ns ASC, rowid ASC")?;
+        let rows = self.query_json_rows(sql::risk::SUPPRESSIONS)?;
         Ok(rows.iter().map(row_to_suppression).collect())
     }
 }

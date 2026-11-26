@@ -31,6 +31,7 @@ use duckdb::params;
 
 use super::Slot;
 use crate::error::StoreError;
+use crate::sql;
 use crate::store::with_tx;
 use crate::Writer;
 
@@ -664,9 +665,34 @@ impl Writer {
     pub fn entity_version_count(&self) -> Result<u64, StoreError> {
         let rows: i64 = self
             .conn
-            .query_row("SELECT count(*) FROM entity_versions", [], |row| row.get(0))?;
+            .query_row(sql::entities::COUNT_VERSIONS, [], |row| row.get(0))?;
         Ok(u64::try_from(rows).unwrap_or(0))
     }
+}
+
+/// The statements of the caps on entities, for the SQL corpus. Those that
+/// read the staged keys of a batch or the victims are prepared after the
+/// statement that makes their temporary tables.
+#[cfg(test)]
+pub(super) fn sql_corpus() -> Vec<tumult_test_utils::sql_corpus::Statement> {
+    use tumult_test_utils::{sql_statement, sql_statements};
+    let keys = sql_statement!(super::batch::STAGING);
+    let victims = sql_statement!(VICTIMS);
+    let staged_victims = sql_statements![STAGE_PRUNED, STAGE_PURGED, COUNT_VICTIMS, DELETE_VICTIMS];
+    let both = tumult_test_utils::sql_corpus::Statement::new(
+        format!("{} and {}", keys.name, victims.name),
+        format!("{}\n{}", keys.sql, victims.sql),
+    );
+    [
+        sql_statements![CENSUS],
+        vec![sql_statement!(CAP_VERSIONS).after(&keys), victims.clone()],
+        staged_victims
+            .into_iter()
+            .map(|s| s.after(&victims))
+            .collect(),
+        vec![sql_statement!(STAGE_EVICTED).after(&both)],
+    ]
+    .concat()
 }
 
 #[cfg(test)]

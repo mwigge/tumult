@@ -12,6 +12,7 @@ use duckdb::params;
 use serde_json::Value;
 
 use crate::error::StoreError;
+use crate::sql;
 use crate::{Reader, Writer};
 
 /// One `webhooks` row.
@@ -37,7 +38,7 @@ impl Writer {
     /// Returns an error if the insert fails.
     pub fn create_webhook(&self, w: &WebhookRow) -> Result<(), StoreError> {
         self.conn.execute(
-            "INSERT INTO webhooks VALUES (?,?,?,?,?,?,?,?)",
+            sql::webhooks::INSERT,
             params![
                 w.id,
                 w.name,
@@ -57,10 +58,8 @@ impl Writer {
     /// # Errors
     /// Returns an error if the update fails.
     pub fn set_webhook_enabled(&self, id: &str, enabled: bool) -> Result<(), StoreError> {
-        self.conn.execute(
-            "UPDATE webhooks SET enabled = ? WHERE id = ?",
-            params![enabled, id],
-        )?;
+        self.conn
+            .execute(sql::webhooks::SET_ENABLED, params![enabled, id])?;
         Ok(())
     }
 
@@ -70,12 +69,9 @@ impl Writer {
     /// Returns an error if the delete fails.
     pub fn delete_webhook(&self, id: &str) -> Result<(), StoreError> {
         crate::with_tx(&self.conn, || {
+            self.conn.execute(sql::webhooks::DELETE, params![id])?;
             self.conn
-                .execute("DELETE FROM webhooks WHERE id = ?", params![id])?;
-            self.conn.execute(
-                "DELETE FROM webhook_cursors WHERE webhook_id = ?",
-                params![id],
-            )?;
+                .execute(sql::webhooks::DELETE_CURSOR, params![id])?;
             Ok(())
         })
     }
@@ -87,12 +83,10 @@ impl Writer {
     /// Returns an error if the write fails.
     pub fn set_webhook_cursor(&self, webhook_id: &str, last_at_ns: i64) -> Result<(), StoreError> {
         crate::with_tx(&self.conn, || {
+            self.conn
+                .execute(sql::webhooks::DELETE_CURSOR, params![webhook_id])?;
             self.conn.execute(
-                "DELETE FROM webhook_cursors WHERE webhook_id = ?",
-                params![webhook_id],
-            )?;
-            self.conn.execute(
-                "INSERT INTO webhook_cursors VALUES (?,?)",
+                sql::webhooks::INSERT_CURSOR,
                 params![webhook_id, last_at_ns],
             )?;
             Ok(())
@@ -128,7 +122,7 @@ impl Writer {
     /// Returns an error if the insert fails.
     pub fn insert_webhook_dead_letter(&self, d: &WebhookDeadLetter) -> Result<(), StoreError> {
         self.conn.execute(
-            "INSERT INTO webhook_dead_letters VALUES (?,?,?,?,?,?,?,?,?)",
+            sql::webhooks::INSERT_DEAD_LETTER,
             params![
                 d.webhook_id,
                 d.run_id,
@@ -152,7 +146,7 @@ impl Reader {
     /// # Errors
     /// Returns an error if the query fails.
     pub fn list_webhooks(&self) -> Result<Vec<WebhookRow>, StoreError> {
-        let rows = self.query_json_rows("SELECT * FROM webhooks ORDER BY name")?;
+        let rows = self.query_json_rows(sql::webhooks::LIST)?;
         Ok(rows.iter().map(row_to_webhook).collect())
     }
 
@@ -161,7 +155,7 @@ impl Reader {
     /// # Errors
     /// Returns an error if the query fails.
     pub fn enabled_webhooks(&self) -> Result<Vec<WebhookRow>, StoreError> {
-        let rows = self.query_json_rows("SELECT * FROM webhooks WHERE enabled ORDER BY name")?;
+        let rows = self.query_json_rows(sql::webhooks::LIST_ENABLED)?;
         Ok(rows.iter().map(row_to_webhook).collect())
     }
 
@@ -170,10 +164,7 @@ impl Reader {
     /// # Errors
     /// Returns an error if the query fails.
     pub fn webhook_cursor(&self, webhook_id: &str) -> Result<Option<i64>, StoreError> {
-        let rows = self.query_json_rows(&format!(
-            "SELECT last_at_ns FROM webhook_cursors WHERE webhook_id = '{}'",
-            webhook_id.replace('\'', "''")
-        ))?;
+        let rows = self.query_json_rows(&sql::webhooks::cursor(webhook_id))?;
         Ok(rows.first().and_then(|r| r["last_at_ns"].as_i64()))
     }
 }

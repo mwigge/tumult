@@ -226,3 +226,9 @@ impl AnalyticsStore {
         Ok(trend)
     }
 }
+
+/// The statements of the recovery trend, for the SQL corpus.
+#[cfg(test)]
+pub(super) fn sql_corpus() -> Vec<tumult_test_utils::sql_corpus::Statement> {
+    tumult_test_utils::sql_statements![RTO_SQL, RPO_SQL]
+}
