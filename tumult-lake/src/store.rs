@@ -90,6 +90,7 @@ impl Store {
         // Open once read-write to initialise/migrate the schema.
         let writer = store.writer()?;
         writer.migrate()?;
+        log_opened(&writer)?;
         sweep_stale_uploads(path);
         Ok(store)
     }
@@ -159,6 +160,50 @@ impl Store {
             path: self.path.clone(),
         })
     }
+}
+
+/// The `DuckDB` engine that has a lake open, and the storage format of the
+/// lake file. An engine keeps the format of a file it opens, so an old
+/// lake can have an older format than a new one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EngineVersions {
+    /// The engine, as `PRAGMA version` names it: `v2.0.0`.
+    pub engine: String,
+    /// The storage format of the lake file, as `DuckDB` tags the database:
+    /// `v2.0.0+` is a file that needs `DuckDB` 2.0.0 or later.
+    pub storage: String,
+}
+
+/// Read the [`EngineVersions`] of the lake that `conn` has open.
+pub(crate) fn engine_versions(conn: &Connection) -> Result<EngineVersions, StoreError> {
+    let engine = conn.version()?;
+    let storage: Option<String> = conn.query_row(
+        "SELECT tags['storage_version'] FROM duckdb_databases() \
+         WHERE database_name = current_database()",
+        params![],
+        |row| row.get(0),
+    )?;
+    let storage = storage.ok_or_else(|| {
+        StoreError::Internal("DuckDB gives no storage version for the lake file".to_string())
+    })?;
+    Ok(EngineVersions { engine, storage })
+}
+
+/// Log the schema version of the lake that `writer` has open, the engine
+/// and the storage format of the file.
+fn log_opened(writer: &Writer) -> Result<(), StoreError> {
+    let schema = writer.schema_version()?;
+    let versions = engine_versions(&writer.conn)?;
+    tracing::info!(
+        name: "lake.store.opened",
+        {
+            lake.schema.version = schema,
+            lake.engine = versions.engine.as_str(),
+            lake.storage = versions.storage.as_str(),
+        },
+        "opened the lake"
+    );
+    Ok(())
 }
 
 /// How long the temporary file of an upload may go unwritten before the
