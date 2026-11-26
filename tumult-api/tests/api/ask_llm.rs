@@ -37,6 +37,51 @@ impl Llm for StubLlm {
     }
 }
 
+/// Answers every chat with the same reply.
+struct SameReply(String);
+
+#[async_trait::async_trait]
+impl Llm for SameReply {
+    async fn chat(&self, _messages: &[Message]) -> Result<String, AiError> {
+        Ok(self.0.clone())
+    }
+}
+
+/// Add a viewer limited to `scopes` (none: every environment) to the lake
+/// at `db`; returns its bearer token. The server reads the lake per
+/// request, so the writer is closed before the first one.
+fn add_viewer(db: &std::path::Path, username: &str, scopes: &[&str]) -> String {
+    let writer = tumult_lake::Store::at(db).writer().unwrap();
+    let user_id = format!("u-{username}");
+    writer
+        .create_user(&tumult_lake::UserRow {
+            id: user_id.clone(),
+            username: username.into(),
+            password_hash: tumult_auth::hash_password("viewer-password").unwrap(),
+            role: "viewer".into(),
+            must_change: false,
+            disabled: false,
+            created_at_ns: common::now_ns(),
+        })
+        .unwrap();
+    let scopes: Vec<String> = scopes.iter().map(|s| (*s).to_string()).collect();
+    writer.set_user_env_scopes(&user_id, &scopes).unwrap();
+    let token = tumult_auth::new_token();
+    writer
+        .create_token(&tumult_lake::TokenRow {
+            id: format!("t-{username}"),
+            user_id,
+            name: username.into(),
+            token_hash: tumult_auth::sha256_hex(&token),
+            created_at_ns: common::now_ns(),
+            last_used_at_ns: None,
+            revoked: false,
+            expires_at_ns: None,
+        })
+        .unwrap();
+    token
+}
+
 async fn spawn_with_llm(llm: Arc<dyn Llm>) -> (String, tempfile::TempDir) {
     let tmp = tempfile::TempDir::new().unwrap();
     let db_path = tmp.path().join("k.duckdb");
@@ -75,6 +120,47 @@ async fn ask(base: &str, question: &str) -> (u16, Value) {
         .unwrap();
     let status = resp.status().as_u16();
     (status, resp.json().await.unwrap())
+}
+
+async fn ask_as(base: &str, token: &str, question: &str) -> (u16, Value) {
+    let resp = reqwest::Client::new()
+        .post(format!("{base}/api/ask"))
+        .bearer_auth(token)
+        .json(&json!({"question": question}))
+        .send()
+        .await
+        .unwrap();
+    let status = resp.status().as_u16();
+    (status, resp.json().await.unwrap())
+}
+
+/// A viewer's question whose generated SQL lists `users` after an allowed
+/// table is refused the way naming `users` alone is, for a viewer of every
+/// environment and for one limited to an environment, and no row of
+/// `users` comes back.
+#[tokio::test]
+async fn generated_sql_that_lists_users_after_an_allowed_table_is_refused_like_users_alone() {
+    let mut errors = Vec::new();
+    for sql in [
+        "SELECT u.username FROM run_roots r, users u",
+        "SELECT u.username FROM users u",
+    ] {
+        let (base, tmp) = spawn_with_llm(Arc::new(SameReply(sql.into()))).await;
+        let db = tmp.path().join("k.duckdb");
+        let tokens = [
+            add_viewer(&db, "viewer-everywhere", &[]),
+            add_viewer(&db, "viewer-in-demo", &["demo"]),
+        ];
+        for token in &tokens {
+            let (status, body) = ask_as(&base, token, "who can sign in").await;
+            assert_eq!(status, 422, "{sql}: {body}");
+            assert!(body.get("rows").is_none(), "{sql}: {body}");
+            assert!(!body.to_string().contains("viewer-"), "{sql}: {body}");
+            errors.push(body["error"].as_str().unwrap().to_string());
+        }
+    }
+    assert!(errors[0].contains("rejected by the guard"), "{errors:?}");
+    assert!(errors.iter().all(|e| *e == errors[0]), "{errors:?}");
 }
 
 #[tokio::test]
