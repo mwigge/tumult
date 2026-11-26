@@ -10,7 +10,8 @@
 //! channel, and run the OTLP/gRPC (`:4317`) and OTLP/HTTP (`:4318`) ingest
 //! servers until SIGTERM/SIGINT. The HTTP server also exposes the ops
 //! endpoints — `GET /healthz` (liveness: writer channel + store probe),
-//! `GET /readyz` (readiness: migrations applied, supervisor ticking) and
+//! `GET /readyz` (readiness: migrations applied, supervisor ticking; JSON
+//! with the schema version, the engine and the storage format) and
 //! `GET /metrics` (daemon SLIs, Prometheus text) — plus
 //! `GET /report?metric=<name>`, which renders a metric report from
 //! the live store — this works while the daemon holds the write lock, unlike

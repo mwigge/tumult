@@ -122,7 +122,10 @@ chrono = { version = "0.4", features = ["serde"] }
 arrow = { version = "60", features = ["json", "ipc", "ffi"] }
 parquet = { version = "60", features = ["arrow", "snap", "zstd"] }
 # Schema/query JSON and Parquet archives must work without extension downloads.
-duckdb = { version = "1.20000", features = ["bundled", "appender-arrow", "vtab-arrow", "json", "parquet"] }
+# The second part of the version names the engine: 1.20000 is DuckDB 2.0.0.
+# The tilde allows only duckdb-rs patches for that engine. A new engine can
+# bring a new storage format, so it moves in a change of its own.
+duckdb = { version = "~1.20000.2", features = ["bundled", "appender-arrow", "vtab-arrow", "json", "parquet"] }
 
 # UUID
 uuid = { version = "1", features = ["v4", "serde"] }

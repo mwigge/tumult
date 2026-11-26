@@ -6,7 +6,7 @@ use duckdb::Connection;
 
 use crate::error::StoreError;
 use crate::rows::ExperimentRun;
-use crate::store::{query_json_rows, query_json_rows_bound};
+use crate::store::{engine_versions, query_json_rows, query_json_rows_bound, EngineVersions};
 
 /// The read side of the store (read-only `DuckDB` connection).
 pub struct Reader {
@@ -68,6 +68,15 @@ impl Reader {
         params: &[P],
     ) -> Result<Vec<serde_json::Value>, StoreError> {
         query_json_rows_bound(&self.conn, sql, params)
+    }
+
+    /// The `DuckDB` engine that has the lake open, and the storage format
+    /// of the lake file.
+    ///
+    /// # Errors
+    /// Returns an error if `DuckDB` cannot report them.
+    pub fn engine_versions(&self) -> Result<EngineVersions, StoreError> {
+        engine_versions(&self.conn)
     }
 
     /// Raw batch execution on the read connection — crate-internal, used by

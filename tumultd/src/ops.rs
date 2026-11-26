@@ -14,9 +14,9 @@ use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
-use axum::Router;
+use axum::{Json, Router};
 use tumult_ingest::{daemon_metrics, IngestWriter};
-use tumult_lake::Store;
+use tumult_lake::{EngineVersions, Store};
 
 /// Bound on a single probe round-trip: a wedged writer task must fail the
 /// probe fast, not hang the probe handler.
@@ -49,16 +49,25 @@ fn probe_store(db_path: &Path) -> Result<(), String> {
     Ok(())
 }
 
-/// The store's schema version (readiness: migrations applied).
-fn schema_version(db_path: &Path) -> Result<i64, String> {
-    Store::at(db_path)
-        .read_only()
-        .map_err(|e| e.to_string())?
+/// What `/readyz` reports of the store.
+struct StoreVersions {
+    /// The schema version (readiness: migrations applied).
+    schema: i64,
+    /// The engine that has the lake open and the storage format of the file.
+    lake: EngineVersions,
+}
+
+/// Read the [`StoreVersions`] on one read-only connection.
+fn store_versions(db_path: &Path) -> Result<StoreVersions, String> {
+    let reader = Store::at(db_path).read_only().map_err(|e| e.to_string())?;
+    let schema = reader
         .query_json_rows("SELECT value FROM schema_meta WHERE key = 'version'")
         .map_err(|e| e.to_string())?
         .first()
         .and_then(|r| r["value"].as_i64())
-        .ok_or_else(|| "schema_meta has no version row".to_string())
+        .ok_or_else(|| "schema_meta has no version row".to_string())?;
+    let lake = reader.engine_versions().map_err(|e| e.to_string())?;
+    Ok(StoreVersions { schema, lake })
 }
 
 /// Writer-channel liveness: a no-op round-trip proves the writer task is
@@ -96,29 +105,38 @@ async fn healthz(State(state): State<OpsState>) -> Response {
 
 /// `GET /readyz` — readiness: liveness plus migrations applied and at least
 /// one supervisor tick since boot (a dead supervisor task stops ticking).
+/// A ready daemon answers JSON with the schema version, the engine and the
+/// storage format of the lake.
 async fn readyz(State(state): State<OpsState>) -> Response {
     if let Err(e) = probe_writer(&state.ingest).await {
         return unavailable(&e);
     }
     let db = state.db_path.clone();
-    let version = tokio::task::spawn_blocking(move || schema_version(&db))
+    let versions = tokio::task::spawn_blocking(move || store_versions(&db))
         .await
         .map_err(|e| format!("schema probe task: {e}"))
         .and_then(std::convert::identity);
-    match version {
-        Ok(v) if v == tumult_lake::CURRENT_SCHEMA_VERSION => {}
+    let versions = match versions {
+        Ok(v) if v.schema == tumult_lake::CURRENT_SCHEMA_VERSION => v,
         Ok(v) => {
             return unavailable(&format!(
-                "schema version {v} (expected {})",
+                "schema version {} (expected {})",
+                v.schema,
                 tumult_lake::CURRENT_SCHEMA_VERSION
             ));
         }
         Err(e) => return unavailable(&format!("schema: {e}")),
-    }
+    };
     if daemon_metrics::supervisor_last_tick_ns() == 0 {
         return unavailable("supervisor has not ticked yet");
     }
-    (StatusCode::OK, "ready").into_response()
+    let ready = serde_json::json!({
+        "status": "ready",
+        "schema": versions.schema,
+        "engine": versions.lake.engine,
+        "storage": versions.lake.storage,
+    });
+    (StatusCode::OK, Json(ready)).into_response()
 }
 
 /// `GET /metrics` — the daemon's own SLIs in Prometheus text format.
@@ -177,6 +195,57 @@ mod tests {
         daemon_metrics::supervisor_tick();
         let resp = readyz(State(state)).await;
         assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn readyz_reports_the_schema_the_engine_and_the_storage_format_of_the_lake() {
+        let (_dir, state, _task) = live_state().await;
+        daemon_metrics::supervisor_tick();
+        let lake = Store::at(&state.db_path)
+            .read_only()
+            .unwrap()
+            .engine_versions()
+            .unwrap();
+        let resp = readyz(State(state)).await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let ready: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(ready["status"], "ready", "{ready}");
+        assert_eq!(
+            ready["schema"],
+            tumult_lake::CURRENT_SCHEMA_VERSION,
+            "{ready}"
+        );
+        assert_eq!(ready["engine"], lake.engine, "{ready}");
+        assert_eq!(ready["storage"], lake.storage, "{ready}");
+    }
+
+    #[tokio::test]
+    async fn readyz_is_unavailable_while_the_lake_schema_is_not_the_current_one() {
+        let (_dir, state, _task) = live_state().await;
+        daemon_metrics::supervisor_tick();
+        Store::at(&state.db_path)
+            .writer()
+            .unwrap()
+            .execute(
+                "UPDATE schema_meta SET value = value - 1 WHERE key = 'version'",
+                [],
+            )
+            .unwrap();
+        let resp = readyz(State(state)).await;
+        assert_eq!(resp.status(), StatusCode::SERVICE_UNAVAILABLE);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let reason = String::from_utf8(body.to_vec()).unwrap();
+        let expected = format!(
+            "schema version {} (expected {})",
+            tumult_lake::CURRENT_SCHEMA_VERSION - 1,
+            tumult_lake::CURRENT_SCHEMA_VERSION
+        );
+        assert_eq!(reason, expected);
     }
 
     #[tokio::test]
