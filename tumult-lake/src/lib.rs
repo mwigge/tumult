@@ -152,7 +152,7 @@ pub use sightings::{StoredVersions, VersionSighting, REDEPLOY_GAP};
 #[cfg(feature = "duckdb")]
 pub(crate) use store::{migrate, query_json_rows, query_json_rows_bound, with_tx};
 #[cfg(feature = "duckdb")]
-pub use store::{SqlParam, Store};
+pub use store::{EngineVersions, SqlParam, Store};
 #[cfg(feature = "duckdb")]
 pub use version_order::version_cmp;
 #[cfg(feature = "duckdb")]

@@ -64,6 +64,15 @@ store has users; with no users yet they answer anyone.
 | `GET /readyz` | Readiness: liveness, the schema is current, and the supervisor has ticked. |
 | `GET /metrics` | Always: the counters below in Prometheus text. |
 
+`/readyz` answers with JSON. `schema` is the schema version of the lake,
+`engine` the DuckDB version that has it open, and `storage` the storage format
+of the lake file. `v2.0.0+` is a file that needs DuckDB 2.0.0 or later. A lake
+created by an older engine keeps its older format.
+
+```json
+{"status": "ready", "schema": 26, "engine": "v2.0.0", "storage": "v2.0.0+"}
+```
+
 A failing check answers 503 with the reason. Kubernetes HTTP probes count 401
 as a failure, so use an exec probe that sends the token, as
 `deploy/k8s/tumultd.yaml` does. A browser that asks for `text/html` on

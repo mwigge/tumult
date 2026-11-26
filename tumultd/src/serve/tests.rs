@@ -521,13 +521,18 @@ async fn a_failing_store_never_feeds_the_daemons_own_export() {
     assert_eq!(refused_writes, 5, "one refused write per flush, no echo");
     assert_eq!(logged, refused_writes, "every refusal is on stderr");
     assert_eq!(exported_from_the_ingest_path(&capture), 0);
-    // The daemon's other events are still exported.
+    // The daemon's other events are still exported: the store logs once
+    // that it opened, and a server stops.
     crate::events::server_stopped("grpc", &Ok::<(), std::io::Error>(()));
     let exported = capture.exported();
-    assert_eq!(exported.len(), 1, "{exported:?}");
+    let names: Vec<_> = exported
+        .iter()
+        .map(|event| event.event_name.as_deref())
+        .collect();
     assert_eq!(
-        exported[0].event_name.as_deref(),
-        Some("daemon.server.stopped")
+        names,
+        [Some("lake.store.opened"), Some("daemon.server.stopped")],
+        "{exported:?}"
     );
 }
 
