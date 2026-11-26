@@ -54,6 +54,7 @@ use tumult_core::types::{bounded_version_text, VersionShare, MAX_VERSION_LEN};
 
 use crate::error::StoreError;
 use crate::rows::SpanRow;
+use crate::sql;
 use crate::{Reader, Store, Writer};
 
 /// The silence after which a version that speaks again, another having
@@ -309,16 +310,7 @@ fn left_out_in(rows: &[SpanRow], outside: impl Fn(i64) -> bool) -> Option<Ahead>
 /// The versioned spans stored in `(from, upto]`, named by the service,
 /// environment and version with the most of them.
 fn ahead_stored(conn: &Connection, from: i64, upto: i64) -> Result<Option<Ahead>, duckdb::Error> {
-    let mut stmt = conn.prepare(
-        "SELECT service_name, target_environment, service_version,
-                count(*) AS spans, min(ts_ns) AS first_ns
-         FROM spans
-         WHERE ts_ns > ? AND ts_ns <= ?
-           AND service_version IS NOT NULL AND service_version <> ''
-         GROUP BY service_name, target_environment, service_version
-         ORDER BY spans DESC, first_ns
-         LIMIT 1",
-    )?;
+    let mut stmt = conn.prepare(sql::sightings::AHEAD_STORED)?;
     let mut rows = stmt.query(params![from, upto])?;
     let Some(row) = rows.next()? else {
         return Ok(None);
@@ -470,19 +462,8 @@ fn store_changed(
     before: &BTreeMap<Key, Held>,
     after: &BTreeMap<Key, Held>,
 ) -> Result<(), duckdb::Error> {
-    let mut update = conn.prepare(
-        "UPDATE service_version_sightings
-         SET first_seen_ns = ?, last_seen_ns = ?, last_deployed_ns = ?,
-             deployments = ?, sanitized = ?, first_anchor_ns = ?
-         WHERE service_name = ? AND service_version = ?
-           AND environment IS NOT DISTINCT FROM ?",
-    )?;
-    let mut insert = conn.prepare(
-        "INSERT INTO service_version_sightings
-            (service_name, environment, service_version, first_seen_ns, last_seen_ns,
-             last_deployed_ns, deployments, sanitized, first_anchor_ns)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-    )?;
+    let mut update = conn.prepare(sql::sightings::UPDATE)?;
+    let mut insert = conn.prepare(sql::sightings::INSERT)?;
     for (key, row) in after {
         let (environment, version) = key;
         match before.get(key) {
@@ -559,7 +540,7 @@ enum Backfill {
 }
 
 fn backfill_state(conn: &Connection) -> Result<Backfill, duckdb::Error> {
-    let mut stmt = conn.prepare("SELECT done, cursor_ns FROM sightings_backfill LIMIT 1")?;
+    let mut stmt = conn.prepare(sql::sightings::BACKFILL_STATE)?;
     let mut rows = stmt.query(params![])?;
     let Some(row) = rows.next()? else {
         return Ok(Backfill::NotStarted);
@@ -576,14 +557,14 @@ fn in_tx<T>(
     conn: &Connection,
     f: impl FnOnce() -> Result<T, duckdb::Error>,
 ) -> Result<T, duckdb::Error> {
-    conn.execute_batch("BEGIN TRANSACTION")?;
+    conn.execute_batch(sql::tx::BEGIN)?;
     match f() {
         Ok(value) => {
-            conn.execute_batch("COMMIT")?;
+            conn.execute_batch(sql::tx::COMMIT)?;
             Ok(value)
         }
         Err(e) => {
-            if let Err(rollback) = conn.execute_batch("ROLLBACK") {
+            if let Err(rollback) = conn.execute_batch(sql::tx::ROLLBACK) {
                 tracing::warn!(
                     error.message = %rollback,
                     "lake.sightings.rollback_failed"
@@ -597,11 +578,7 @@ fn in_tx<T>(
 /// Empty the rollup and set the backfill to read every span again.
 /// Runs inside the caller's transaction.
 fn backfill_restart(conn: &Connection) -> Result<(), duckdb::Error> {
-    conn.execute_batch(
-        "DELETE FROM service_version_sightings;
-         DELETE FROM sightings_backfill;
-         INSERT INTO sightings_backfill (done, cursor_ns) VALUES (false, NULL);",
-    )
+    conn.execute_batch(sql::sightings::BACKFILL_RESTART)
 }
 
 /// Read the next day of versioned spans into the rollup, a slice of
@@ -618,13 +595,12 @@ fn backfill_step(
         return Ok(true);
     };
     let next: Option<i64> = conn.query_row(
-        "SELECT min(ts_ns) FROM spans
-         WHERE ts_ns > ? AND service_version IS NOT NULL AND service_version <> ''",
+        sql::sightings::NEXT_VERSIONED_SPAN,
         params![cursor],
         |row| row.get(0),
     )?;
     let Some(next) = next else {
-        conn.execute_batch("UPDATE sightings_backfill SET done = true")?;
+        conn.execute_batch(sql::sightings::BACKFILL_DONE)?;
         return Ok(true);
     };
     let day_end = next.saturating_add(BACKFILL_STEP_NS);
@@ -654,15 +630,7 @@ fn backfill_slice(
     upto: i64,
     now_ns: i64,
 ) -> Result<(), duckdb::Error> {
-    let mut stmt = conn.prepare(
-        "SELECT service_name, target_environment, service_version,
-                min(ts_ns) AS first_ns, max(ts_ns) AS last_ns
-         FROM spans
-         WHERE ts_ns > ? AND ts_ns <= ?
-           AND service_version IS NOT NULL AND service_version <> ''
-         GROUP BY service_name, target_environment, service_version, ts_ns // ?
-         ORDER BY first_ns",
-    )?;
+    let mut stmt = conn.prepare(sql::sightings::BACKFILL_SLICE)?;
     let horizon_ns = horizon_of(now_ns);
     if upto > horizon_ns {
         if let Some(ahead) = ahead_stored(conn, from.max(horizon_ns), upto)? {
@@ -691,7 +659,7 @@ fn backfill_slice(
     })?;
     let sights = rows.collect::<Result<Vec<_>, _>>()?;
     record(conn, &sights, horizon_ns)?;
-    conn.execute("UPDATE sightings_backfill SET cursor_ns = ?", params![upto])?;
+    conn.execute(sql::sightings::SET_BACKFILL_CURSOR, params![upto])?;
     Ok(())
 }
 
@@ -828,16 +796,7 @@ impl Reader {
         from_ns: i64,
         to_ns: i64,
     ) -> Result<Vec<VersionShare>, StoreError> {
-        let mut stmt = self.conn.prepare(
-            "SELECT service_version, count(*) FROM spans
-             WHERE service_name = ? AND ts_ns BETWEEN ? AND ?
-               AND target_environment IS NOT DISTINCT FROM ?
-               AND service_version IS NOT NULL AND service_version <> ''
-               AND (upper(span_kind) IN ('SERVER', 'CONSUMER')
-                    OR parent_span_id IS NULL OR parent_span_id = '')
-               AND (? IS NULL OR resource_attrs['service.namespace'] = ?)
-             GROUP BY service_version",
-        )?;
+        let mut stmt = self.conn.prepare(sql::sightings::OBSERVED_VERSIONS)?;
         let rows = stmt.query_map(
             params![service, from_ns, to_ns, environment, namespace, namespace],
             |row| Ok((row.get::<_, String>(0)?, row.get::<_, u64>(1)?)),
@@ -924,6 +883,12 @@ impl TargetVersionResolver for StoredVersions {
             )
             .map_err(|e| e.to_string())
     }
+}
+
+/// The statements of the sightings, for the SQL corpus.
+#[cfg(test)]
+pub(crate) fn sql_corpus() -> Vec<tumult_test_utils::sql_corpus::Statement> {
+    tumult_test_utils::sql_statements![HELD]
 }
 
 #[cfg(test)]

@@ -10,6 +10,7 @@ use duckdb::params;
 use serde::{Deserialize, Serialize};
 
 use crate::error::StoreError;
+use crate::sql;
 use crate::{Reader, Writer};
 
 /// Run states (`runs.state`). The happy path is
@@ -95,10 +96,8 @@ impl Writer {
     /// # Errors
     /// Returns an error if the update fails.
     pub fn set_run_gameday(&self, run_id: &str, gameday_id: &str) -> Result<(), StoreError> {
-        self.conn.execute(
-            "UPDATE runs SET gameday_id = ? WHERE id = ?",
-            params![gameday_id, run_id],
-        )?;
+        self.conn
+            .execute(sql::runs::SET_GAMEDAY, params![gameday_id, run_id])?;
         Ok(())
     }
 
@@ -113,18 +112,8 @@ impl Writer {
         &self,
         registry_id: &str,
     ) -> Result<Option<serde_json::Value>, StoreError> {
-        let states = run_state::ACTIVE
-            .iter()
-            .map(|s| format!("'{s}'"))
-            .collect::<Vec<_>>()
-            .join(", ");
         Ok(self
-            .query_json_rows(&format!(
-                "SELECT r.id FROM runs r \
-                 WHERE r.registry_id = '{}' AND r.gameday_id IS NULL \
-                   AND r.state IN ({states}) LIMIT 1",
-                registry_id.replace('\'', "''")
-            ))?
+            .query_json_rows(&sql::runs::active_campaign(registry_id))?
             .into_iter()
             .next())
     }
@@ -135,9 +124,7 @@ impl Writer {
     /// Returns an error if the row fails to insert.
     pub fn register_definition(&self, def: &RegisteredDefinition) -> Result<(), StoreError> {
         self.conn.execute(
-            "INSERT INTO run_registry \
-             (id, name, definition_toon, content_hash, registered_at_ns, registered_by) \
-             VALUES (?,?,?,?,?,?)",
+            sql::runs::INSERT_DEFINITION,
             params![
                 def.id,
                 def.name,
@@ -161,9 +148,7 @@ impl Writer {
         def: &RegisteredDefinition,
     ) -> Result<(), StoreError> {
         self.conn.execute(
-            "INSERT INTO run_registry \
-             (id, name, definition_toon, content_hash, registered_at_ns, registered_by, kind) \
-             VALUES (?,?,?,?,?,?,'gameday')",
+            sql::runs::INSERT_GAMEDAY_DEFINITION,
             params![
                 def.id,
                 def.name,
@@ -195,8 +180,7 @@ impl Writer {
     ) -> Result<(), StoreError> {
         crate::with_tx(&self.conn, || {
             self.conn.execute(
-                "INSERT INTO runs (id, registry_id, state, params_json, queued_at_ns) \
-                 VALUES (?,?,?,CAST(? AS JSON),?)",
+                sql::runs::INSERT_RUN,
                 params![
                     run.id,
                     run.registry_id,
@@ -229,10 +213,8 @@ impl Writer {
             let hash = hash.as_str().ok_or_else(|| {
                 StoreError::Internal("execution fingerprint must be a string".into())
             })?;
-            self.conn.execute(
-                "INSERT INTO run_execution_pins (run_id, execution_hash) VALUES (?, ?)",
-                params![run_id, hash],
-            )?;
+            self.conn
+                .execute(sql::runs::INSERT_EXECUTION_PIN, params![run_id, hash])?;
         }
         self.insert_run_audit(
             run_id,
@@ -266,10 +248,9 @@ impl Writer {
         actor: Option<&str>,
     ) -> Result<(), StoreError> {
         crate::with_tx(&self.conn, || {
-            let changed = self.conn.execute(
-                "UPDATE runs SET state = ? WHERE id = ? AND state NOT IN ('passed','deviated','failed','aborted','rejected','expired') AND (? <> 'queued' OR state = 'pending_approval')",
-                params![state, run_id, state],
-            )?;
+            let changed = self
+                .conn
+                .execute(sql::runs::SET_STATE, params![state, run_id, state])?;
             require_transition(changed, run_id)?;
             self.insert_run_audit(run_id, audit_event.unwrap_or(state), audit_detail, actor)
         })
@@ -289,8 +270,7 @@ impl Writer {
     ) -> Result<(), StoreError> {
         crate::with_tx(&self.conn, || {
             let changed = self.conn.execute(
-                "UPDATE runs SET state = ?, started_at_ns = ?, \
-                 experiment_id = COALESCE(?, experiment_id) WHERE id = ? AND state IN ('queued', 'validating')",
+                sql::runs::MARK_STARTED,
                 params![run_state::RUNNING, now_ns(), experiment_id, run_id],
             )?;
             require_transition(changed, run_id)?;
@@ -304,10 +284,7 @@ impl Writer {
     /// Returns an error if the run is no longer queued or persistence fails.
     pub fn claim_run(&self, run_id: &str) -> Result<(), StoreError> {
         crate::with_tx(&self.conn, || {
-            let changed = self.conn.execute(
-                "UPDATE runs SET state = 'validating' WHERE id = ? AND state = 'queued'",
-                params![run_id],
-            )?;
+            let changed = self.conn.execute(sql::runs::CLAIM, params![run_id])?;
             require_transition(changed, run_id)?;
             self.insert_run_audit(run_id, "validating", None, None)
         })
@@ -326,23 +303,20 @@ impl Writer {
     ) -> Result<(), StoreError> {
         crate::with_tx(&self.conn, || {
             let now = now_ns();
-            let changed = self.conn.execute(
-                "UPDATE runs SET state = 'running', started_at_ns = ? WHERE id = ? AND state = 'validating'",
-                params![now, run_id],
-            )?;
+            let changed = self
+                .conn
+                .execute(sql::runs::BEGIN_EXECUTION, params![now, run_id])?;
             require_transition(changed, run_id)?;
             if let Some(pin) = approval_pin {
                 let changed = self.conn.execute(
-                    "UPDATE approval_requests SET consumed_at_ns = ? WHERE run_id = ? AND pin_hash = ? AND consumed_at_ns IS NULL AND (break_glass = TRUE OR expires_at_ns >= ?)",
+                    sql::runs::CONSUME_PINNED_APPROVAL,
                     params![now, run_id, pin, now],
                 )?;
                 require_transition(changed, run_id)?;
                 self.insert_run_audit(run_id, "consumed", Some(pin), None)?;
             }
-            self.conn.execute(
-                "INSERT INTO run_recovery_plans (run_id, plan_json) VALUES (?, CAST(? AS JSON))",
-                params![run_id, plan_json],
-            )?;
+            self.conn
+                .execute(sql::runs::INSERT_RECOVERY_PLAN, params![run_id, plan_json])?;
             self.insert_run_audit(run_id, "started", None, None)
         })
     }
@@ -353,17 +327,14 @@ impl Writer {
     /// Returns an error if the run ended before the stop was persisted.
     pub fn request_run_stop(&self, run_id: &str, actor: Option<&str>) -> Result<(), StoreError> {
         crate::with_tx(&self.conn, || {
-            let changed = self.conn.execute(
-                "UPDATE runs SET state = CASE WHEN started_at_ns IS NULL THEN 'aborted' ELSE 'stopping' END, ended_at_ns = CASE WHEN started_at_ns IS NULL THEN ? ELSE ended_at_ns END, rollback_status = CASE WHEN started_at_ns IS NULL THEN 'not_needed' ELSE rollback_status END, error = CASE WHEN started_at_ns IS NULL THEN 'cancelled before start' ELSE error END WHERE id = ? AND state IN ('queued','validating','running','stopping','pending_approval')",
-                params![now_ns(), run_id],
-            )?;
+            let changed = self
+                .conn
+                .execute(sql::runs::REQUEST_STOP, params![now_ns(), run_id])?;
             require_transition(changed, run_id)?;
             self.insert_run_audit(run_id, "stop_requested", None, actor)?;
-            let state: String = self.conn.query_row(
-                "SELECT state FROM runs WHERE id = ?",
-                params![run_id],
-                |row| row.get(0),
-            )?;
+            let state: String = self
+                .conn
+                .query_row(sql::runs::STATE, params![run_id], |row| row.get(0))?;
             self.insert_run_audit(run_id, &state, None, actor)
         })
     }
@@ -375,10 +346,9 @@ impl Writer {
     /// Returns an error if persistence fails.
     pub fn fail_run(&self, run_id: &str, error: &str) -> Result<(), StoreError> {
         crate::with_tx(&self.conn, || {
-            let changed = self.conn.execute(
-                "UPDATE runs SET state = CASE WHEN started_at_ns IS NULL THEN 'failed' ELSE 'rollback_pending' END, error = ?, ended_at_ns = CASE WHEN started_at_ns IS NULL THEN ? ELSE ended_at_ns END WHERE id = ? AND state IN ('queued','validating','running','stopping')",
-                params![error, now_ns(), run_id],
-            )?;
+            let changed = self
+                .conn
+                .execute(sql::runs::FAIL, params![error, now_ns(), run_id])?;
             if changed == 0 {
                 return Ok(());
             }
@@ -403,9 +373,7 @@ impl Writer {
         crate::with_tx(&self.conn, || {
             let pending_only = matches!(state, run_state::REJECTED | run_state::EXPIRED);
             let changed = self.conn.execute(
-                "UPDATE runs SET state = ?, ended_at_ns = ?, \
-                 experiment_id = COALESCE(?, experiment_id), rollback_status = ?, error = ? \
-                 WHERE id = ? AND (NOT ? OR state = 'pending_approval')",
+                sql::runs::FINISH,
                 params![
                     state,
                     now_ns(),
@@ -438,15 +406,16 @@ impl Writer {
         actor: Option<&str>,
     ) -> Result<(), StoreError> {
         let at_ns = now_ns();
-        let prev_hash: Option<String> = match self.conn.query_row(
-            "SELECT new_hash FROM run_audit WHERE run_id = ? ORDER BY at_ns DESC, rowid DESC LIMIT 1",
-            params![run_id],
-            |row| row.get::<_, Option<String>>(0),
-        ) {
-            Ok(hash) => hash,
-            Err(duckdb::Error::QueryReturnedNoRows) => None,
-            Err(error) => return Err(error.into()),
-        };
+        let prev_hash: Option<String> =
+            match self
+                .conn
+                .query_row(sql::runs::LAST_AUDIT_HASH, params![run_id], |row| {
+                    row.get::<_, Option<String>>(0)
+                }) {
+                Ok(hash) => hash,
+                Err(duckdb::Error::QueryReturnedNoRows) => None,
+                Err(error) => return Err(error.into()),
+            };
         let new_hash = crate::approvals::audit_chain_hash(
             run_id,
             at_ns,
@@ -456,8 +425,7 @@ impl Writer {
             prev_hash.as_deref(),
         );
         self.conn.execute(
-            "INSERT INTO run_audit (run_id, at_ns, event, detail, actor, prev_hash, new_hash) \
-             VALUES (?,?,?,?,?,?,?)",
+            sql::runs::INSERT_AUDIT,
             params![run_id, at_ns, event, detail, actor, prev_hash, new_hash],
         )?;
         Ok(())
@@ -470,11 +438,10 @@ impl Reader {
     /// # Errors
     /// Returns an error when the private lookup fails.
     pub fn run_execution_hash(&self, run_id: &str) -> Result<Option<String>, StoreError> {
-        match self.conn.query_row(
-            "SELECT execution_hash FROM run_execution_pins WHERE run_id = ?",
-            params![run_id],
-            |row| row.get(0),
-        ) {
+        match self
+            .conn
+            .query_row(sql::runs::EXECUTION_HASH, params![run_id], |row| row.get(0))
+        {
             Ok(hash) => Ok(Some(hash)),
             Err(duckdb::Error::QueryReturnedNoRows) => Ok(None),
             Err(error) => Err(error.into()),
@@ -489,10 +456,7 @@ impl Reader {
         &self,
         id: &str,
     ) -> Result<Option<RegisteredDefinition>, StoreError> {
-        let rows = self.query_json_rows(&format!(
-            "SELECT * FROM run_registry WHERE id = '{}'",
-            id.replace('\'', "''")
-        ))?;
+        let rows = self.query_json_rows(&sql::runs::definition(id))?;
         Ok(rows.first().map(row_to_definition))
     }
 
@@ -504,11 +468,7 @@ impl Reader {
         &self,
         content_hash: &str,
     ) -> Result<Option<RegisteredDefinition>, StoreError> {
-        let rows = self.query_json_rows(&format!(
-            "SELECT * FROM run_registry WHERE content_hash = '{}' ORDER BY registered_at_ns \
-             LIMIT 1",
-            content_hash.replace('\'', "''")
-        ))?;
+        let rows = self.query_json_rows(&sql::runs::definition_by_hash(content_hash))?;
         Ok(rows.first().map(row_to_definition))
     }
 
@@ -519,10 +479,7 @@ impl Reader {
     /// # Errors
     /// Returns an error if the query fails.
     pub fn registry_list(&self, limit: u32) -> Result<Vec<serde_json::Value>, StoreError> {
-        self.query_json_rows(&format!(
-            "SELECT id, name, content_hash, registered_at_ns, registered_by \
-             FROM run_registry ORDER BY registered_at_ns DESC LIMIT {limit}"
-        ))
+        self.query_json_rows(&sql::runs::definitions(limit))
     }
 
     /// List runs, newest first; `state` filters to one state.
@@ -534,14 +491,7 @@ impl Reader {
         state: Option<&str>,
         limit: u32,
     ) -> Result<Vec<serde_json::Value>, StoreError> {
-        let filter = state.map_or_else(String::new, |s| {
-            format!("WHERE r.state = '{}'", s.replace('\'', "''"))
-        });
-        self.query_json_rows(&format!(
-            "SELECT r.*, g.name AS definition_name FROM runs r \
-             LEFT JOIN run_registry g ON g.id = r.registry_id \
-             {filter} ORDER BY r.queued_at_ns DESC LIMIT {limit}"
-        ))
+        self.query_json_rows(&sql::runs::runs(state, limit))
     }
 
     /// One run by id (joined with its definition name), or `None`.
@@ -549,12 +499,7 @@ impl Reader {
     /// # Errors
     /// Returns an error if the query fails.
     pub fn run_get(&self, id: &str) -> Result<Option<serde_json::Value>, StoreError> {
-        let rows = self.query_json_rows(&format!(
-            "SELECT r.*, g.name AS definition_name FROM runs r \
-             LEFT JOIN run_registry g ON g.id = r.registry_id \
-             WHERE r.id = '{}'",
-            id.replace('\'', "''")
-        ))?;
+        let rows = self.query_json_rows(&sql::runs::run(id))?;
         Ok(rows.into_iter().next())
     }
 
@@ -563,10 +508,7 @@ impl Reader {
     /// # Errors
     /// Returns an error if the query fails.
     pub fn run_audit_trail(&self, id: &str) -> Result<Vec<serde_json::Value>, StoreError> {
-        self.query_json_rows(&format!(
-            "SELECT * FROM run_audit WHERE run_id = '{}' ORDER BY at_ns",
-            id.replace('\'', "''")
-        ))
+        self.query_json_rows(&sql::runs::audit_trail(id))
     }
 
     /// Active-state runs joined with their definitions — the orphan
@@ -579,18 +521,7 @@ impl Reader {
     /// # Errors
     /// Returns an error if the query fails.
     pub fn active_runs(&self) -> Result<Vec<serde_json::Value>, StoreError> {
-        let states = run_state::ACTIVE
-            .iter()
-            .map(|s| format!("'{s}'"))
-            .collect::<Vec<_>>()
-            .join(", ");
-        self.query_json_rows(&format!(
-            "SELECT r.*, g.name AS definition_name, g.definition_toon, p.plan_json AS recovery_plan_json FROM runs r \
-             JOIN run_registry g ON g.id = r.registry_id \
-             LEFT JOIN run_recovery_plans p ON p.run_id = r.id \
-             WHERE r.state IN ({states}) AND g.kind IS DISTINCT FROM 'gameday' \
-             ORDER BY r.queued_at_ns"
-        ))
+        self.query_json_rows(&sql::runs::active_runs())
     }
 }
 

@@ -15,6 +15,7 @@
 use duckdb::params;
 
 use crate::error::StoreError;
+use crate::sql;
 use crate::{Reader, Writer};
 
 /// A user record (`users`).
@@ -61,7 +62,7 @@ impl Writer {
     /// Returns an error if the row fails to insert.
     pub fn create_user(&self, user: &UserRow) -> Result<(), StoreError> {
         self.conn.execute(
-            "INSERT INTO users VALUES (?,?,?,?,?,?,?)",
+            sql::auth::INSERT_USER,
             params![
                 user.id,
                 user.username,
@@ -81,10 +82,8 @@ impl Writer {
     /// # Errors
     /// Returns an error if the update fails.
     pub fn set_user_password(&self, user_id: &str, password_hash: &str) -> Result<(), StoreError> {
-        self.conn.execute(
-            "UPDATE users SET password_hash = ?, must_change = false WHERE id = ?",
-            params![password_hash, user_id],
-        )?;
+        self.conn
+            .execute(sql::auth::SET_PASSWORD, params![password_hash, user_id])?;
         Ok(())
     }
 
@@ -100,10 +99,8 @@ impl Writer {
         user_id: &str,
         password_hash: &str,
     ) -> Result<(), StoreError> {
-        self.conn.execute(
-            "UPDATE users SET password_hash = ?, must_change = true WHERE id = ?",
-            params![password_hash, user_id],
-        )?;
+        self.conn
+            .execute(sql::auth::RESET_PASSWORD, params![password_hash, user_id])?;
         Ok(())
     }
 
@@ -112,10 +109,8 @@ impl Writer {
     /// # Errors
     /// Returns an error if the update fails.
     pub fn set_user_role(&self, user_id: &str, role: &str) -> Result<(), StoreError> {
-        self.conn.execute(
-            "UPDATE users SET role = ? WHERE id = ?",
-            params![role, user_id],
-        )?;
+        self.conn
+            .execute(sql::auth::SET_ROLE, params![role, user_id])?;
         Ok(())
     }
 
@@ -124,10 +119,8 @@ impl Writer {
     /// # Errors
     /// Returns an error if the update fails.
     pub fn set_user_disabled(&self, user_id: &str, disabled: bool) -> Result<(), StoreError> {
-        self.conn.execute(
-            "UPDATE users SET disabled = ? WHERE id = ?",
-            params![disabled, user_id],
-        )?;
+        self.conn
+            .execute(sql::auth::SET_DISABLED, params![disabled, user_id])?;
         Ok(())
     }
 
@@ -137,7 +130,7 @@ impl Writer {
     /// Returns an error if the row fails to insert.
     pub fn create_session(&self, session: &SessionRow) -> Result<(), StoreError> {
         self.conn.execute(
-            "INSERT INTO sessions VALUES (?,?,?,?)",
+            sql::auth::INSERT_SESSION,
             params![
                 session.id_hash,
                 session.user_id,
@@ -154,7 +147,7 @@ impl Writer {
     /// Returns an error if the delete fails.
     pub fn delete_session(&self, id_hash: &str) -> Result<(), StoreError> {
         self.conn
-            .execute("DELETE FROM sessions WHERE id_hash = ?", params![id_hash])?;
+            .execute(sql::auth::DELETE_SESSION, params![id_hash])?;
         Ok(())
     }
 
@@ -165,7 +158,7 @@ impl Writer {
     /// Returns an error if the delete fails.
     pub fn delete_sessions_for_user(&self, user_id: &str) -> Result<(), StoreError> {
         self.conn
-            .execute("DELETE FROM sessions WHERE user_id = ?", params![user_id])?;
+            .execute(sql::auth::DELETE_USER_SESSIONS, params![user_id])?;
         Ok(())
     }
 
@@ -175,7 +168,7 @@ impl Writer {
     /// Returns an error if the row fails to insert.
     pub fn create_token(&self, token: &TokenRow) -> Result<(), StoreError> {
         self.conn.execute(
-            "INSERT INTO tokens VALUES (?,?,?,?,?,?,?,?)",
+            sql::auth::INSERT_TOKEN,
             params![
                 token.id,
                 token.user_id,
@@ -195,8 +188,7 @@ impl Writer {
     /// # Errors
     /// Returns an error if the update fails.
     pub fn revoke_token(&self, id: &str) -> Result<(), StoreError> {
-        self.conn
-            .execute("UPDATE tokens SET revoked = true WHERE id = ?", params![id])?;
+        self.conn.execute(sql::auth::REVOKE_TOKEN, params![id])?;
         Ok(())
     }
 
@@ -206,10 +198,8 @@ impl Writer {
     /// # Errors
     /// Returns an error if the update fails.
     pub fn revoke_tokens_for_user(&self, user_id: &str) -> Result<(), StoreError> {
-        self.conn.execute(
-            "UPDATE tokens SET revoked = true WHERE user_id = ?",
-            params![user_id],
-        )?;
+        self.conn
+            .execute(sql::auth::REVOKE_USER_TOKENS, params![user_id])?;
         Ok(())
     }
 
@@ -218,10 +208,8 @@ impl Writer {
     /// # Errors
     /// Returns an error if the update fails.
     pub fn touch_token_last_used(&self, token_hash: &str, at_ns: i64) -> Result<(), StoreError> {
-        self.conn.execute(
-            "UPDATE tokens SET last_used_at_ns = ? WHERE token_hash = ?",
-            params![at_ns, token_hash],
-        )?;
+        self.conn
+            .execute(sql::auth::TOUCH_TOKEN, params![at_ns, token_hash])?;
         Ok(())
     }
 
@@ -238,13 +226,9 @@ impl Writer {
         environments: &[String],
     ) -> Result<(), StoreError> {
         crate::with_tx(&self.conn, || {
-            self.conn.execute(
-                "DELETE FROM user_env_scopes WHERE user_id = ?",
-                params![user_id],
-            )?;
-            let mut stmt = self
-                .conn
-                .prepare("INSERT INTO user_env_scopes VALUES (?,?)")?;
+            self.conn
+                .execute(sql::auth::DELETE_ENV_SCOPES, params![user_id])?;
+            let mut stmt = self.conn.prepare(sql::auth::INSERT_ENV_SCOPE)?;
             for env in environments {
                 stmt.execute(params![user_id, env])?;
             }
@@ -259,7 +243,7 @@ impl Reader {
     /// # Errors
     /// Returns an error if the query fails.
     pub fn users_exist(&self) -> Result<bool, StoreError> {
-        let rows = self.query_json_rows("SELECT count(*) AS c FROM users")?;
+        let rows = self.query_json_rows(sql::auth::COUNT_USERS)?;
         Ok(rows.first().and_then(|r| r["c"].as_u64()).unwrap_or(0) > 0)
     }
 
@@ -272,7 +256,7 @@ impl Reader {
     /// # Errors
     /// Returns an error if the query fails.
     pub fn real_users_exist(&self) -> Result<bool, StoreError> {
-        let rows = self.query_json_rows("SELECT count(*) AS c FROM users WHERE id != 'legacy'")?;
+        let rows = self.query_json_rows(sql::auth::COUNT_REAL_USERS)?;
         Ok(rows.first().and_then(|r| r["c"].as_u64()).unwrap_or(0) > 0)
     }
 
@@ -281,10 +265,7 @@ impl Reader {
     /// # Errors
     /// Returns an error if the query fails.
     pub fn user_by_username(&self, username: &str) -> Result<Option<UserRow>, StoreError> {
-        let rows = self.query_json_rows(&format!(
-            "SELECT * FROM users WHERE username = '{}'",
-            username.replace('\'', "''")
-        ))?;
+        let rows = self.query_json_rows(&sql::auth::user_by_username(username))?;
         Ok(rows.first().map(row_to_user))
     }
 
@@ -293,10 +274,7 @@ impl Reader {
     /// # Errors
     /// Returns an error if the query fails.
     pub fn user_by_id(&self, id: &str) -> Result<Option<UserRow>, StoreError> {
-        let rows = self.query_json_rows(&format!(
-            "SELECT * FROM users WHERE id = '{}'",
-            id.replace('\'', "''")
-        ))?;
+        let rows = self.query_json_rows(&sql::auth::user_by_id(id))?;
         Ok(rows.first().map(row_to_user))
     }
 
@@ -307,7 +285,7 @@ impl Reader {
     /// # Errors
     /// Returns an error if the query fails.
     pub fn list_users(&self) -> Result<Vec<UserRow>, StoreError> {
-        let rows = self.query_json_rows("SELECT * FROM users ORDER BY username")?;
+        let rows = self.query_json_rows(sql::auth::USERS)?;
         Ok(rows.iter().map(row_to_user).collect())
     }
 
@@ -318,8 +296,7 @@ impl Reader {
     /// # Errors
     /// Returns an error if the query fails.
     pub fn list_tokens(&self) -> Result<Vec<TokenRow>, StoreError> {
-        let rows =
-            self.query_json_rows("SELECT * FROM tokens ORDER BY created_at_ns DESC, id DESC")?;
+        let rows = self.query_json_rows(sql::auth::TOKENS)?;
         Ok(rows.iter().map(row_to_token).collect())
     }
 
@@ -333,16 +310,7 @@ impl Reader {
         id_hash: &str,
         now_ns: i64,
     ) -> Result<Option<(SessionRow, UserRow)>, StoreError> {
-        let rows = self.query_json_rows(&format!(
-            "SELECT s.id_hash, s.user_id, s.created_at_ns, s.expires_at_ns, \
-                    u.id AS u_id, u.username AS u_username, \
-                    u.password_hash AS u_password_hash, u.role AS u_role, \
-                    u.must_change AS u_must_change, u.disabled AS u_disabled, \
-                    u.created_at_ns AS u_created_at_ns \
-             FROM sessions s JOIN users u ON u.id = s.user_id \
-             WHERE s.id_hash = '{}' AND s.expires_at_ns > {now_ns}",
-            id_hash.replace('\'', "''")
-        ))?;
+        let rows = self.query_json_rows(&sql::auth::session_with_user(id_hash, now_ns))?;
         Ok(rows
             .first()
             .map(|r| (row_to_session(r), row_to_user_joined(r))))
@@ -360,18 +328,7 @@ impl Reader {
         token_hash: &str,
         now_ns: i64,
     ) -> Result<Option<(TokenRow, UserRow)>, StoreError> {
-        let rows = self.query_json_rows(&format!(
-            "SELECT t.id, t.user_id, t.name, t.token_hash, t.created_at_ns, \
-                    t.last_used_at_ns, t.revoked, t.expires_at_ns, \
-                    u.id AS u_id, u.username AS u_username, \
-                    u.password_hash AS u_password_hash, u.role AS u_role, \
-                    u.must_change AS u_must_change, u.disabled AS u_disabled, \
-                    u.created_at_ns AS u_created_at_ns \
-             FROM tokens t JOIN users u ON u.id = t.user_id \
-             WHERE t.token_hash = '{}' AND t.revoked = false \
-               AND (t.expires_at_ns IS NULL OR t.expires_at_ns > {now_ns})",
-            token_hash.replace('\'', "''")
-        ))?;
+        let rows = self.query_json_rows(&sql::auth::token_with_user(token_hash, now_ns))?;
         Ok(rows
             .first()
             .map(|r| (row_to_token(r), row_to_user_joined(r))))
@@ -383,11 +340,7 @@ impl Reader {
     /// # Errors
     /// Returns an error if the query fails.
     pub fn user_env_scopes(&self, user_id: &str) -> Result<Vec<String>, StoreError> {
-        let rows = self.query_json_rows(&format!(
-            "SELECT environment FROM user_env_scopes WHERE user_id = '{}' \
-             ORDER BY environment",
-            user_id.replace('\'', "''")
-        ))?;
+        let rows = self.query_json_rows(&sql::auth::env_scopes(user_id))?;
         Ok(rows
             .iter()
             .filter_map(|r| r["environment"].as_str().map(str::to_string))

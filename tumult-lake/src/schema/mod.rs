@@ -454,3 +454,73 @@ GROUP BY s.experiment_id;",
         outcome = run_outcome_sql("s", "l")
     )
 }
+
+/// The statements of the schema, in the order `migrate` runs them, for the
+/// SQL corpus.
+#[cfg(test)]
+pub(crate) fn sql_corpus() -> Vec<tumult_test_utils::sql_corpus::Statement> {
+    use tumult_test_utils::{sql_fragment, sql_statement, sql_statements};
+    let tables = sql_statements![
+        telemetry::DDL,
+        manual::DDL,
+        analytics::DDL,
+        runs::DDL,
+        auth::DDL,
+        table_stakes::DDL,
+        objectives::DDL,
+        objectives::READING_COLUMN,
+        risk::DDL,
+        perf::DDL,
+        objectives::DR_FACTS_COLUMNS,
+        objectives::SCENARIOS_COLUMN,
+        forecast::DDL,
+        ict::DDL,
+        entities::DDL,
+    ];
+    let listed: Vec<&str> = tables.iter().map(|table| table.sql.as_str()).collect();
+    assert_eq!(listed, CREATE_TABLES, "the corpus lists every table");
+    let dr_types = crate::dr::DEFAULT_DR_EXERCISE_TYPES.map(crate::ExerciseType::as_str);
+    let views = sql_statements![
+        run_roots_view(),
+        run_completions_view(),
+        experiment_runs_view(),
+        entities::VIEW,
+        dr::dr_tests_view(&dr_types),
+    ];
+    let listed: Vec<&str> = views.iter().map(|view| view.sql.as_str()).collect();
+    assert_eq!(listed, create_views(), "the corpus lists every view");
+    let rebuild_v8 = sql_statement!(MIGRATE_V8_MANUAL_EXPERIMENTS_INDEX_FREE)
+        .unprepared("it copies by position from manual_experiments as v2 to v7 left it");
+    [
+        tables,
+        vec![sql_statement!(MIGRATE_V5_RUN_TABLES_INDEX_FREE), rebuild_v8],
+        sql_statements![manual::V22_COLUMNS, manual::V26_COLUMNS],
+        sql_statements![entities::ADD_RECEIPT_COLUMN],
+        views,
+        sql_statements![
+            run_completions_sql(Some(1_774_980_000_000_000_000)),
+            dr::dr_tests_sql("list_value('backup', 'restore')"),
+            dr::dr_register_sql("list_value('backup', 'restore')", "1774980000000000000"),
+        ],
+        vec![
+            sql_fragment!(
+                "SELECT {} AS outcome FROM run_roots AS s \
+                 LEFT JOIN run_completions AS l ON s.experiment_id = l.experiment_id",
+                run_outcome_sql("s", "l")
+            ),
+            sql_fragment!(
+                "SELECT {} AS verdict FROM run_roots AS s",
+                run_verdict_sql("s.outcome_status")
+            ),
+            sql_fragment!(
+                "SELECT {} AS mean_recovery_time_s FROM run_roots AS s",
+                mean_recovery_time_sql("s")
+            ),
+            sql_fragment!(
+                "SELECT {} AS hypothesis_met FROM experiments AS e",
+                hypothesis_met_sql("e")
+            ),
+        ],
+    ]
+    .concat()
+}

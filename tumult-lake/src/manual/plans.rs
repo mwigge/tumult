@@ -17,6 +17,7 @@ use serde_json::{json, Map, Value};
 use super::chain::{append_audit, Trail};
 use super::hash::{fetch_plan_row, now_ns, reseal_plan, status_of, ulid};
 use super::{ExerciseType, ManualError, PlanError};
+use crate::sql;
 use crate::{with_tx, Reader, SqlParam, StoreError, Writer};
 
 const DAY_NS: i64 = 86_400 * 1_000_000_000;
@@ -280,11 +281,7 @@ fn insert_plan(
 ) -> Result<String, ManualError> {
     let id = ulid();
     conn.execute(
-        "INSERT INTO manual_exercise_plans (
-            id, name, exercise_type, target_system, target_environment, function_id,
-            scope, owner, planned_at_ns, due_at_ns, interval_days, rto_target_s,
-            rpo_target_s, status, created_by, created_at_ns, content_hash
-         ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        sql::manual::INSERT_PLAN,
         params![
             id,
             plan.name,
@@ -344,8 +341,7 @@ fn seal_and_audit(
 /// Move plan `id` to `status`, done by `by` now.
 fn close(conn: &Connection, id: &str, status: PlanStatus, by: &str) -> Result<(), ManualError> {
     conn.execute(
-        "UPDATE manual_exercise_plans SET status = ?, updated_by = ?, updated_at_ns = ? \
-         WHERE id = ?",
+        sql::manual::CLOSE_PLAN,
         params![status.as_str(), by, now_ns(), id],
     )?;
     Ok(())
@@ -418,12 +414,7 @@ pub(super) fn check_tested(row: &Value, id: &str, tested: &Tested<'_>) -> Result
 
 /// The functions stored record `id` links to.
 fn linked_functions(conn: &Connection, id: &str) -> Result<Vec<String>, ManualError> {
-    let rows = crate::query_json_rows_bound(
-        conn,
-        "SELECT linked_id FROM manual_experiment_links \
-         WHERE experiment_id = ? AND kind = 'function' ORDER BY ordinal",
-        &[id],
-    )?;
+    let rows = crate::query_json_rows_bound(conn, sql::manual::LINKED_FUNCTIONS, &[id])?;
     Ok(rows
         .iter()
         .filter_map(|r| {
@@ -516,12 +507,7 @@ impl Writer {
             let changes = edit.apply(&mut plan);
             plan.validate()?;
             self.conn.execute(
-                "UPDATE manual_exercise_plans SET
-                    name = ?, exercise_type = ?, target_system = ?, target_environment = ?,
-                    function_id = ?, scope = ?, owner = ?, planned_at_ns = ?, due_at_ns = ?,
-                    interval_days = ?, rto_target_s = ?, rpo_target_s = ?,
-                    updated_by = ?, updated_at_ns = ?
-                 WHERE id = ?",
+                sql::manual::UPDATE_PLAN,
                 params![
                     plan.name,
                     plan.exercise_type.as_str(),
@@ -577,21 +563,7 @@ impl Reader {
     /// # Errors
     /// Returns an error if the query fails.
     pub fn manual_plans(&self, filter: &PlanFilter) -> Result<Vec<Value>, StoreError> {
-        let mut sql = String::from("SELECT * FROM manual_exercise_plans WHERE TRUE");
-        let mut params = Vec::new();
-        if let Some(status) = &filter.status {
-            sql.push_str(" AND status = ?");
-            params.push(SqlParam::Text(status.clone()));
-        }
-        if let Some(target) = &filter.target_system {
-            sql.push_str(" AND target_system = ?");
-            params.push(SqlParam::Text(target.clone()));
-        }
-        if let Some(before) = filter.due_before_ns {
-            sql.push_str(" AND due_at_ns < ?");
-            params.push(SqlParam::Int(before));
-        }
-        sql.push_str(" ORDER BY due_at_ns ASC, id ASC");
+        let (sql, params) = plans_sql(filter);
         self.query_json_rows_bound(&sql, &params)
     }
 
@@ -600,15 +572,43 @@ impl Reader {
     /// # Errors
     /// Returns an error if the query fails.
     pub fn manual_plan_detail(&self, id: &str) -> Result<Option<PlanDetail>, StoreError> {
-        let rows =
-            self.query_json_rows_bound("SELECT * FROM manual_exercise_plans WHERE id = ?", &[id])?;
+        let rows = self.query_json_rows_bound(sql::manual::PLAN, &[id])?;
         let Some(plan) = rows.into_iter().next() else {
             return Ok(None);
         };
-        let audit = self.query_json_rows_bound(
-            "SELECT * FROM manual_plan_audit WHERE plan_id = ? ORDER BY changed_at_ns ASC, id ASC",
-            &[id],
-        )?;
+        let audit = self.query_json_rows_bound(sql::manual::PLAN_AUDIT, &[id])?;
         Ok(Some(PlanDetail { plan, audit }))
     }
+}
+
+/// The plans `filter` lets through, the soonest due first, with the
+/// values to bind.
+fn plans_sql(filter: &PlanFilter) -> (String, Vec<SqlParam>) {
+    let mut sql = String::from("SELECT * FROM manual_exercise_plans WHERE TRUE");
+    let mut params = Vec::new();
+    if let Some(status) = &filter.status {
+        sql.push_str(" AND status = ?");
+        params.push(SqlParam::Text(status.clone()));
+    }
+    if let Some(target) = &filter.target_system {
+        sql.push_str(" AND target_system = ?");
+        params.push(SqlParam::Text(target.clone()));
+    }
+    if let Some(before) = filter.due_before_ns {
+        sql.push_str(" AND due_at_ns < ?");
+        params.push(SqlParam::Int(before));
+    }
+    sql.push_str(" ORDER BY due_at_ns ASC, id ASC");
+    (sql, params)
+}
+
+/// The statements of the plans, for the SQL corpus.
+#[cfg(test)]
+pub(super) fn sql_corpus() -> Vec<tumult_test_utils::sql_corpus::Statement> {
+    let every = PlanFilter {
+        status: Some("planned".into()),
+        target_system: Some("payments".into()),
+        due_before_ns: Some(1_774_980_000_000_000_000),
+    };
+    tumult_test_utils::sql_statements![plans_sql(&PlanFilter::default()).0, plans_sql(&every).0]
 }

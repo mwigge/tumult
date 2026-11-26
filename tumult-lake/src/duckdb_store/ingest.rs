@@ -10,6 +10,7 @@ use crate::arrow_convert::{
     load_samples_to_probe_samples_batch,
 };
 use crate::error::AnalyticsError;
+use crate::sql;
 use crate::telemetry;
 
 use super::{AgenticRunAnalytics, AnalyticsStore};
@@ -19,7 +20,7 @@ pub(crate) fn experiment_exists(
     conn: &Connection,
     experiment_id: &str,
 ) -> Result<bool, AnalyticsError> {
-    let mut stmt = conn.prepare("SELECT count(*) FROM experiments WHERE experiment_id = ?")?;
+    let mut stmt = conn.prepare(sql::analytics::EXPERIMENT_EXISTS)?;
     let count: i64 = stmt.query_row(params![experiment_id], |row| row.get(0))?;
     Ok(count > 0)
 }
@@ -55,15 +56,15 @@ pub(crate) fn ingest_journal_with_experiment(
     // together or not at all. Without the transaction a mid-ingest failure
     // committed the experiments row, and re-ingest then skipped the
     // experiment as a duplicate — permanently losing the remaining rows.
-    conn.execute_batch("BEGIN TRANSACTION")?;
+    conn.execute_batch(sql::tx::BEGIN)?;
     match ingest_journal_inner(conn, journal, experiment) {
         Ok(activity_count) => {
-            conn.execute_batch("COMMIT")?;
+            conn.execute_batch(sql::tx::COMMIT)?;
             telemetry::event_journal_ingested(&journal.experiment_id, activity_count);
             Ok(true)
         }
         Err(e) => {
-            let _ = conn.execute_batch("ROLLBACK");
+            let _ = conn.execute_batch(sql::tx::ROLLBACK);
             Err(e)
         }
     }
@@ -121,13 +122,7 @@ pub(crate) fn delete_run_rows(
     experiment_id: &str,
 ) -> Result<(), AnalyticsError> {
     for run_table in &RUN_TABLES {
-        conn.execute(
-            &format!(
-                "DELETE FROM {} WHERE {} = ?",
-                run_table.table, run_table.run_key
-            ),
-            params![experiment_id],
-        )?;
+        conn.execute(&delete_run_sql(run_table), params![experiment_id])?;
     }
     for node in tumult_graph::run_node_ids(experiment_id) {
         conn.execute(tumult_graph::sql::DELETE_NODE, params![node])?;
@@ -283,19 +278,14 @@ impl AnalyticsStore {
     /// Returns an error if any `DuckDB` insert fails.
     #[must_use = "callers must check whether the agentic run was ingested"]
     pub fn ingest_agentic_run(&self, run: &AgenticRunAnalytics) -> Result<bool, AnalyticsError> {
-        let mut stmt = self
-            .conn
-            .prepare("SELECT count(*) FROM agentic_runs WHERE run_id = ?")?;
+        let mut stmt = self.conn.prepare(sql::analytics::AGENTIC_RUN_EXISTS)?;
         let count: i64 = stmt.query_row(params![run.run_id], |row| row.get(0))?;
         if count > 0 {
             return Ok(false);
         }
 
         self.conn.execute(
-            "INSERT INTO agentic_runs (
-                run_id, experiment_id, target_type, scenario,
-                resilience_score, trace_id, replay_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            sql::analytics::INSERT_AGENTIC_RUN,
             params![
                 run.run_id,
                 run.experiment_id,
@@ -309,9 +299,7 @@ impl AnalyticsStore {
 
         for contract in &run.contracts {
             self.conn.execute(
-                "INSERT INTO agentic_contract_outcomes (
-                    run_id, scenario, contract_type, passed, reason, severity
-                ) VALUES (?, ?, ?, ?, ?, ?)",
+                sql::analytics::INSERT_CONTRACT_OUTCOME,
                 params![
                     run.run_id,
                     contract.scenario,
@@ -325,9 +313,7 @@ impl AnalyticsStore {
 
         for fault in &run.faults {
             self.conn.execute(
-                "INSERT INTO agentic_fault_applications (
-                    run_id, scenario, fault_type, applied
-                ) VALUES (?, ?, ?, ?)",
+                sql::analytics::INSERT_FAULT_APPLICATION,
                 params![run.run_id, fault.scenario, fault.fault_type, fault.applied],
             )?;
         }
@@ -335,9 +321,7 @@ impl AnalyticsStore {
         if let Some(replay_id) = &run.replay_id {
             let passed = run.contracts.iter().all(|contract| contract.passed);
             self.conn.execute(
-                "INSERT INTO agentic_replay_outcomes (
-                    run_id, replay_id, scenario, passed
-                ) VALUES (?, ?, ?, ?)",
+                sql::analytics::INSERT_REPLAY_OUTCOME,
                 params![run.run_id, replay_id, run.scenario, passed],
             )?;
         }
@@ -352,6 +336,29 @@ impl AnalyticsStore {
     ) -> Result<(), AnalyticsError> {
         insert_batch(&self.conn, table, batch)
     }
+}
+
+/// Delete the rows of one run from `run_table`.
+fn delete_run_sql(run_table: &RunTable) -> String {
+    format!(
+        "DELETE FROM {} WHERE {} = ?",
+        run_table.table, run_table.run_key
+    )
+}
+
+/// The statements that delete the rows of a run, for the SQL corpus: one
+/// for each table of [`RUN_TABLES`].
+#[cfg(test)]
+pub(super) fn sql_corpus() -> Vec<tumult_test_utils::sql_corpus::Statement> {
+    RUN_TABLES
+        .iter()
+        .map(|run_table| {
+            tumult_test_utils::sql_corpus::Statement::new(
+                format!("{}:delete_run_sql({})", file!(), run_table.table),
+                delete_run_sql(run_table),
+            )
+        })
+        .collect()
 }
 
 #[cfg(test)]

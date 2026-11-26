@@ -3,6 +3,7 @@
 //! links of a record. Every value is bound, never spliced into the text.
 
 use super::chain::SIGNOFFS_SQL;
+use crate::sql;
 use crate::{Reader, StoreError};
 
 /// The steps of one record, in order. The seal reads them too.
@@ -43,13 +44,8 @@ impl Reader {
         status: Option<&str>,
     ) -> Result<Vec<serde_json::Value>, StoreError> {
         match status {
-            Some(s) => self.query_json_rows_bound(
-                "SELECT * FROM manual_experiments WHERE status = ? ORDER BY entered_at_ns DESC",
-                &[s],
-            ),
-            None => {
-                self.query_json_rows("SELECT * FROM manual_experiments ORDER BY entered_at_ns DESC")
-            }
+            Some(s) => self.query_json_rows_bound(sql::manual::RECORDS_WITH_STATUS, &[s]),
+            None => self.query_json_rows(sql::manual::RECORDS),
         }
     }
 
@@ -59,21 +55,12 @@ impl Reader {
     /// # Errors
     /// Returns an error if the query fails.
     pub fn manual_experiment_detail(&self, id: &str) -> Result<Option<ManualDetail>, StoreError> {
-        let rows =
-            self.query_json_rows_bound("SELECT * FROM manual_experiments WHERE id = ?", &[id])?;
+        let rows = self.query_json_rows_bound(sql::manual::RECORD, &[id])?;
         let Some(experiment) = rows.into_iter().next() else {
             return Ok(None);
         };
-        let audit = self.query_json_rows_bound(
-            "SELECT * FROM manual_experiment_audit WHERE experiment_id = ? \
-             ORDER BY changed_at_ns ASC, id ASC",
-            &[id],
-        )?;
-        let attachments = self.query_json_rows_bound(
-            "SELECT * FROM evidence_attachments WHERE experiment_id = ? \
-             ORDER BY added_at_ns ASC",
-            &[id],
-        )?;
+        let audit = self.query_json_rows_bound(sql::manual::RECORD_AUDIT, &[id])?;
+        let attachments = self.query_json_rows_bound(sql::manual::ATTACHMENTS, &[id])?;
         Ok(Some(ManualDetail {
             experiment,
             audit,
@@ -84,4 +71,10 @@ impl Reader {
             signoffs: self.query_json_rows_bound(SIGNOFFS_SQL, &["record", id])?,
         }))
     }
+}
+
+/// The statements of the parts of a record, for the SQL corpus.
+#[cfg(test)]
+pub(super) fn sql_corpus() -> Vec<tumult_test_utils::sql_corpus::Statement> {
+    tumult_test_utils::sql_statements![STEPS_SQL, ACTIONS_SQL, LINKS_SQL]
 }

@@ -8,6 +8,7 @@ use duckdb::params;
 use serde_json::Value;
 
 use crate::error::StoreError;
+use crate::sql;
 use crate::{Reader, Writer};
 
 /// One `perf_verdicts` row: what was compared and what came out. The
@@ -60,14 +61,7 @@ impl Writer {
             .transpose()
             .map_err(|e| StoreError::Internal(format!("perf verdict envs: {e}")))?;
         self.conn.execute(
-            "INSERT INTO perf_verdicts (
-                target, probe, baseline_version, candidate_version, quantile,
-                baseline_n, candidate_n,
-                baseline_p50, baseline_p95, baseline_p99,
-                candidate_p50, candidate_p95, candidate_p99,
-                delta, delta_pct, ci_low, ci_high, confidence, margin,
-                verdict, reasons, computed_at_ns, envs
-             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            sql::perf::INSERT_VERDICT,
             params![
                 row.target,
                 row.probe,
@@ -212,19 +206,7 @@ impl Reader {
         let scopes_json = serde_json::to_string(scopes)
             .map_err(|e| StoreError::Internal(format!("perf verdict scopes: {e}")))?;
         let unscoped = scopes.is_empty();
-        let mut stmt = self.conn.prepare(
-            "SELECT target, probe, baseline_version, candidate_version, quantile,
-                    baseline_n, candidate_n,
-                    baseline_p50, baseline_p95, baseline_p99,
-                    candidate_p50, candidate_p95, candidate_p99,
-                    delta, delta_pct, ci_low, ci_high, confidence, margin,
-                    verdict, CAST(reasons AS VARCHAR), computed_at_ns,
-                    CAST(envs AS VARCHAR)
-             FROM perf_verdicts WHERE target = ?
-               AND (? OR (envs IS NOT NULL AND list_has_all(
-                    CAST(CAST(? AS JSON) AS VARCHAR[]), CAST(envs AS VARCHAR[]))))
-             ORDER BY computed_at_ns DESC, rowid DESC LIMIT ?",
-        )?;
+        let mut stmt = self.conn.prepare(sql::perf::VERDICTS)?;
         let limit = i64::try_from(limit).unwrap_or(i64::MAX);
         let rows = stmt.query_map(params![target, unscoped, scopes_json, limit], |r| {
             let reasons: String = r.get(20)?;
@@ -263,6 +245,12 @@ impl Reader {
         }
         Ok(out)
     }
+}
+
+/// The statements of the performance verdicts, for the SQL corpus.
+#[cfg(test)]
+pub(crate) fn sql_corpus() -> Vec<tumult_test_utils::sql_corpus::Statement> {
+    tumult_test_utils::sql_statements![SAME_AS_LATEST]
 }
 
 #[cfg(test)]

@@ -9,6 +9,7 @@
 use serde_json::Value;
 
 use crate::error::StoreError;
+use crate::sql;
 use crate::{Reader, Writer};
 
 /// How long a forecast row is kept by default: long enough to reproduce a
@@ -98,24 +99,15 @@ fn nested_literal(rows: &[Vec<f64>]) -> String {
     format!("[{}]", items.join(", "))
 }
 
-/// The columns a lookup reads, in [`ForecastRow`] order.
-const COLUMNS: &str = "series_key, model, model_version, weights_hash, context_start_ns, \
-     context_end_ns, context_points, insufficient_history, degenerate_band, horizon, step_ns, \
-     quantile_levels, quantiles, created_at_ns";
-
 impl Writer {
     /// Append a forecast row.
     ///
     /// # Errors
     /// Returns an error if the insert fails.
     pub fn insert_forecast(&self, row: &ForecastRow) -> Result<(), StoreError> {
-        let sql = format!(
-            "INSERT INTO forecasts (series_key, model, model_version, weights_hash, \
-             context_start_ns, context_end_ns, context_points, insufficient_history, \
-             degenerate_band, horizon, step_ns, quantile_levels, quantiles, created_at_ns) \
-             VALUES (?,?,?,?,?,?,?,?,?,?,?, CAST({} AS DOUBLE[]), CAST({} AS DOUBLE[][]), ?)",
-            list_literal(&row.quantile_levels),
-            nested_literal(&row.quantiles)
+        let sql = sql::forecast::insert(
+            &list_literal(&row.quantile_levels),
+            &nested_literal(&row.quantiles),
         );
         self.conn.execute(
             &sql,
@@ -146,11 +138,9 @@ impl Writer {
     /// Returns an error if the delete fails.
     pub fn prune_forecasts(&self, cutoff_ns: i64, limit: usize) -> Result<usize, StoreError> {
         let limit = i64::try_from(limit).unwrap_or(i64::MAX);
-        Ok(self.conn.execute(
-            "DELETE FROM forecasts WHERE rowid IN (SELECT rowid FROM forecasts \
-             WHERE created_at_ns < ? ORDER BY created_at_ns, rowid LIMIT ?)",
-            duckdb::params![cutoff_ns, limit],
-        )?)
+        Ok(self
+            .conn
+            .execute(sql::forecast::PRUNE, duckdb::params![cutoff_ns, limit])?)
     }
 
     /// Keep only the `keep` newest forecast rows of `series_key`; returns
@@ -160,12 +150,9 @@ impl Writer {
     /// Returns an error if the delete fails.
     pub fn cap_forecasts(&self, series_key: &str, keep: usize) -> Result<usize, StoreError> {
         let keep = i64::try_from(keep).unwrap_or(i64::MAX);
-        Ok(self.conn.execute(
-            "DELETE FROM forecasts WHERE rowid IN (SELECT rowid FROM forecasts \
-             WHERE series_key = ? ORDER BY created_at_ns DESC, rowid DESC \
-             OFFSET ?)",
-            duckdb::params![series_key, keep],
-        )?)
+        Ok(self
+            .conn
+            .execute(sql::forecast::CAP, duckdb::params![series_key, keep])?)
     }
 }
 
@@ -180,12 +167,7 @@ impl Reader {
         lookup: &ForecastLookup<'_>,
     ) -> Result<Option<ForecastRow>, StoreError> {
         let (operator, model) = lookup.model.operator();
-        let sql = format!(
-            "SELECT row_to_json(t) AS j FROM (SELECT {COLUMNS} FROM forecasts \
-             WHERE series_key = ? AND model {operator} ? AND step_ns = ? AND horizon = ? \
-             AND context_start_ns = ? AND context_end_ns = ? \
-             ORDER BY created_at_ns DESC, rowid DESC LIMIT 1) AS t"
-        );
+        let sql = sql::forecast::latest(operator);
         let mut stmt = self.conn.prepare(&sql)?;
         let mut rows = stmt.query_map(
             duckdb::params![

@@ -30,7 +30,7 @@ const CHUNK_ROWS: usize = 1_000;
 /// the conversion from the wire bounds them.
 const CHUNK_BYTES: usize = 4 * 1024 * 1024;
 
-const STAGING: &str = "
+pub(super) const STAGING: &str = "
 CREATE TEMP TABLE IF NOT EXISTS entity_batch_keys (
     entity_key VARCHAR,
     environment VARCHAR
@@ -284,6 +284,24 @@ impl Writer {
         self.conn.execute(UPDATE_VERSIONS, [])?;
         Ok(())
     }
+}
+
+/// The statements of a batch of entity events, for the SQL corpus. Those
+/// after the first read the temporary tables it makes.
+#[cfg(test)]
+pub(super) fn sql_corpus() -> Vec<tumult_test_utils::sql_corpus::Statement> {
+    let staging = tumult_test_utils::sql_statement!(STAGING);
+    let staged = tumult_test_utils::sql_statements![
+        STAGE_KEYS,
+        LOAD_LATEST,
+        INSERT_VERSIONS,
+        STAGE_CHANGES,
+        UPDATE_VERSIONS,
+    ];
+    let staged = staged
+        .into_iter()
+        .map(|statement| statement.after(&staging));
+    std::iter::once(staging.clone()).chain(staged).collect()
 }
 
 #[cfg(test)]

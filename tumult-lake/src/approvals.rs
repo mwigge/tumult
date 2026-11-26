@@ -20,6 +20,7 @@ use serde::Serialize;
 use sha2::{Digest, Sha256};
 
 use crate::error::StoreError;
+use crate::sql;
 use crate::{Reader, Writer};
 
 /// `approval_decisions.decision` values.
@@ -153,8 +154,7 @@ impl Writer {
     ) -> Result<(), StoreError> {
         crate::with_tx(&self.conn, || {
             self.conn.execute(
-                "INSERT INTO runs (id, registry_id, state, params_json, queued_at_ns) \
-                 VALUES (?,?,?,CAST(? AS JSON),?)",
+                sql::runs::INSERT_RUN,
                 params![
                     run.id,
                     run.registry_id,
@@ -178,9 +178,7 @@ impl Writer {
     /// Returns an error if the row fails to insert.
     pub fn insert_approval_request(&self, req: &ApprovalRequest) -> Result<(), StoreError> {
         self.conn.execute(
-            "INSERT INTO approval_requests (run_id, tier, pin_hash, env, target, \
-             quorum_required, requested_by, requested_at_ns, expires_at_ns) \
-             VALUES (?,?,?,?,?,?,?,?,?)",
+            sql::approvals::INSERT_REQUEST,
             params![
                 req.run_id,
                 req.tier,
@@ -204,13 +202,7 @@ impl Writer {
     /// Returns [`StoreError::Internal`] on a duplicate decision or a
     /// self-approval attempt, and on missing approval request.
     pub fn insert_approval_decision(&self, dec: &ApprovalDecision) -> Result<(), StoreError> {
-        let request = crate::query_json_rows(
-            &self.conn,
-            &format!(
-                "SELECT requested_by FROM approval_requests WHERE run_id = '{}'",
-                dec.run_id.replace('\'', "''")
-            ),
-        )?;
+        let request = crate::query_json_rows(&self.conn, &sql::approvals::requester(&dec.run_id))?;
         let Some(request) = request.first() else {
             return Err(StoreError::Internal(format!(
                 "no approval request for run {}",
@@ -225,11 +217,7 @@ impl Writer {
         }
         let existing = crate::query_json_rows(
             &self.conn,
-            &format!(
-                "SELECT approver FROM approval_decisions WHERE run_id = '{}' AND approver = '{}'",
-                dec.run_id.replace('\'', "''"),
-                dec.approver.replace('\'', "''")
-            ),
+            &sql::approvals::decision_of(&dec.run_id, &dec.approver),
         )?;
         if !existing.is_empty() {
             return Err(StoreError::Internal(format!(
@@ -238,8 +226,7 @@ impl Writer {
             )));
         }
         self.conn.execute(
-            "INSERT INTO approval_decisions (run_id, approver, decision, note, decided_at_ns) \
-             VALUES (?,?,?,?,?)",
+            sql::approvals::INSERT_DECISION,
             params![
                 dec.run_id,
                 dec.approver,
@@ -268,7 +255,7 @@ impl Writer {
 
     fn require_pending_approval(&self, run_id: &str) -> Result<(), StoreError> {
         let pending: i64 = self.conn.query_row(
-            "SELECT COUNT(*) FROM runs WHERE id = ? AND state = ?",
+            sql::approvals::COUNT_PENDING_RUN,
             params![run_id, crate::run_state::PENDING_APPROVAL],
             |row| row.get(0),
         )?;
@@ -300,10 +287,8 @@ impl Writer {
     /// # Errors
     /// Returns an error if the update fails.
     pub fn consume_approval(&self, run_id: &str, consumed_at_ns: i64) -> Result<(), StoreError> {
-        self.conn.execute(
-            "UPDATE approval_requests SET consumed_at_ns = ? WHERE run_id = ?",
-            params![consumed_at_ns, run_id],
-        )?;
+        self.conn
+            .execute(sql::approvals::CONSUME, params![consumed_at_ns, run_id])?;
         Ok(())
     }
 
@@ -319,8 +304,7 @@ impl Writer {
         justification: &str,
     ) -> Result<(), StoreError> {
         self.conn.execute(
-            "UPDATE approval_requests SET break_glass = TRUE, break_glass_by = ?, \
-             break_glass_justification = ? WHERE run_id = ?",
+            sql::approvals::BREAK_GLASS,
             params![by, justification, run_id],
         )?;
         Ok(())
@@ -333,10 +317,7 @@ impl Reader {
     /// # Errors
     /// Returns an error if the query fails.
     pub fn approval_request(&self, run_id: &str) -> Result<Option<serde_json::Value>, StoreError> {
-        let rows = self.query_json_rows(&format!(
-            "SELECT * FROM approval_requests WHERE run_id = '{}'",
-            run_id.replace('\'', "''")
-        ))?;
+        let rows = self.query_json_rows(&sql::approvals::request(run_id))?;
         Ok(rows.into_iter().next())
     }
 
@@ -345,10 +326,7 @@ impl Reader {
     /// # Errors
     /// Returns an error if the query fails.
     pub fn approval_decisions(&self, run_id: &str) -> Result<Vec<serde_json::Value>, StoreError> {
-        self.query_json_rows(&format!(
-            "SELECT * FROM approval_decisions WHERE run_id = '{}' ORDER BY decided_at_ns",
-            run_id.replace('\'', "''")
-        ))
+        self.query_json_rows(&sql::approvals::decisions(run_id))
     }
 
     /// The approval queue: `pending_approval` runs joined with their request,
@@ -357,17 +335,7 @@ impl Reader {
     /// # Errors
     /// Returns an error if the query fails.
     pub fn approvals_queue(&self) -> Result<Vec<serde_json::Value>, StoreError> {
-        self.query_json_rows(
-            "SELECT r.id AS run_id, r.state, r.queued_at_ns, r.params_json, \
-             g.name AS definition_name, q.*, \
-             (SELECT COUNT(*) FROM approval_decisions d \
-               WHERE d.run_id = r.id AND d.decision = 'approved') AS approved_count \
-             FROM runs r \
-             JOIN approval_requests q ON q.run_id = r.id \
-             LEFT JOIN run_registry g ON g.id = r.registry_id \
-             WHERE r.state = 'pending_approval' \
-             ORDER BY q.requested_at_ns",
-        )
+        self.query_json_rows(sql::approvals::QUEUE)
     }
 
     /// Every approval request with its run's definition name and decision
@@ -376,17 +344,7 @@ impl Reader {
     /// # Errors
     /// Returns an error if the query fails.
     pub fn approvals_list(&self, limit: u32) -> Result<Vec<serde_json::Value>, StoreError> {
-        self.query_json_rows(&format!(
-            "SELECT q.*, g.name AS definition_name, r.state AS run_state, \
-             (SELECT COUNT(*) FROM approval_decisions d \
-               WHERE d.run_id = q.run_id AND d.decision = 'approved') AS approved_count, \
-             (SELECT COUNT(*) FROM approval_decisions d \
-               WHERE d.run_id = q.run_id AND d.decision = 'rejected') AS rejected_count \
-             FROM approval_requests q \
-             LEFT JOIN runs r ON r.id = q.run_id \
-             LEFT JOIN run_registry g ON g.id = r.registry_id \
-             ORDER BY q.requested_at_ns DESC LIMIT {limit}"
-        ))
+        self.query_json_rows(&sql::approvals::requests(limit))
     }
 
     /// Gated runs whose approval TTL has lapsed (`now_ns` > `expires_at_ns`)
@@ -395,11 +353,7 @@ impl Reader {
     /// # Errors
     /// Returns an error if the query fails.
     pub fn expired_pending_approvals(&self, now_ns: i64) -> Result<Vec<String>, StoreError> {
-        let rows = self.query_json_rows(&format!(
-            "SELECT r.id AS run_id FROM runs r \
-             JOIN approval_requests q ON q.run_id = r.id \
-             WHERE r.state = 'pending_approval' AND q.expires_at_ns < {now_ns}"
-        ))?;
+        let rows = self.query_json_rows(&sql::approvals::expired_pending(now_ns))?;
         Ok(rows
             .iter()
             .filter_map(|r| r["run_id"].as_str().map(str::to_string))
@@ -415,11 +369,7 @@ impl Reader {
     /// # Errors
     /// Returns an error if the query fails.
     pub fn verify_run_audit_chain(&self, run_id: &str) -> Result<bool, StoreError> {
-        let rows = self.query_json_rows(&format!(
-            "SELECT at_ns, event, detail, actor, prev_hash, new_hash FROM run_audit \
-             WHERE run_id = '{}' ORDER BY at_ns, rowid",
-            run_id.replace('\'', "''")
-        ))?;
+        let rows = self.query_json_rows(&sql::approvals::audit_chain(run_id))?;
         let mut expected_prev: Option<String> = None;
         for row in rows {
             let Some(new_hash) = row["new_hash"].as_str() else {

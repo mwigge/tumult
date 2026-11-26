@@ -45,6 +45,24 @@ pub fn table_predicate(table: &str, envs: &[String]) -> Option<String> {
     })
 }
 
+/// The predicates of a scope in the statements that read them, for the SQL
+/// corpus.
+#[cfg(all(test, feature = "duckdb"))]
+pub(crate) fn sql_corpus() -> Vec<tumult_test_utils::sql_corpus::Statement> {
+    use tumult_test_utils::sql_fragment;
+    let envs = vec!["prod".to_string(), "o'hare".to_string()];
+    vec![
+        sql_fragment!(
+            "SELECT count(*) AS n FROM run_roots WHERE TRUE{}",
+            and(in_list("target_environment", &envs))
+        ),
+        sql_fragment!(
+            "SELECT count(*) AS n FROM metric_sums WHERE TRUE{}",
+            and(table_predicate("metric_sums", &envs))
+        ),
+    ]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

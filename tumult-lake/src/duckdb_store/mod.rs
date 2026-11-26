@@ -45,6 +45,7 @@ use std::time::Duration;
 use duckdb::{params, AccessMode, Config, Connection};
 
 use crate::error::AnalyticsError;
+use crate::sql;
 
 /// Total attempts a write/read open makes before reporting the store as locked.
 /// A single retry window absorbs the brief moment another process holds the
@@ -262,7 +263,7 @@ impl AnalyticsStore {
     /// Returns an error if `DuckDB` refuses the setting.
     pub fn deny_external_access(&self) -> Result<(), AnalyticsError> {
         self.conn
-            .execute_batch("SET enable_external_access = false")?;
+            .execute_batch(sql::analytics::DENY_EXTERNAL_ACCESS)?;
         Ok(())
     }
 
@@ -287,9 +288,7 @@ impl AnalyticsStore {
     /// Returns an error if the schema version cannot be read.
     #[must_use = "callers must use the returned schema version"]
     pub fn schema_version(&self) -> Result<i64, AnalyticsError> {
-        let mut stmt = self
-            .conn
-            .prepare("SELECT value FROM schema_meta WHERE key = 'version'")?;
+        let mut stmt = self.conn.prepare(sql::store::SCHEMA_VERSION)?;
         // Column is BIGINT — no String parse round-trip needed.
         stmt.query_row(params![], |row| row.get(0))
             .map_err(AnalyticsError::from)
@@ -356,4 +355,17 @@ pub fn sample_journal(
         }),
         regulatory: None,
     }
+}
+
+/// The statements of the analytics store, for the SQL corpus.
+#[cfg(test)]
+pub(crate) fn sql_corpus() -> Vec<tumult_test_utils::sql_corpus::Statement> {
+    [
+        autopilot::sql_corpus(),
+        ingest::sql_corpus(),
+        legacy::sql_corpus(),
+        maintenance::sql_corpus(),
+        recovery_trend::sql_corpus(),
+    ]
+    .concat()
 }

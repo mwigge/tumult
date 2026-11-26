@@ -13,6 +13,7 @@ use std::path::Path;
 use duckdb::params;
 
 use crate::error::AnalyticsError;
+use crate::sql;
 
 use super::AnalyticsStore;
 
@@ -76,10 +77,9 @@ impl AnalyticsStore {
             )));
         }
         let escaped = source.display().to_string().replace('\'', "''");
-        self.conn
-            .execute_batch(&format!("ATTACH '{escaped}' AS {LEGACY_ALIAS} (READ_ONLY)"))?;
+        self.conn.execute_batch(&attach_sql(&escaped))?;
         let result = self.merge_legacy_tables();
-        let _ = self.conn.execute_batch(&format!("DETACH {LEGACY_ALIAS}"));
+        let _ = self.conn.execute_batch(&detach_sql());
         result
     }
 
@@ -87,7 +87,7 @@ impl AnalyticsStore {
     fn merge_legacy_tables(&self) -> Result<Vec<(String, usize)>, AnalyticsError> {
         let current: String = self
             .conn
-            .query_row("SELECT current_database()", [], |r| r.get(0))?;
+            .query_row(sql::analytics::CURRENT_DATABASE, [], |r| r.get(0))?;
         let mut report = Vec::new();
         for (table, key) in LEGACY_TABLES {
             let src_cols = self.table_columns(LEGACY_ALIAS, table)?;
@@ -101,21 +101,7 @@ impl AnalyticsStore {
             if key.iter().any(|k| !cols.iter().any(|c| c.as_str() == *k)) {
                 continue;
             }
-            let col_list = cols
-                .iter()
-                .map(|c| c.as_str())
-                .collect::<Vec<_>>()
-                .join(", ");
-            let predicate = key
-                .iter()
-                .map(|k| format!("cur.{k} IS NOT DISTINCT FROM src.{k}"))
-                .collect::<Vec<_>>()
-                .join(" AND ");
-            let sql = format!(
-                "INSERT INTO {table} ({col_list})
-                 SELECT {col_list} FROM {LEGACY_ALIAS}.{table} src
-                 WHERE NOT EXISTS (SELECT 1 FROM {table} cur WHERE {predicate})"
-            );
+            let sql = merge_sql(table, &cols, key);
             let inserted = self.conn.execute(&sql, [])?;
             report.push(((*table).to_string(), inserted));
         }
@@ -124,13 +110,60 @@ impl AnalyticsStore {
 
     /// Column names of `table` in `catalog`, in declaration order.
     fn table_columns(&self, catalog: &str, table: &str) -> Result<Vec<String>, AnalyticsError> {
-        let mut stmt = self.conn.prepare(
-            "SELECT column_name FROM information_schema.columns
-             WHERE table_catalog = ? AND table_name = ? ORDER BY ordinal_position",
-        )?;
+        let mut stmt = self.conn.prepare(sql::analytics::TABLE_COLUMNS)?;
         let cols = stmt
             .query_map(params![catalog, table], |row| row.get(0))?
             .collect::<Result<Vec<String>, _>>()?;
         Ok(cols)
     }
+}
+
+/// Attach the legacy database at `path`, quoted, read-only.
+fn attach_sql(path: &str) -> String {
+    format!("ATTACH '{path}' AS {LEGACY_ALIAS} (READ_ONLY)")
+}
+
+/// Detach the legacy database.
+fn detach_sql() -> String {
+    format!("DETACH {LEGACY_ALIAS}")
+}
+
+/// Insert the rows of the legacy `table` whose natural key `key` the
+/// table lacks, in the columns `cols`.
+fn merge_sql(table: &str, cols: &[&String], key: &[&str]) -> String {
+    let col_list = cols
+        .iter()
+        .map(|c| c.as_str())
+        .collect::<Vec<_>>()
+        .join(", ");
+    let predicate = key
+        .iter()
+        .map(|k| format!("cur.{k} IS NOT DISTINCT FROM src.{k}"))
+        .collect::<Vec<_>>()
+        .join(" AND ");
+    format!(
+        "INSERT INTO {table} ({col_list})
+                 SELECT {col_list} FROM {LEGACY_ALIAS}.{table} src
+                 WHERE NOT EXISTS (SELECT 1 FROM {table} cur WHERE {predicate})"
+    )
+}
+
+/// The statements of the merge of a legacy store, for the SQL corpus.
+#[cfg(test)]
+pub(super) fn sql_corpus() -> Vec<tumult_test_utils::sql_corpus::Statement> {
+    let id = "experiment_id".to_string();
+    let status = "status".to_string();
+    vec![
+        tumult_test_utils::sql_statement!(attach_sql("legacy.duckdb"))
+            .unlinted("sqlfluff has no grammar for ATTACH"),
+        tumult_test_utils::sql_statement!(detach_sql())
+            .unprepared("no legacy store is attached to a fresh lake")
+            .unlinted("sqlfluff has no grammar for DETACH"),
+        tumult_test_utils::sql_statement!(merge_sql(
+            "experiments",
+            &[&id, &status],
+            &["experiment_id"]
+        ))
+        .unprepared("it reads the tables of a legacy store attached as legacy"),
+    ]
 }

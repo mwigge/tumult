@@ -18,6 +18,7 @@ use std::path::{Path, PathBuf};
 
 use crate::file_integrity::checksum;
 use crate::manual::files::{bring_back, carry, FILE_HASHES_SQL};
+use crate::sql;
 use crate::{attachments_dir, Reader, Store, StoreError, Writer};
 use serde::{Deserialize, Serialize};
 
@@ -274,7 +275,7 @@ pub fn export(reader: &Reader, cfg: &LakeConfig) -> Result<ExportReport, StoreEr
     let run_ns = now_ns();
     let mut tables = Vec::new();
     // One explicit transaction ensures all tables belong to one database snapshot.
-    reader.execute_batch("BEGIN TRANSACTION")?;
+    reader.execute_batch(sql::tx::BEGIN)?;
     let result = (|| {
         for table in TABLES {
             let fp = reader.query_json_rows(&fingerprint_sql(table))?[0]["fp"]
@@ -290,8 +291,7 @@ pub fn export(reader: &Reader, cfg: &LakeConfig) -> Result<ExportReport, StoreEr
                 && previous.snapshots.get(*table) == Some(&rel)
                 && existing_checksum.is_some()
                 && previous.file_checksums.get(*table) == existing_checksum.as_ref();
-            let rows = reader.query_json_rows(&format!("SELECT count(*) AS n FROM {table}"))?[0]
-                ["n"]
+            let rows = reader.query_json_rows(&count_sql(table))?[0]["n"]
                 .as_u64()
                 .ok_or_else(|| StoreError::Internal("missing table count".into()))?;
             if !unchanged {
@@ -304,10 +304,7 @@ pub fn export(reader: &Reader, cfg: &LakeConfig) -> Result<ExportReport, StoreEr
                     Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
                     Err(e) => return Err(e.into()),
                 }
-                reader.execute_batch(&format!(
-                    "COPY (SELECT * FROM {table}) TO '{}' (FORMAT PARQUET)",
-                    sql_path(&temp)
-                ))?;
+                reader.execute_batch(&copy_sql(table, &sql_path(&temp)))?;
                 File::open(&temp)?.sync_all()?;
                 std::fs::rename(temp, &path)?;
                 #[cfg(unix)]
@@ -343,13 +340,13 @@ pub fn export(reader: &Reader, cfg: &LakeConfig) -> Result<ExportReport, StoreEr
     let hashes = match result {
         Ok(hashes) => hashes,
         Err(error) => {
-            if let Err(rollback) = reader.execute_batch("ROLLBACK") {
+            if let Err(rollback) = reader.execute_batch(sql::tx::ROLLBACK) {
                 tracing::error!(error = %rollback, "failed to roll back export snapshot");
             }
             return Err(error);
         }
     };
-    reader.execute_batch("COMMIT")?;
+    reader.execute_batch(sql::tx::COMMIT)?;
     let (carried, missing) = carry(&attachments_dir(&reader.path), &cfg.dir, &hashes)?;
     meta.attachments = carried;
     meta.last_export_ns = Some(run_ns);
@@ -464,4 +461,32 @@ pub fn status(cfg: &LakeConfig) -> Result<LakeStatus, StoreError> {
         files: meta.snapshots.len() as u64,
         bytes,
     })
+}
+
+/// The number of rows of `table`.
+fn count_sql(table: &str) -> String {
+    format!("SELECT count(*) AS n FROM {table}")
+}
+
+/// Write the rows of `table` to the Parquet file at `path`, quoted.
+fn copy_sql(table: &str, path: &str) -> String {
+    format!("COPY (SELECT * FROM {table}) TO '{path}' (FORMAT PARQUET)")
+}
+
+/// The statements of the export to the lake directory, for the SQL corpus:
+/// the fingerprint of each table it exports, then the count and the copy.
+#[cfg(test)]
+pub(crate) fn sql_corpus() -> Vec<tumult_test_utils::sql_corpus::Statement> {
+    let fingerprints = TABLES.iter().map(|table| {
+        tumult_test_utils::sql_corpus::Statement::new(
+            format!("{}:fingerprint_sql({table})", file!()),
+            fingerprint_sql(table),
+        )
+    });
+    fingerprints
+        .chain(tumult_test_utils::sql_statements![
+            count_sql("runs"),
+            copy_sql("runs", "snapshots/runs/fingerprint.parquet.tmp"),
+        ])
+        .collect()
 }

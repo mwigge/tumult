@@ -892,42 +892,10 @@ FROM run_roots AS s;"
     ]
 }
 
-/// The text of the kept file the linter reads: the SQL that functions of
-/// the schema build, as the lake runs it. Each view as `create_views` makes
-/// it, then the statements of [`reader_statements`].
-fn sql_built_by_functions() -> String {
-    let statements: Vec<String> = crate::schema::create_views()
-        .iter()
-        .map(|view| view.trim().to_string())
-        .chain(reader_statements())
-        .collect();
-    format!(
-        "-- The SQL that functions of tumult-lake/src/schema/mod.rs build, as the
--- lake runs it: each view as create_views() makes it, then a statement for
--- each function that no view uses. scripts/lint-embedded-sql.sh lints this
--- file with sqlfluff, and a test of tumult-lake keeps it the SQL of the
--- functions. Change the SQL in the functions, then write this file again
--- and read the difference:
---   TUMULT_BLESS=1 cargo test -p tumult-lake -- sql_built_by_functions
-
-{}
-",
-        statements.join("\n\n")
-    )
-}
-
+/// The statements a reader writes with the functions of the schema run on
+/// a lake and answer for the run in it.
 #[test]
-fn the_sql_built_by_functions_is_the_sql_kept_for_the_linter() {
-    let kept = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/golden/sql-built-by-functions.sql");
-
-    tumult_test_utils::assert_kept(&kept, &sql_built_by_functions());
-}
-
-/// The statements written for the linter are more than text: each runs on
-/// a lake and answers for the run in it.
-#[test]
-fn the_statements_kept_for_the_linter_run_on_a_lake() {
+fn the_statements_a_reader_writes_with_the_schema_functions_run_on_a_lake() {
     let d = tempfile::TempDir::new().unwrap();
     let store = Store::open(&d.path().join("kronika.duckdb")).unwrap();
     let writer = store.writer().unwrap();

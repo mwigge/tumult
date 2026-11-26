@@ -42,7 +42,7 @@ opentelemetry.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
-tumult-test-utils = { path = "../tumult-test-utils", default-features = false, features = ["otel"] }
+tumult-test-utils = { path = "../tumult-test-utils", default-features = false, features = ["otel", "sql-corpus"] }
 # Captures what the store logs when it opens (`logging::testing`).
 tumult-otel = { path = "../tumult-otel" }
 

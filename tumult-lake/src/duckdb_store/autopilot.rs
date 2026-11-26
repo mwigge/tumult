@@ -20,6 +20,7 @@
 use duckdb::params;
 
 use crate::error::AnalyticsError;
+use crate::sql;
 
 use super::AnalyticsStore;
 
@@ -82,9 +83,7 @@ pub struct ClassHistory {
 /// writer (the API records risk-triggered decisions through the latter).
 pub(crate) fn insert_decision(conn: &duckdb::Connection, d: &DecisionRecord) -> duckdb::Result<()> {
     conn.execute(
-        "INSERT INTO autopilot_decisions VALUES
-         (?, ?, ?, ?, ?, ?, ?, ?, ?, CAST(? AS JSON), ?, ?, CAST(? AS JSON), ?,
-          CAST(? AS JSON), CAST(? AS JSON), ?, ?)",
+        sql::analytics::INSERT_AUTOPILOT_DECISION,
         params![
             d.id,
             d.decided_at_ns,
@@ -143,7 +142,7 @@ impl AnalyticsStore {
         detail: &serde_json::Value,
     ) -> Result<(), AnalyticsError> {
         self.conn.execute(
-            "INSERT INTO autopilot_events VALUES (?, ?, ?, CAST(? AS JSON))",
+            sql::analytics::INSERT_AUTOPILOT_EVENT,
             params![decision_id, at_ns, kind, detail.to_string()],
         )?;
         Ok(())
@@ -159,7 +158,7 @@ impl AnalyticsStore {
         detail: Option<&str>,
     ) -> Result<(), AnalyticsError> {
         self.conn.execute(
-            "INSERT INTO autopilot_change_events VALUES (?, ?, ?, ?)",
+            sql::analytics::INSERT_CHANGE_EVENT,
             params![service_id, at_ns, source, detail],
         )?;
         Ok(())
@@ -215,14 +214,25 @@ impl AnalyticsStore {
         std::fs::create_dir_all(dir).map_err(AnalyticsError::Io)?;
         for table in ["autopilot_decisions", "autopilot_events"] {
             let out = dir.join(format!("{table}.parquet"));
-            let sql = format!(
-                "COPY {table} TO '{}' (FORMAT PARQUET)",
-                out.display().to_string().replace('\'', "''")
-            );
+            let sql = copy_sql(table, &out.display().to_string().replace('\'', "''"));
             self.conn.execute_batch(&sql)?;
         }
         Ok(())
     }
+}
+
+/// Write the rows of `table` to the Parquet file at `path`, quoted.
+fn copy_sql(table: &str, path: &str) -> String {
+    format!("COPY {table} TO '{path}' (FORMAT PARQUET)")
+}
+
+/// The statements of the export of the decisions, for the SQL corpus.
+#[cfg(test)]
+pub(super) fn sql_corpus() -> Vec<tumult_test_utils::sql_corpus::Statement> {
+    tumult_test_utils::sql_statements![
+        copy_sql("autopilot_decisions", "autopilot_decisions.parquet"),
+        copy_sql("autopilot_events", "autopilot_events.parquet"),
+    ]
 }
 
 #[cfg(test)]

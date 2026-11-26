@@ -16,6 +16,7 @@ use duckdb::params;
 use serde_json::Value;
 
 use crate::error::StoreError;
+use crate::sql;
 use crate::store::{query_json_rows, with_tx};
 use crate::{Reader, Writer};
 
@@ -231,48 +232,28 @@ const REGISTER_FUNCTIONS_SQL: &str = "SELECT function_id, register_code, lei, na
      ORDER BY lei, CAST(substr(register_code, 2) AS BIGINT)";
 
 fn read_register(conn: &duckdb::Connection) -> Result<IctRegister, StoreError> {
-    let legal_entities = query_json_rows(
-        conn,
-        "SELECT lei, name, country, entity_type, competent_authority, profile, flags, feeds, \
-         registry_signed_by, registry_signed_at FROM ict_legal_entities ORDER BY lei",
-    )?
-    .iter()
-    .map(legal_entity_from)
-    .collect::<Result<_, _>>()?;
+    let legal_entities = query_json_rows(conn, sql::ict::LEGAL_ENTITIES)?
+        .iter()
+        .map(legal_entity_from)
+        .collect::<Result<_, _>>()?;
     let functions = query_json_rows(conn, REGISTER_FUNCTIONS_SQL)?
         .iter()
         .map(function_from)
         .collect::<Result<_, _>>()?;
-    let services = query_json_rows(
-        conn,
-        "SELECT function_id, kind, pattern FROM ict_function_services ORDER BY position",
-    )?
-    .iter()
-    .map(|row| IctFunctionService {
-        function_id: text(row, "function_id"),
-        kind: text(row, "kind"),
-        pattern: text(row, "pattern"),
-    })
-    .collect();
+    let services = query_json_rows(conn, sql::ict::FUNCTION_SERVICES)?
+        .iter()
+        .map(|row| IctFunctionService {
+            function_id: text(row, "function_id"),
+            kind: text(row, "kind"),
+            pattern: text(row, "pattern"),
+        })
+        .collect();
     Ok(IctRegister {
         legal_entities,
         functions,
         services,
     })
 }
-
-/// Latest day number the day arithmetic accepts (the year 2243): keeps
-/// `DATE + INTEGER` inside the range of both types.
-const MAX_DAY: i64 = 100_000;
-
-fn day_sql(day: i64) -> String {
-    format!(
-        "DATE '1970-01-01' + CAST({} AS INTEGER)",
-        day.clamp(0, MAX_DAY)
-    )
-}
-
-const DAY_NUMBER: &str = "CAST(datediff('day', DATE '1970-01-01', as_of) AS BIGINT) AS as_of_day";
 
 /// Status rows of the days `from_day..=to_day`, oldest first, at most
 /// `limit` of them. Over the limit the oldest rows are left out.
@@ -282,14 +263,7 @@ fn read_status(
     to_day: i64,
     limit: usize,
 ) -> Result<Vec<RequirementStatusRow>, StoreError> {
-    let sql = format!(
-        "SELECT * FROM (SELECT {DAY_NUMBER}, function_id, requirement_id, status, value, \
-         source FROM requirement_status_daily WHERE as_of BETWEEN {} AND {} \
-         ORDER BY as_of DESC, function_id DESC, requirement_id DESC LIMIT {limit}) AS newest \
-         ORDER BY as_of_day, function_id, requirement_id",
-        day_sql(from_day),
-        day_sql(to_day)
-    );
+    let sql = sql::ict::status_between(from_day, to_day, limit);
     Ok(query_json_rows(conn, &sql)?
         .iter()
         .map(|row| RequirementStatusRow {
@@ -311,12 +285,7 @@ fn read_maturity(
     from_day: i64,
     to_day: i64,
 ) -> Result<Vec<MaturityDailyRow>, StoreError> {
-    let sql = format!(
-        "SELECT {DAY_NUMBER}, lei, level, index_value, unknown_share, source \
-         FROM maturity_daily WHERE lei = ? AND as_of BETWEEN {} AND {} ORDER BY as_of",
-        day_sql(from_day),
-        day_sql(to_day)
-    );
+    let sql = sql::ict::maturity_between(from_day, to_day);
     Ok(crate::query_json_rows_bound(conn, &sql, &[lei])?
         .iter()
         .map(|row| MaturityDailyRow {
@@ -360,12 +329,10 @@ impl Writer {
         entities: &[IctLegalEntity],
         now_ns: i64,
     ) -> Result<(), StoreError> {
-        self.conn.execute("DELETE FROM ict_legal_entities", [])?;
+        self.conn.execute(sql::ict::DELETE_LEGAL_ENTITIES, [])?;
         for e in entities {
             self.conn.execute(
-                "INSERT INTO ict_legal_entities (lei, name, country, entity_type, \
-                 competent_authority, profile, flags, feeds, registry_signed_by, \
-                 registry_signed_at, updated_at_ns) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                sql::ict::INSERT_LEGAL_ENTITY,
                 params![
                     e.lei,
                     e.name,
@@ -398,10 +365,8 @@ impl Writer {
 
     fn sync_functions(&self, functions: &[IctFunction], now_ns: i64) -> Result<(), StoreError> {
         let (codes, mut highest) = self.assigned_codes()?;
-        self.conn.execute(
-            "UPDATE ict_functions SET active = false, updated_at_ns = ? WHERE active",
-            params![now_ns],
-        )?;
+        self.conn
+            .execute(sql::ict::DEACTIVATE_FUNCTIONS, params![now_ns])?;
         for (position, function) in functions.iter().enumerate() {
             let position = i64::try_from(position).unwrap_or(i64::MAX);
             if codes.contains_key(&code_key(function)) {
@@ -422,10 +387,7 @@ impl Writer {
         now_ns: i64,
     ) -> Result<(), StoreError> {
         self.conn.execute(
-            "UPDATE ict_functions SET name = ?, tier = ?, is_critical_or_important = ?, \
-             reasons = ?, last_assessed = ?, rto_s = ?, rpo_s = ?, impact = ?, org_unit = ?, \
-             declared = ?, test_plan = ?, active = true, position = ?, updated_at_ns = ? \
-             WHERE function_id = ? AND lei = ? AND licensed_activity = ?",
+            sql::ict::UPDATE_FUNCTION,
             params![
                 f.name,
                 f.tier,
@@ -456,10 +418,7 @@ impl Writer {
         now_ns: i64,
     ) -> Result<(), StoreError> {
         self.conn.execute(
-            "INSERT INTO ict_functions (function_id, register_code, lei, name, \
-             licensed_activity, tier, is_critical_or_important, reasons, last_assessed, rto_s, \
-             rpo_s, impact, org_unit, declared, test_plan, active, position, registered_at_ns, \
-             updated_at_ns) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, true, ?, ?, ?)",
+            sql::ict::INSERT_FUNCTION,
             params![
                 f.function_id,
                 register_code,
@@ -485,11 +444,10 @@ impl Writer {
     }
 
     fn replace_function_services(&self, services: &[IctFunctionService]) -> Result<(), StoreError> {
-        self.conn.execute("DELETE FROM ict_function_services", [])?;
+        self.conn.execute(sql::ict::DELETE_FUNCTION_SERVICES, [])?;
         for (position, s) in services.iter().enumerate() {
             self.conn.execute(
-                "INSERT INTO ict_function_services (function_id, kind, pattern, position) \
-                 VALUES (?, ?, ?, ?)",
+                sql::ict::INSERT_FUNCTION_SERVICE,
                 params![
                     s.function_id,
                     s.kind,
@@ -523,15 +481,11 @@ impl Writer {
         with_tx(&self.conn, || {
             for row in rows {
                 self.conn.execute(
-                    "DELETE FROM requirement_status_daily \
-                     WHERE as_of = DATE '1970-01-01' + CAST(? AS INTEGER) \
-                     AND function_id = ? AND requirement_id = ?",
+                    sql::ict::DELETE_REQUIREMENT_STATUS,
                     params![row.as_of_day, row.function_id, row.requirement_id],
                 )?;
                 self.conn.execute(
-                    "INSERT INTO requirement_status_daily (as_of, function_id, \
-                     requirement_id, status, value, source, computed_at_ns) \
-                     VALUES (DATE '1970-01-01' + CAST(? AS INTEGER), ?, ?, ?, ?, ?, ?)",
+                    sql::ict::INSERT_REQUIREMENT_STATUS,
                     params![
                         row.as_of_day,
                         row.function_id,
@@ -559,15 +513,10 @@ impl Writer {
     ) -> Result<(), StoreError> {
         with_tx(&self.conn, || {
             for row in rows {
+                self.conn
+                    .execute(sql::ict::DELETE_MATURITY, params![row.as_of_day, row.lei])?;
                 self.conn.execute(
-                    "DELETE FROM maturity_daily \
-                     WHERE as_of = DATE '1970-01-01' + CAST(? AS INTEGER) AND lei = ?",
-                    params![row.as_of_day, row.lei],
-                )?;
-                self.conn.execute(
-                    "INSERT INTO maturity_daily (as_of, lei, level, index_value, \
-                     unknown_share, source, computed_at_ns) \
-                     VALUES (DATE '1970-01-01' + CAST(? AS INTEGER), ?, ?, ?, ?, ?, ?)",
+                    sql::ict::INSERT_MATURITY,
                     params![
                         row.as_of_day,
                         row.lei,
@@ -589,16 +538,11 @@ impl Writer {
     /// # Errors
     /// Returns an error if a statement fails (the transaction is rolled back).
     pub fn prune_score_snapshots(&self, before_day: i64) -> Result<usize, StoreError> {
-        let cut = day_sql(before_day);
         with_tx(&self.conn, || {
-            let status = self.conn.execute(
-                &format!("DELETE FROM requirement_status_daily WHERE as_of < {cut}"),
-                [],
-            )?;
-            let maturity = self.conn.execute(
-                &format!("DELETE FROM maturity_daily WHERE as_of < {cut}"),
-                [],
-            )?;
+            let status = self.conn.execute(&sql::ict::prune_status(before_day), [])?;
+            let maturity = self
+                .conn
+                .execute(&sql::ict::prune_maturity(before_day), [])?;
             Ok(status + maturity)
         })
     }
@@ -662,4 +606,10 @@ impl Reader {
 #[must_use]
 pub fn is_critical_or_important(tier: &str) -> bool {
     matches!(tier, "critical" | "important")
+}
+
+/// The statements of the function register, for the SQL corpus.
+#[cfg(test)]
+pub(crate) fn sql_corpus() -> Vec<tumult_test_utils::sql_corpus::Statement> {
+    tumult_test_utils::sql_statements![REGISTER_FUNCTIONS_SQL]
 }

@@ -14,6 +14,7 @@ use crate::arrow_convert::{
 };
 use crate::error::AnalyticsError;
 use crate::export::{export_parquet, import_parquet};
+use crate::sql;
 use crate::telemetry;
 
 use super::{AnalyticsStore, StoreStats};
@@ -47,9 +48,7 @@ impl AnalyticsStore {
         // One transaction: the old experiments rows, then every other row
         // their runs hold.
         let count = self.in_transaction(|| {
-            let mut stmt = self.conn.prepare(
-                "DELETE FROM experiments WHERE started_at_ns < ? RETURNING experiment_id",
-            )?;
+            let mut stmt = self.conn.prepare(sql::analytics::PURGE_EXPERIMENTS)?;
             let ids = stmt
                 .query_map(params![cutoff_ns], |row| row.get::<_, String>(0))?
                 .collect::<Result<Vec<_>, _>>()?;
@@ -84,10 +83,7 @@ impl AnalyticsStore {
         );
 
         let exp_batch = self.query_to_batch(&select_of(&experiments_schema(), "experiments"))?;
-        let act_batch = self.query_to_batch(
-            "SELECT experiment_id, name, activity_type, status, started_at_ns, \
-             duration_ms, output, error, phase FROM activity_results",
-        )?;
+        let act_batch = self.query_to_batch(sql::analytics::ACTIVITIES_EXPORT)?;
         export_parquet(&exp_batch, experiments_path)?;
         export_parquet(&act_batch, activities_path)?;
 
@@ -170,12 +166,7 @@ impl AnalyticsStore {
         run_roots_path: &Path,
         sightings_path: &Path,
     ) -> Result<(), AnalyticsError> {
-        let roots = self.query_to_batch(&format!(
-            "SELECT {ROOT_COLUMNS}, span_attrs['resilience.target.version'] AS target_version, \
-             span_attrs['resilience.target.version_source'] AS version_source \
-             FROM spans WHERE span_name = '{ROOT_SPAN}' AND experiment_id IS NOT NULL \
-             ORDER BY ts_ns, span_id"
-        ))?;
+        let roots = self.query_to_batch(&roots_export_sql())?;
         let sightings = self.query_to_batch(SIGHTINGS_EXPORT)?;
         export_parquet(&roots, run_roots_path)?;
         export_parquet(&sightings, sightings_path)?;
@@ -213,13 +204,11 @@ impl AnalyticsStore {
     /// Read `path` into a staging table with `columns`, run `merge`
     /// against it and drop it.
     fn staged(&self, columns: &str, path: &Path, merge: &str) -> Result<(), AnalyticsError> {
-        self.conn
-            .execute_batch(&format!("CREATE OR REPLACE TEMP TABLE {STAGE} ({columns})"))?;
+        self.conn.execute_batch(&stage_sql(columns))?;
         for batch in &import_parquet(path)? {
             self.insert_batch(STAGE, batch)?;
         }
-        self.conn
-            .execute_batch(&format!("{merge}; DROP TABLE {STAGE}"))?;
+        self.conn.execute_batch(&merge_stage_sql(merge))?;
         Ok(())
     }
 
@@ -229,17 +218,17 @@ impl AnalyticsStore {
         &self,
         work: impl FnOnce() -> Result<T, AnalyticsError>,
     ) -> Result<T, AnalyticsError> {
-        self.conn.execute_batch("BEGIN TRANSACTION")?;
+        self.conn.execute_batch(sql::tx::BEGIN)?;
         let done = match work() {
             Ok(done) => done,
             Err(e) => {
-                if let Err(rollback) = self.conn.execute_batch("ROLLBACK") {
+                if let Err(rollback) = self.conn.execute_batch(sql::tx::ROLLBACK) {
                     tracing::warn!(error.message = %rollback, "lake.maintenance.rollback_failed");
                 }
                 return Err(e);
             }
         };
-        self.conn.execute_batch("COMMIT")?;
+        self.conn.execute_batch(sql::tx::COMMIT)?;
         Ok(done)
     }
 
@@ -254,17 +243,11 @@ impl AnalyticsStore {
         path: &Path,
     ) -> Result<(), AnalyticsError> {
         let table = into.table;
-        self.conn.execute_batch(&format!(
-            "CREATE OR REPLACE TEMP TABLE {STAGE} AS SELECT * FROM {table} LIMIT 0"
-        ))?;
+        self.conn.execute_batch(&stage_like_sql(table))?;
         for batch in &import_parquet(path)? {
             self.insert_batch(STAGE, &pad_batch(batch, schema)?)?;
         }
-        self.conn.execute_batch(&format!(
-            "INSERT INTO {table} SELECT * FROM {STAGE} AS s WHERE NOT EXISTS (\
-             SELECT 1 FROM {table} AS t WHERE {}); DROP TABLE {STAGE}",
-            into.same_row()
-        ))?;
+        self.conn.execute_batch(&import_new_sql(into))?;
         Ok(())
     }
 
@@ -444,6 +427,82 @@ fn pad_batch(batch: &RecordBatch, schema: &Schema) -> Result<RecordBatch, Analyt
         Arc::new(Schema::new(fields)),
         columns,
     )?)
+}
+
+/// The root spans of the runs, with the version of the target of each.
+fn roots_export_sql() -> String {
+    format!(
+        "SELECT {ROOT_COLUMNS}, span_attrs['resilience.target.version'] AS target_version, \
+         span_attrs['resilience.target.version_source'] AS version_source \
+         FROM spans WHERE span_name = '{ROOT_SPAN}' AND experiment_id IS NOT NULL \
+         ORDER BY ts_ns, span_id"
+    )
+}
+
+/// A new staging table with `columns`.
+fn stage_sql(columns: &str) -> String {
+    format!("CREATE OR REPLACE TEMP TABLE {STAGE} ({columns})")
+}
+
+/// Run `merge` against the staging table, then drop it.
+fn merge_stage_sql(merge: &str) -> String {
+    format!("{merge}; DROP TABLE {STAGE}")
+}
+
+/// A new staging table of the layout of `table`.
+fn stage_like_sql(table: &str) -> String {
+    format!("CREATE OR REPLACE TEMP TABLE {STAGE} AS SELECT * FROM {table} LIMIT 0")
+}
+
+/// Insert the staged rows whose natural key `into` lacks, then drop the
+/// staging table.
+fn import_new_sql(into: &Imported) -> String {
+    let table = into.table;
+    format!(
+        "INSERT INTO {table} SELECT * FROM {STAGE} AS s WHERE NOT EXISTS (\
+         SELECT 1 FROM {table} AS t WHERE {}); DROP TABLE {STAGE}",
+        into.same_row()
+    )
+}
+
+/// The statements of the export and the import of the analytics tables,
+/// for the SQL corpus. A merge reads the staging table the statement
+/// before it makes.
+#[cfg(test)]
+pub(super) fn sql_corpus() -> Vec<tumult_test_utils::sql_corpus::Statement> {
+    use tumult_test_utils::{sql_statement, sql_statements};
+    let roots = sql_statement!(stage_sql(ROOTS_STAGE));
+    let sightings = sql_statement!(stage_sql(SIGHTINGS_STAGE));
+    let experiments = sql_statement!(stage_like_sql(EXPERIMENTS.table));
+    let activities = sql_statement!(stage_like_sql(ACTIVITIES.table));
+    let loads = sql_statement!(stage_like_sql(LOAD_RESULTS.table));
+    let samples = sql_statement!(stage_like_sql(PROBE_SAMPLES.table));
+    [
+        sql_statements![
+            select_of(&experiments_schema(), "experiments"),
+            select_of(&load_results_schema(), "load_results"),
+            select_of(&journal_probe_samples_schema(), "probe_samples"),
+            roots_export_sql(),
+            SIGHTINGS_EXPORT,
+        ],
+        vec![
+            roots.clone(),
+            sql_statement!(merge_stage_sql(ROOTS_IMPORT))
+                .after(&roots)
+                .unlinted("sqlfluff has no grammar for the MAP literal"),
+            sightings.clone(),
+            sql_statement!(merge_stage_sql(SIGHTINGS_IMPORT)).after(&sightings),
+            experiments.clone(),
+            sql_statement!(import_new_sql(&EXPERIMENTS)).after(&experiments),
+            activities.clone(),
+            sql_statement!(import_new_sql(&ACTIVITIES)).after(&activities),
+            loads.clone(),
+            sql_statement!(import_new_sql(&LOAD_RESULTS)).after(&loads),
+            samples.clone(),
+            sql_statement!(import_new_sql(&PROBE_SAMPLES)).after(&samples),
+        ],
+    ]
+    .concat()
 }
 
 #[cfg(test)]

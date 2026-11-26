@@ -581,6 +581,12 @@ impl Writer {
     }
 }
 
+/// The statements of the entities, for the SQL corpus.
+#[cfg(test)]
+pub(crate) fn sql_corpus() -> Vec<tumult_test_utils::sql_corpus::Statement> {
+    [batch::sql_corpus(), caps::sql_corpus()].concat()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
