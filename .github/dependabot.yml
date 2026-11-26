@@ -8,6 +8,16 @@ updates:
     open-pull-requests-limit: 5
     labels:
       - dependencies
+    # duckdb is in no group, so a move of the DuckDB engine comes as a pull
+    # request of its own. Cargo.toml pins it with a tilde: only a duckdb-rs
+    # patch for the same engine can come as a change of Cargo.lock alone.
+    # arrow and parquet keep the arrow major that duckdb-rs builds on. A new
+    # major moves by hand, in the pull request that moves duckdb.
+    ignore:
+      - dependency-name: "arrow"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "parquet"
+        update-types: ["version-update:semver-major"]
     groups:
       opentelemetry:
         patterns:
@@ -17,7 +27,6 @@ updates:
         patterns:
           - "arrow"
           - "parquet"
-          - "duckdb"
 
   # The demo crates are cargo workspaces of their own, each with its own
   # Cargo.lock.
@@ -41,7 +50,6 @@ updates:
         patterns:
           - "arrow"
           - "parquet"
-          - "duckdb"
 
   - package-ecosystem: github-actions
     directory: /
