@@ -20,7 +20,7 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
 # Plain HTTP against demo-app; rustls avoids an OpenSSL build dependency.
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 serde_json = "1"
-rand = "0.9"
+rand = "0.10"
 
 [lints.clippy]
 pedantic = "warn"
