@@ -1,0 +1,85 @@
+-- The shape v9: the lake that a first open of Tumult 2.20.0 makes.
+-- Made by scripts/build-lake-shapes.py from the tag v2.20.0. Do not edit
+-- it by hand: make it again with the script (v9-2.20.0).
+-- DuckDB v1.5.4 wrote this catalog.
+-- storage_compatibility_version = v1.0.0
+
+-- Tables, by name.
+CREATE TABLE activity_results(experiment_id VARCHAR NOT NULL, "name" VARCHAR NOT NULL, activity_type VARCHAR NOT NULL, status VARCHAR NOT NULL, started_at_ns BIGINT NOT NULL, duration_ms UBIGINT NOT NULL, output VARCHAR, "error" VARCHAR, phase VARCHAR NOT NULL);
+CREATE TABLE agentic_contract_outcomes(run_id VARCHAR NOT NULL, scenario VARCHAR NOT NULL, contract_type VARCHAR NOT NULL, passed BOOLEAN NOT NULL, reason VARCHAR, severity DOUBLE NOT NULL);
+CREATE TABLE agentic_fault_applications(run_id VARCHAR NOT NULL, scenario VARCHAR NOT NULL, fault_type VARCHAR NOT NULL, applied BOOLEAN NOT NULL);
+CREATE TABLE agentic_replay_outcomes(run_id VARCHAR NOT NULL, replay_id VARCHAR NOT NULL, scenario VARCHAR NOT NULL, passed BOOLEAN NOT NULL);
+CREATE TABLE agentic_runs(run_id VARCHAR PRIMARY KEY, experiment_id VARCHAR NOT NULL, target_type VARCHAR NOT NULL, scenario VARCHAR NOT NULL, resilience_score DOUBLE NOT NULL, trace_id VARCHAR, replay_id VARCHAR);
+CREATE TABLE approval_decisions(run_id VARCHAR NOT NULL, approver VARCHAR NOT NULL, decision VARCHAR NOT NULL, note VARCHAR, decided_at_ns BIGINT NOT NULL);
+CREATE TABLE approval_requests(run_id VARCHAR NOT NULL, tier VARCHAR NOT NULL, pin_hash VARCHAR NOT NULL, env VARCHAR NOT NULL, "target" VARCHAR, quorum_required INTEGER NOT NULL, requested_by VARCHAR NOT NULL, requested_at_ns BIGINT NOT NULL, expires_at_ns BIGINT NOT NULL, consumed_at_ns BIGINT, break_glass BOOLEAN DEFAULT(CAST('f' AS BOOLEAN)) NOT NULL, break_glass_by VARCHAR, break_glass_justification VARCHAR);
+CREATE TABLE autopilot_change_events(service_id VARCHAR NOT NULL, at_ns BIGINT NOT NULL, "source" VARCHAR NOT NULL, detail VARCHAR);
+CREATE TABLE autopilot_decisions(id VARCHAR PRIMARY KEY, decided_at_ns BIGINT NOT NULL, "trigger" VARCHAR NOT NULL, service_id VARCHAR NOT NULL, tier VARCHAR, plugin VARCHAR NOT NULL, "action" VARCHAR NOT NULL, article_id VARCHAR NOT NULL, score DOUBLE NOT NULL, reasons JSON NOT NULL, confidence VARCHAR NOT NULL, playbook VARCHAR, "validator" JSON NOT NULL, verdict VARCHAR NOT NULL, gate_rules JSON NOT NULL, gate_detail JSON NOT NULL, policy_hash VARCHAR NOT NULL, autonomy_score DOUBLE);
+CREATE TABLE autopilot_events(decision_id VARCHAR NOT NULL, at_ns BIGINT NOT NULL, kind VARCHAR NOT NULL, detail JSON NOT NULL);
+CREATE TABLE evidence_attachments(id VARCHAR PRIMARY KEY, experiment_id VARCHAR NOT NULL, kind VARCHAR NOT NULL, uri VARCHAR NOT NULL, "label" VARCHAR, file_hash VARCHAR, added_by VARCHAR NOT NULL, added_at_ns BIGINT NOT NULL);
+CREATE TABLE experiments(experiment_id VARCHAR NOT NULL, title VARCHAR NOT NULL, status VARCHAR NOT NULL, started_at_ns BIGINT NOT NULL, ended_at_ns BIGINT NOT NULL, duration_ms UBIGINT NOT NULL, method_step_count BIGINT NOT NULL, rollback_count BIGINT NOT NULL, hypothesis_before_met BOOLEAN, hypothesis_after_met BOOLEAN, estimate_accuracy DOUBLE, resilience_score DOUBLE);
+CREATE TABLE graph_edges(src VARCHAR NOT NULL, rel VARCHAR NOT NULL, dst VARCHAR NOT NULL, run_id VARCHAR NOT NULL, ts BIGINT NOT NULL, attrs JSON);
+CREATE TABLE graph_nodes(id VARCHAR PRIMARY KEY, kind VARCHAR NOT NULL, "label" VARCHAR NOT NULL, attrs JSON);
+CREATE TABLE import_batches(id VARCHAR NOT NULL, "source" VARCHAR NOT NULL, imported_at_ns BIGINT NOT NULL, "rows" INTEGER NOT NULL, "label" VARCHAR);
+CREATE TABLE load_results(experiment_id VARCHAR NOT NULL, tool VARCHAR NOT NULL, started_at_ns BIGINT NOT NULL, ended_at_ns BIGINT NOT NULL, duration_s DOUBLE NOT NULL, vus INTEGER NOT NULL, throughput_rps DOUBLE NOT NULL, latency_p50_ms DOUBLE NOT NULL, latency_p95_ms DOUBLE NOT NULL, latency_p99_ms DOUBLE NOT NULL, error_rate DOUBLE NOT NULL, total_requests UBIGINT NOT NULL, thresholds_met BOOLEAN NOT NULL);
+CREATE TABLE logs(ts_ns BIGINT NOT NULL, severity_text VARCHAR NOT NULL, body VARCHAR NOT NULL, trace_id VARCHAR, span_id VARCHAR, service_name VARCHAR NOT NULL, log_attrs MAP(VARCHAR, VARCHAR), resource_attrs MAP(VARCHAR, VARCHAR));
+CREATE TABLE manual_experiment_audit(id VARCHAR PRIMARY KEY, experiment_id VARCHAR NOT NULL, changed_by VARCHAR NOT NULL, changed_at_ns BIGINT NOT NULL, "action" VARCHAR NOT NULL, diff JSON, prev_hash VARCHAR, new_hash VARCHAR NOT NULL);
+CREATE TABLE manual_experiments(id VARCHAR NOT NULL, experiment_name VARCHAR NOT NULL, exercise_type VARCHAR NOT NULL, executed_at_ns BIGINT NOT NULL, hypothesis VARCHAR NOT NULL, "method" VARCHAR NOT NULL, outcome_status VARCHAR NOT NULL, hypothesis_met BOOLEAN, findings VARCHAR, action_items JSON, target_system VARCHAR, target_environment VARCHAR, blast_radius VARCHAR, recovery_time_s DOUBLE, duration_s DOUBLE, origin VARCHAR DEFAULT('manual') NOT NULL, entered_by VARCHAR NOT NULL, entered_at_ns BIGINT NOT NULL, attestation VARCHAR NOT NULL, status VARCHAR DEFAULT('draft') NOT NULL, reviewed_by VARCHAR, reviewed_at_ns BIGINT, review_note VARCHAR, renewal_due_ns BIGINT, framework_refs VARCHAR[], batch_id VARCHAR, content_hash VARCHAR NOT NULL);
+CREATE TABLE metric_gauges(ts_ns BIGINT NOT NULL, metric_name VARCHAR NOT NULL, "value" DOUBLE NOT NULL, experiment_name VARCHAR, outcome_status VARCHAR, plugin_name VARCHAR, attrs MAP(VARCHAR, VARCHAR), resource_attrs MAP(VARCHAR, VARCHAR));
+CREATE TABLE metric_histograms(ts_ns BIGINT NOT NULL, metric_name VARCHAR NOT NULL, count UBIGINT NOT NULL, sum DOUBLE NOT NULL, min DOUBLE, max DOUBLE, bucket_counts BIGINT[], explicit_bounds DOUBLE[], attrs MAP(VARCHAR, VARCHAR), resource_attrs MAP(VARCHAR, VARCHAR), experiment_name VARCHAR, outcome_status VARCHAR, plugin_name VARCHAR);
+CREATE TABLE metric_sums(ts_ns BIGINT NOT NULL, metric_name VARCHAR NOT NULL, "value" DOUBLE NOT NULL, experiment_name VARCHAR, outcome_status VARCHAR, plugin_name VARCHAR, attrs MAP(VARCHAR, VARCHAR), resource_attrs MAP(VARCHAR, VARCHAR));
+CREATE TABLE run_audit(run_id VARCHAR NOT NULL, at_ns BIGINT NOT NULL, "event" VARCHAR NOT NULL, detail VARCHAR, actor VARCHAR, prev_hash VARCHAR, new_hash VARCHAR);
+CREATE TABLE run_registry(id VARCHAR NOT NULL, "name" VARCHAR NOT NULL, definition_toon VARCHAR NOT NULL, content_hash VARCHAR NOT NULL, registered_at_ns BIGINT NOT NULL, registered_by VARCHAR);
+CREATE TABLE runs(id VARCHAR NOT NULL, registry_id VARCHAR NOT NULL, state VARCHAR NOT NULL, params_json JSON, experiment_id VARCHAR, rollback_status VARCHAR, "error" VARCHAR, queued_at_ns BIGINT NOT NULL, started_at_ns BIGINT, ended_at_ns BIGINT);
+CREATE TABLE schema_meta("key" VARCHAR PRIMARY KEY, "value" BIGINT NOT NULL);
+CREATE TABLE sessions(id_hash VARCHAR NOT NULL, user_id VARCHAR NOT NULL, created_at_ns BIGINT NOT NULL, expires_at_ns BIGINT NOT NULL);
+CREATE TABLE spans(ts_ns BIGINT NOT NULL, trace_id VARCHAR NOT NULL, span_id VARCHAR NOT NULL, parent_span_id VARCHAR, span_name VARCHAR NOT NULL, span_kind VARCHAR NOT NULL, duration_ns BIGINT NOT NULL, status_code VARCHAR NOT NULL, status_message VARCHAR NOT NULL, service_name VARCHAR NOT NULL, service_version VARCHAR, experiment_id VARCHAR, experiment_name VARCHAR, outcome_status VARCHAR, fault_type VARCHAR, fault_subtype VARCHAR, fault_severity VARCHAR, blast_radius VARCHAR, target_system VARCHAR, target_technology VARCHAR, target_environment VARCHAR, plugin_name VARCHAR, hypothesis_met BOOLEAN, recovery_time_s DOUBLE, span_attrs MAP(VARCHAR, VARCHAR), resource_attrs MAP(VARCHAR, VARCHAR), events JSON);
+CREATE TABLE tokens(id VARCHAR NOT NULL, user_id VARCHAR NOT NULL, "name" VARCHAR NOT NULL, token_hash VARCHAR NOT NULL, created_at_ns BIGINT NOT NULL, last_used_at_ns BIGINT, revoked BOOLEAN NOT NULL, expires_at_ns BIGINT);
+CREATE TABLE user_env_scopes(user_id VARCHAR NOT NULL, environment VARCHAR NOT NULL);
+CREATE TABLE users(id VARCHAR NOT NULL, username VARCHAR NOT NULL, password_hash VARCHAR NOT NULL, "role" VARCHAR NOT NULL, must_change BOOLEAN NOT NULL, disabled BOOLEAN NOT NULL, created_at_ns BIGINT NOT NULL);
+
+-- Indexes, by table and name.
+CREATE INDEX idx_activities_experiment_id ON activity_results(experiment_id);
+CREATE INDEX idx_agentic_contracts_run_id ON agentic_contract_outcomes(run_id);
+CREATE INDEX idx_agentic_faults_run_id ON agentic_fault_applications(run_id);
+CREATE INDEX idx_agentic_replay_run_id ON agentic_replay_outcomes(run_id);
+CREATE INDEX idx_agentic_runs_experiment_id ON agentic_runs(experiment_id);
+CREATE INDEX autopilot_events_by_decision ON autopilot_events(decision_id, at_ns);
+CREATE INDEX idx_evidence_attachments_experiment ON evidence_attachments(experiment_id);
+CREATE UNIQUE INDEX idx_experiments_id ON experiments(experiment_id);
+CREATE INDEX idx_graph_edges_dst ON graph_edges(dst);
+CREATE INDEX idx_graph_edges_run ON graph_edges(run_id);
+CREATE INDEX idx_graph_edges_src ON graph_edges(src);
+CREATE INDEX idx_graph_nodes_kind ON graph_nodes(kind);
+CREATE INDEX idx_load_experiment_id ON load_results(experiment_id);
+CREATE INDEX idx_logs_ts_ns ON logs(ts_ns);
+CREATE INDEX idx_manual_audit_experiment ON manual_experiment_audit(experiment_id);
+CREATE INDEX idx_metric_gauges_name_ts ON metric_gauges(metric_name, ts_ns);
+CREATE INDEX idx_metric_histograms_name_ts ON metric_histograms(metric_name, ts_ns);
+CREATE INDEX idx_metric_sums_name_ts ON metric_sums(metric_name, ts_ns);
+CREATE INDEX idx_spans_experiment_id ON spans(experiment_id);
+CREATE INDEX idx_spans_trace_id ON spans(trace_id);
+CREATE INDEX idx_spans_ts_ns ON spans(ts_ns);
+
+-- Sequences, by name.
+
+-- The rows the open wrote, by table.
+INSERT INTO graph_nodes (id, kind, label, attrs) VALUES ('compliance:Basel-III/BCBS239Principle6', 'compliance_article', 'Basel-III BCBS 239 Principle 6', CAST('{"framework":"Basel-III","control_id":"BCBS 239 Principle 6","title":"Adaptability (Principles for effective risk data aggregation and risk reporting)","evidence_type":"effectiveness assessment","strength":"indirect","source_url":"https://www.bis.org/publ/bcbs239.htm","last_verified":"2026-07-04"}' AS JSON));
+INSERT INTO graph_nodes (id, kind, label, attrs) VALUES ('compliance:Basel-III/OpResPrinciple4', 'compliance_article', 'Basel-III OpRes Principle 4', CAST('{"framework":"Basel-III","control_id":"OpRes Principle 4","title":"Business continuity planning and testing (BCBS Principles for Operational Resilience, 2021)","evidence_type":"continuity exercise","strength":"direct","source_url":"https://www.bis.org/bcbs/publ/d516.htm","last_verified":"2026-07-04"}' AS JSON));
+INSERT INTO graph_nodes (id, kind, label, attrs) VALUES ('compliance:DORA/Art.11', 'compliance_article', 'DORA Art. 11', CAST('{"framework":"DORA","control_id":"Art. 11","title":"Response and recovery","evidence_type":"recovery validation","strength":"direct","source_url":"https://eur-lex.europa.eu/eli/reg/2022/2554/oj","last_verified":"2026-07-04"}' AS JSON));
+INSERT INTO graph_nodes (id, kind, label, attrs) VALUES ('compliance:DORA/Art.24', 'compliance_article', 'DORA Art. 24', CAST('{"framework":"DORA","control_id":"Art. 24","title":"General requirements for the performance of digital operational resilience testing","evidence_type":"resilience testing","strength":"supporting","source_url":"https://eur-lex.europa.eu/eli/reg/2022/2554/oj","last_verified":"2026-07-04"}' AS JSON));
+INSERT INTO graph_nodes (id, kind, label, attrs) VALUES ('compliance:DORA/Art.25', 'compliance_article', 'DORA Art. 25', CAST('{"framework":"DORA","control_id":"Art. 25","title":"Testing of ICT tools and systems","evidence_type":"resilience testing","strength":"direct","source_url":"https://eur-lex.europa.eu/eli/reg/2022/2554/oj","last_verified":"2026-07-04"}' AS JSON));
+INSERT INTO graph_nodes (id, kind, label, attrs) VALUES ('compliance:DORA/Art.26', 'compliance_article', 'DORA Art. 26', CAST('{"framework":"DORA","control_id":"Art. 26","title":"Advanced testing of ICT tools, systems and processes based on TLPT","evidence_type":"resilience testing","strength":"indirect","source_url":"https://eur-lex.europa.eu/eli/reg/2022/2554/oj","last_verified":"2026-07-04"}' AS JSON));
+INSERT INTO graph_nodes (id, kind, label, attrs) VALUES ('compliance:ISO-22301/Clause8.5', 'compliance_article', 'ISO-22301 Clause 8.5', CAST('{"framework":"ISO-22301","control_id":"Clause 8.5","title":"Exercise programme (exercising and testing)","evidence_type":"continuity exercise","strength":"direct","source_url":"https://www.iso.org/standard/75106.html","last_verified":"2026-07-04"}' AS JSON));
+INSERT INTO graph_nodes (id, kind, label, attrs) VALUES ('compliance:ISO-27001/A.5.29', 'compliance_article', 'ISO-27001 A.5.29', CAST('{"framework":"ISO-27001","control_id":"A.5.29","title":"Information security during disruption","evidence_type":"resilience testing","strength":"supporting","source_url":"https://www.iso.org/standard/27001","last_verified":"2026-07-04"}' AS JSON));
+INSERT INTO graph_nodes (id, kind, label, attrs) VALUES ('compliance:ISO-27001/A.5.30', 'compliance_article', 'ISO-27001 A.5.30', CAST('{"framework":"ISO-27001","control_id":"A.5.30","title":"ICT readiness for business continuity","evidence_type":"recovery validation","strength":"direct","source_url":"https://www.iso.org/standard/27001","last_verified":"2026-07-04"}' AS JSON));
+INSERT INTO graph_nodes (id, kind, label, attrs) VALUES ('compliance:NIS2/Art.21(2)(b)', 'compliance_article', 'NIS2 Art. 21(2)(b)', CAST('{"framework":"NIS2","control_id":"Art. 21(2)(b)","title":"Incident handling","evidence_type":"incident-response testing","strength":"supporting","source_url":"https://eur-lex.europa.eu/eli/dir/2022/2555/oj","last_verified":"2026-07-04"}' AS JSON));
+INSERT INTO graph_nodes (id, kind, label, attrs) VALUES ('compliance:NIS2/Art.21(2)(c)', 'compliance_article', 'NIS2 Art. 21(2)(c)', CAST('{"framework":"NIS2","control_id":"Art. 21(2)(c)","title":"Business continuity, backup management, disaster recovery and crisis management","evidence_type":"recovery validation","strength":"direct","source_url":"https://eur-lex.europa.eu/eli/dir/2022/2555/oj","last_verified":"2026-07-04"}' AS JSON));
+INSERT INTO graph_nodes (id, kind, label, attrs) VALUES ('compliance:NIS2/Art.21(2)(f)', 'compliance_article', 'NIS2 Art. 21(2)(f)', CAST('{"framework":"NIS2","control_id":"Art. 21(2)(f)","title":"Policies to assess the effectiveness of cybersecurity risk-management measures","evidence_type":"effectiveness assessment","strength":"supporting","source_url":"https://eur-lex.europa.eu/eli/dir/2022/2555/oj","last_verified":"2026-07-04"}' AS JSON));
+INSERT INTO graph_nodes (id, kind, label, attrs) VALUES ('compliance:PCI-DSS/Req.12.10.2', 'compliance_article', 'PCI-DSS Req. 12.10.2', CAST('{"framework":"PCI-DSS","control_id":"Req. 12.10.2","title":"Incident response plan reviewed and tested at least once every 12 months","evidence_type":"incident-response testing","strength":"supporting","source_url":"https://www.pcisecuritystandards.org/document_library/","last_verified":"2026-07-04"}' AS JSON));
+INSERT INTO graph_nodes (id, kind, label, attrs) VALUES ('compliance:SOC2/CC7.2', 'compliance_article', 'SOC2 CC7.2', CAST('{"framework":"SOC2","control_id":"CC7.2","title":"Monitors system components for anomalies","evidence_type":"monitoring","strength":"supporting","source_url":"https://www.aicpa-cima.com/topic/audit-assurance/audit-and-assurance-greater-than-soc-2","last_verified":"2026-07-04"}' AS JSON));
+INSERT INTO graph_nodes (id, kind, label, attrs) VALUES ('compliance:SOC2/CC7.4', 'compliance_article', 'SOC2 CC7.4', CAST('{"framework":"SOC2","control_id":"CC7.4","title":"Responds to identified security incidents","evidence_type":"incident-response testing","strength":"supporting","source_url":"https://www.aicpa-cima.com/topic/audit-assurance/audit-and-assurance-greater-than-soc-2","last_verified":"2026-07-04"}' AS JSON));
+INSERT INTO graph_nodes (id, kind, label, attrs) VALUES ('compliance:SOC2/CC7.5', 'compliance_article', 'SOC2 CC7.5', CAST('{"framework":"SOC2","control_id":"CC7.5","title":"Recovery from identified security incidents","evidence_type":"recovery validation","strength":"direct","source_url":"https://www.aicpa-cima.com/topic/audit-assurance/audit-and-assurance-greater-than-soc-2","last_verified":"2026-07-04"}' AS JSON));
+INSERT INTO schema_meta (key, value) VALUES ('version', CAST('9' AS BIGINT));
+
+-- Views, each after the views it reads.
+CREATE VIEW experiment_runs AS SELECT s.experiment_id, any_value(s.experiment_name) AS experiment_name, min(s.ts_ns) AS started_at_ns, max((s.ts_ns + s.duration_ns)) AS ended_at_ns, max(s.duration_ns) AS duration_ns, any_value(COALESCE(s.outcome_status, l.log_attrs['status'])) AS outcome_status, any_value(s.hypothesis_met) AS hypothesis_met FROM spans AS s LEFT JOIN logs AS l ON (((l.log_attrs['experiment_id'] = s.experiment_id) AND (l.body = 'experiment.completed'))) WHERE (s.span_name = 'resilience.experiment') GROUP BY s.experiment_id;
